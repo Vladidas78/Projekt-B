@@ -128,6 +128,16 @@
   .cpop-clear { width: 100%; }
   .cpop-chk { display: flex; align-items: center; gap: 8px; padding: 3px 8px; font-size: 13px; border-radius: 7px; cursor: pointer; }
   .cpop-chk:hover { background: var(--accent-soft); }
+  .cpop.wide { width: 340px; }
+  .hist-list { max-height: 280px; overflow-y: auto; display: grid; gap: 2px; margin-bottom: 6px; }
+  .hist-item { display: flex; gap: 7px; align-items: baseline; font-size: 12px; padding: 3px 6px; border-bottom: 1px solid var(--grid); }
+  .hist-item .when { color: var(--muted); white-space: nowrap; font-size: 11px; }
+  .hist-item .what { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .hist-item button { border: none; background: none; color: var(--muted); padding: 0 4px; }
+  .hist-item button:hover { color: var(--crit); }
+  .hist-btn { border: none; background: none; padding: 0 3px; font-size: 12px; color: var(--muted); cursor: pointer; }
+  .hist-btn:hover { color: var(--accent); }
+  .tbf { font-size: 11px; font-weight: 650; border-radius: 999px; padding: 1px 8px; background: var(--warn-wash); box-shadow: inset 0 0 0 1px var(--warn); white-space: nowrap; }
   .sm-badge { display: inline-block; font-size: 10px; font-weight: 650; border-radius: 5px; padding: 0 5px; margin-left: 5px; background: var(--accent-soft); color: var(--accent); vertical-align: 1px; }
   .cmt-head { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; min-height: 14px; }
   .cmt-meta { font-size: 10.5px; color: var(--muted); margin-left: auto; white-space: nowrap; }
@@ -278,8 +288,7 @@
     <nav class="nav" id="tabs"></nav>
     <div class="side-foot">
       <button class="srcmini" id="srcMini" title="Status der Datenquellen – klicken für Details und Verknüpfen (Verwaltung)">
-        <span class="row"><span class="dot" id="miniPDDot"></span><span id="miniPDText">PD-Dashboard · –</span></span>
-        <span class="row"><span class="dot" id="miniSDDot"></span><span id="miniSDText">SD-Dashboard · –</span></span>
+        <span class="row"><span class="dot" id="miniAllDot"></span><span id="miniAllText">Dashboard · –</span></span>
         <span class="row"><span class="dot" id="miniTeamDot"></span><span id="miniTeamText">Team-Speicher · –</span></span>
       </button>
       <button id="btnResumeMini" class="small primary hidden" title="Die zuletzt überwachten Dateien wieder aktivieren (der Browser fragt einmal nach Erlaubnis)">Überwachung fortsetzen</button>
@@ -290,16 +299,11 @@
   <div class="main">
   <div id="srcbarStash" class="hidden">
   <div class="srcbar" id="srcbar">
-    <span class="chip" id="chipPd"><span class="dot"></span><span id="chipPdText">PD: keine Datei</span></span>
-    <span class="chip" id="chipSd"><span class="dot"></span><span id="chipSdText">SD: keine Datei</span></span>
-    <span class="lbl">Quellen</span>
+    <span class="chip" id="chipAll"><span class="dot"></span><span id="chipAllText">Dashboard: keine Datei</span></span>
+    <span class="lbl">Quelle</span>
     <div class="grp">
-      <button class="small" id="btnImpPd">PD-Datei laden …</button>
-      <button class="small" id="btnWatchPd" title="Datei einmal wählen, danach automatisches Neu-Einlesen">PD überwachen …</button>
-    </div>
-    <div class="grp">
-      <button class="small" id="btnImpSd">SD-Datei laden …</button>
-      <button class="small" id="btnWatchSd">SD überwachen …</button>
+      <button class="small" id="btnImpAll">Dashboard laden …</button>
+      <button class="small" id="btnWatchAll" title="Datei einmal wählen, danach automatisches Neu-Einlesen">Dashboard überwachen …</button>
     </div>
     <select id="watchInterval" class="small" title="Intervall der automatischen Aktualisierung">
       <option value="1">alle 1 Min.</option><option value="5">alle 5 Min.</option>
@@ -310,10 +314,9 @@
       <span class="hint" id="teamFileInfo"></span>
     </div>
     <button id="btnResume" class="small primary hidden" title="Die zuletzt überwachten Dateien wieder aktivieren (der Browser fragt einmal nach Erlaubnis)">Überwachung fortsetzen</button>
-    <span class="hint">… oder Dateien irgendwo ins Board ziehen (Zuordnung über Dateinamen „PD…/SD…“)</span>
+    <span class="hint">… oder die Datei irgendwo ins Board ziehen</span>
     <span class="stand" style="margin-left:auto">Stand: <b id="standTs">–</b></span>
-    <input type="file" id="filePd" accept=".xlsx,.xlsm,.csv" class="hidden">
-    <input type="file" id="fileSd" accept=".xlsx,.xlsm,.csv" class="hidden">
+    <input type="file" id="fileAll" accept=".xlsx,.xlsm,.csv" class="hidden">
   </div>
   </div>
   <div class="wrap"><main id="view"></main></div>
@@ -358,7 +361,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.10";
+const VERSION = "1.11";
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -437,16 +440,22 @@ const DEFAULT_STATE = {
     { k: "DBU", name: "Dominic Burger-Graseck" },
     { k: "MRE", name: "Markus Reißfelder" }
   ],
-  internKunde: "MPDV", // internes Kunden-Kürzel (fällt aus Kd.-Komm.- und Haken-Liste raus)
-  rules: { exclBearbeiter: "HX-MP-UPDATE" }, // fällt überall raus (Pseudo-Bearbeiter)
-  filters: { // je Ansicht: ausgeblendete Werte (Kleinschreibung) + Schwellen; intern=true blendet MPDV-Calls aus
-    lt:     { status: [], gruppe: [], prio: [], intern: false },
-    kdkomm: { status: [], gruppe: [], prio: [], tage: "7" },
-    aender: { status: [], gruppe: [], prio: [], tage: "14", intern: false },
-    haken:  { status: [], gruppe: [], prio: [] },
-    wartend: { status: [], gruppe: [], prio: [], intern: false },
-    mi:     { status: ["cc", "customer care", "update", "pre-update"], gruppe: [], prio: [], minDauer: "10", intern: false },
-    fr:     { status: [], gruppe: [], prio: [], intern: false }
+  internKunde: "MPDV", // internes Kunden-Kürzel – Ausblenden über den Filter „Sonstiges" je Liste
+  rules: { exclBearbeiter: "HX-MP-UPDATE" }, // Pseudo-Bearbeiter – Ausblenden über den Filter „Sonstiges" je Liste
+  gruppenFilter: [ // Filtergruppen: bündeln mehrere Bearbeitergruppen zu einem Filter-Chip (Verwaltung)
+    { name: "Hotline", members: "Hotline; 1st_Level" },
+    { name: "2nd Level", members: "2nd_CAQ; 2nd_MF; 2nd_HR" }
+  ],
+  filters: { // je Ansicht: ausgeblendete Werte (Kleinschreibung) + Schwellen;
+             // intern=true blendet MPDV-Calls aus, hxmp=true den Pseudo-Bearbeiter HX-MP-UPDATE
+    lt:     { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
+    kdkomm: { status: [], gruppe: [], prio: [], tage: "7", intern: true, hxmp: true },
+    aender: { status: [], gruppe: [], prio: [], tage: "14", intern: false, hxmp: true },
+    haken:  { status: [], gruppe: [], prio: [], intern: true, hxmp: true },
+    wartend: { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
+    extreakt: { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
+    mi:     { status: ["cc", "customer care", "update", "pre-update"], gruppe: [], prio: [], minDauer: "10", intern: false, hxmp: true },
+    fr:     { status: [], gruppe: [], prio: [], intern: false, hxmp: true }
   },
   cols: {}, // je Tagesliste: sichtbare Spalten (leer = Standard, siehe WF_DEFAULT_COLS)
   history: {},   // "YYYY-MM-DD" -> Kennzahlen-Schnappschuss
@@ -455,6 +464,7 @@ const DEFAULT_STATE = {
   commentSrc: {}, // call -> KW, aus der der Kommentar uebernommen wurde (leer = aktuell)
   commentMeta: {}, // call -> {ts: Epoche, by: Kürzel} – letzter Bearbeitungsstand des Kommentars
   staleWarnMin: "45", // Minuten, ab denen der Quellen-Chip vor altem Datenstand warnt
+  hist: {},      // call -> [{ts, by, t, wf?, text?}] – Historie zu ACKs, Gründen und Kommentaren
   miMark: {},    // call -> {termin: "gelb"|"rot"|"none"|undefined, kommentar: ...} (Markierungen Mittwochsmail)
   miHistory: {}, // "JJJJ-Www" -> {calls: [..], comments: {call: text}} – Kommentar-Archiv der letzten Wochen
   verbleib: {},  // call -> Text für OneNote-Spalte „Verbleib nach Sichtung der Langläufercalls"
@@ -481,7 +491,7 @@ function loadState() {
         commentMeta: { ...(s.commentMeta || {}) },
         team: (Array.isArray(s.team) && s.team.length) ? s.team : structuredClone(DEFAULT_STATE.team),
         rules: { ...DEFAULT_STATE.rules, ...(s.rules || {}) },
-        filters: Object.fromEntries(Object.entries(DEFAULT_STATE.filters).map(([k, v]) => [k, { ...v, ...((s.filters || {})[k] || {}) }])),
+        filters: Object.fromEntries(Object.entries(DEFAULT_STATE.filters).map(([k, v]) => [k, { ...structuredClone(v), ...((s.filters || {})[k] || {}) }])),
         templates: {
           teams: { ...DEFAULT_STATE.templates.teams, ...(tpl.teams || {}) },
           wvl: { ...DEFAULT_STATE.templates.wvl, ...(tpl.wvl || {}) }
@@ -489,6 +499,13 @@ function loadState() {
     }
   } catch (e) { /* leerer Start */ }
   return structuredClone(DEFAULT_STATE);
+}
+/* Nach Laden/Abgleich mit älteren Ständen (z. B. Team-JSON aus v1.10): neue
+   Filter-Schlüssel und Strukturen ergänzen, damit nichts undefiniert bleibt. */
+function normalizeState() {
+  state.filters = Object.fromEntries(Object.entries(DEFAULT_STATE.filters).map(([k, v]) => [k, { ...structuredClone(v), ...((state.filters || {})[k] || {}) }]));
+  if (!Array.isArray(state.gruppenFilter)) state.gruppenFilter = structuredClone(DEFAULT_STATE.gruppenFilter);
+  state.hist ??= {};
 }
 function saveState() {
   state.configStand = new Date().toISOString();
@@ -561,12 +578,24 @@ const COLMAP = {
   "terminänderungen": "Terminänderungen", "terminaenderungen": "Terminänderungen",
   "nicht werten für kd.komm.": "Haken", "nicht werten fuer kd.komm.": "Haken",
   "letzte info an kd.": "LetzteInfo", "tage ohne info an kd.": "TageOhneInfo",
+  "letzte externe reaktion": "LetzteExtReaktion", "letzte ext. reaktion": "LetzteExtReaktion", "externe reaktion": "LetzteExtReaktion",
   "score": "Score"
 };
-const DATECOLS = ["Eröffnet", "Weiterleitung", "Letzte_Änderung", "Wartend_bis", "Lösung_bis", "LetzteInfo"];
-function normalizeRows(raw, quelle) {
+const DATECOLS = ["Eröffnet", "Weiterleitung", "Letzte_Änderung", "Wartend_bis", "Lösung_bis", "LetzteInfo", "LetzteExtReaktion"];
+/* Bereich (PD/SD/2nd/1st) aus der Bearbeitergruppe ableiten – seit v1.11 kommt
+   alles aus einer einzigen Abfrageliste, die frühere PD/SD-Trennung entsteht hier. */
+function quelleOf(g) {
+  const s = String(g ?? "").trim().toLowerCase();
+  if (!s) return "";
+  if (s === "3rd_sd") return "SD";
+  if (s.startsWith("3rd_") || s.startsWith("productmanagement") || s === "prodm") return "PD";
+  if (s.startsWith("2nd_")) return "2nd";
+  if (s === "1st_level" || s === "hotline") return "1st";
+  return "";
+}
+function normalizeRows(raw) {
   return raw.map(src => {
-    const r = { Quelle: quelle };
+    const r = {};
     for (const [k, v] of Object.entries(src)) {
       const key = COLMAP[String(k).trim().toLowerCase()];
       if (key) r[key] = v;
@@ -585,17 +614,18 @@ function normalizeRows(raw, quelle) {
     const sc = (r.Score == null || r.Score === "") ? NaN : Number(r.Score);
     r.Score = Number.isFinite(sc) ? sc : null;
     r.TageOhneInfo = (r.TageOhneInfo == null || r.TageOhneInfo === "") ? null : Number(r.TageOhneInfo);
+    r.Quelle = quelleOf(r.Gruppe);
     return r;
   }).filter(r => r.Call != null || r.Titel);
 }
 const REQUIRED = ["Call", "Bearbeiter", "Status"];
-async function parseCallFile(file, quelle) {
+async function parseCallFile(file) {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { cellDates: true });
   let best = null, bestLen = -1;
   for (const name of wb.SheetNames) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: null });
-    const norm = normalizeRows(rows, quelle);
+    const norm = normalizeRows(rows);
     const bonus = /call/i.test(name) ? 1000 : 0;
     if (norm.length + bonus > bestLen) { bestLen = norm.length + bonus; best = norm; }
   }
@@ -605,10 +635,9 @@ async function parseCallFile(file, quelle) {
   return best;
 }
 
-/* Quellen-Zustand */
+/* Quellen-Zustand – seit v1.11 eine einzige Liste mit allen Bearbeitergruppen */
 const sources = {
-  PD: { rows: [], label: null, ts: null, handle: null, stamp: null },
-  SD: { rows: [], label: null, ts: null, handle: null, stamp: null }
+  ALL: { rows: [], label: null, ts: null, handle: null, stamp: null }
 };
 
 /* Daten-Cache: geladene Calls überleben das Neuladen der Seite (localStorage) */
@@ -617,19 +646,27 @@ function revRows(rows) { return rows.map(r => { const o = {}; for (const [k, v] 
 function cacheSources() {
   try {
     const c = {};
-    for (const q of ["PD", "SD"]) if (sources[q].rows.length && !sources[q].demo)
-      c[q] = { rows: serRows(sources[q].rows), label: sources[q].label, ts: sources[q].ts?.toISOString() };
+    if (sources.ALL.rows.length && !sources.ALL.demo)
+      c.ALL = { rows: serRows(sources.ALL.rows), label: sources.ALL.label, ts: sources.ALL.ts?.toISOString() };
     localStorage.setItem("smbCache_v1", JSON.stringify(c));
   } catch (e) { /* Cache optional */ }
 }
 function restoreSources() {
   try {
     const c = JSON.parse(localStorage.getItem("smbCache_v1") || "{}");
-    for (const q of ["PD", "SD"]) if (c[q]) {
-      sources[q].rows = revRows(c[q].rows);
-      sources[q].label = c[q].label;
-      sources[q].ts = c[q].ts ? new Date(c[q].ts) : null;
+    if (c.ALL) {
+      sources.ALL.rows = revRows(c.ALL.rows);
+      sources.ALL.label = c.ALL.label;
+      sources.ALL.ts = c.ALL.ts ? new Date(c.ALL.ts) : null;
+    } else if (c.PD || c.SD) { // Übernahme aus v1.10: getrennte PD/SD-Caches zusammenführen
+      const rows = [...revRows(c.PD?.rows || []), ...revRows(c.SD?.rows || [])];
+      if (rows.length) {
+        sources.ALL.rows = rows;
+        sources.ALL.label = "PD+SD (übernommen)";
+        sources.ALL.ts = c.PD?.ts ? new Date(c.PD.ts) : (c.SD?.ts ? new Date(c.SD.ts) : null);
+      }
     }
+    for (const r of sources.ALL.rows) r.Quelle = quelleOf(r.Gruppe);
   } catch (e) { /* leerer Start */ }
 }
 
@@ -656,7 +693,7 @@ async function loadHandles() {
   try {
     const db = await idb();
     const out = {};
-    for (const q of ["PD", "SD", "TEAM"]) {
+    for (const q of ["ALL", "TEAM"]) {
       out[q] = await new Promise((res) => {
         const rq = db.transaction("h").objectStore("h").get(q);
         rq.onsuccess = () => res(rq.result || null);
@@ -664,20 +701,19 @@ async function loadHandles() {
       });
     }
     return out;
-  } catch (e) { return { PD: null, SD: null }; }
+  } catch (e) { return { ALL: null, TEAM: null }; }
 }
 async function tryRestoreWatch() {
   if (!window.showOpenFilePicker) return;
   const hs = await loadHandles();
   let needGesture = false, restored = false;
-  for (const q of ["PD", "SD"]) {
-    const h = hs[q];
-    if (!h) continue;
-    sources[q].handle = h; sources[q].stamp = null;
+  const h = hs.ALL;
+  if (h) {
+    sources.ALL.handle = h; sources.ALL.stamp = null;
     const perm = await h.queryPermission({ mode: "read" });
     if (perm === "granted") {
-      await readWatched(q);
-      document.getElementById(q === "PD" ? "btnWatchPd" : "btnWatchSd").textContent = `${q}: ${h.name} ✓`;
+      await readWatched("ALL");
+      document.getElementById("btnWatchAll").textContent = `${h.name} ✓`;
       restored = true;
     } else needGesture = true;
   }
@@ -704,14 +740,13 @@ function armAutoResume() {
   document.addEventListener("click", h, true);
 }
 async function resumeWatch() {
-  for (const q of ["PD", "SD"]) {
-    const h = sources[q].handle;
-    if (!h) continue;
+  const h = sources.ALL.handle;
+  if (h) {
     try {
       const perm = await h.requestPermission({ mode: "read" });
       if (perm === "granted") {
-        await readWatched(q);
-        document.getElementById(q === "PD" ? "btnWatchPd" : "btnWatchSd").textContent = `${q}: ${h.name} ✓`;
+        await readWatched("ALL");
+        document.getElementById("btnWatchAll").textContent = `${h.name} ✓`;
       }
     } catch (e) { /* abgelehnt */ }
   }
@@ -724,15 +759,15 @@ async function resumeWatch() {
   armWatch();
   document.getElementById("btnResume").classList.add("hidden");
   document.getElementById("btnResumeMini").classList.add("hidden");
-  toast("Überwachung wiederhergestellt");
+  toast("Überwachung wiederhergestellt – Tipp: im Browser-Dialog „Bei jedem Besuch zulassen“ wählen, dann entfällt die Nachfrage künftig ganz");
 }
 
 /* ================= Team-Speicher: gemeinsame Datei auf dem Share =================
    Haken, Kommentare, Markierungen, Personen, Verteiler und Vorlagen werden mit einer
    JSON-Datei abgeglichen, die alle Boards im Team lesen und schreiben. Je Eintrag
    gewinnt die jüngste Änderung (Zeitstempel in state.touch). */
-const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark"];
-const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "rules", "filters", "cols"];
+const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist"];
+const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "rules", "filters", "cols", "gruppenFilter"];
 let sharedHandle = null, pendingSharedHandle = null, sharedDirty = false, sharedBusy = false, sharedLastSync = null;
 function sharedPayload() {
   const maps = {}; for (const m of SHARED_MAPS) maps[m] = state[m];
@@ -766,6 +801,7 @@ function mergeShared(remote) {
     if (rt_ > lt_) { if (wk in rh) state.miHistory[wk] = rh[wk]; else delete state.miHistory[wk]; state.touch[tk] = rt_; changed = true; }
     else if (lt_ > rt_) localNewer = true;
   }
+  normalizeState(); // ältere Team-Stände kennen neue Filter-Schlüssel noch nicht
   return { changed, localNewer };
 }
 async function syncShared() {
@@ -830,58 +866,61 @@ async function connectShared() {
 }
 function allRows() {
   const seen = new Map();
-  for (const q of ["PD", "SD"]) for (const r of sources[q].rows) {
+  for (const r of sources.ALL.rows) {
     const key = String(r.Call);
-    if (seen.has(key)) { seen.get(key)._dupQuelle = r.Quelle; } else seen.set(key, r);
+    if (!seen.has(key)) seen.set(key, r);
   }
   return [...seen.values()];
 }
-async function importCallFile(file, quelle, live) {
+function areaRows(area) { return allRows().filter(r => r.Quelle === area); }
+async function importCallFile(file, live) {
   try {
-    const rows = await parseCallFile(file, quelle);
-    sources[quelle].rows = rows;
-    sources[quelle].label = `${file.name} (${rows.length})`;
-    sources[quelle].ts = new Date();
+    const rows = await parseCallFile(file);
+    sources.ALL.rows = rows;
+    sources.ALL.label = `${file.name} (${rows.length})`;
+    sources.ALL.ts = new Date();
     updateChips(live);
     render();
     snapshotKpis(computeKpis());
     cacheSources();
-    toast(`${quelle}: ${rows.length} Calls geladen`);
+    toast(`${rows.length} Calls geladen`);
   } catch (e) { alert("Import fehlgeschlagen: " + e.message); }
 }
 const fmtT = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
 function updateChips() {
-  for (const q of ["PD", "SD"]) {
-    const chip = document.getElementById(q === "PD" ? "chipPd" : "chipSd");
-    const txt = document.getElementById(q === "PD" ? "chipPdText" : "chipSdText");
-    const s = sources[q];
+  {
+    const chip = document.getElementById("chipAll");
+    const txt = document.getElementById("chipAllText");
+    const s = sources.ALL;
     chip.classList.remove("live", "demo", "stale");
     const check = s.lastCheck ? ` · geprüft ${fmtT.format(s.lastCheck)}` : "";
-    if (s.checkError) { chip.classList.add("stale"); txt.textContent = `${q}: Prüf-Fehler${check}`; chip.title = s.checkError; continue; }
-    if (!s.rows.length) { txt.textContent = `${q}: keine Datei`; continue; }
-    if (s.demo) { chip.classList.add("demo"); txt.textContent = `${q}: Beispieldaten`; continue; }
-    const mt = s.fileMtime || s.ts;
-    const age = (now() - mt) / 60000;
-    chip.title = s.fileMtime ? `Datei zuletzt geändert: ${fmtDT.format(s.fileMtime)}` : "";
-    if (age > (Number(state.staleWarnMin) || 45) && s.lastCheck) {
-      chip.classList.add("stale");
-      txt.textContent = `${q}: Datei unverändert seit ${fmtDT.format(mt)}${check} – wurde sie geöffnet & gespeichert?`;
-    } else {
-      chip.classList.add("live");
-      txt.textContent = `${q}: ${s.label} · ${fmtDT.format(s.ts)}${check}`;
+    if (s.checkError) { chip.classList.add("stale"); txt.textContent = `Dashboard: Prüf-Fehler${check}`; chip.title = s.checkError; }
+    else if (!s.rows.length) { txt.textContent = "Dashboard: keine Datei"; }
+    else if (s.demo) { chip.classList.add("demo"); txt.textContent = "Dashboard: Beispieldaten"; }
+    else {
+      const mt = s.fileMtime || s.ts;
+      const age = (now() - mt) / 60000;
+      chip.title = s.fileMtime ? `Datei zuletzt geändert: ${fmtDT.format(s.fileMtime)}` : "";
+      if (age > (Number(state.staleWarnMin) || 45) && s.lastCheck) {
+        chip.classList.add("stale");
+        txt.textContent = `Dashboard: Datei unverändert seit ${fmtDT.format(mt)}${check} – wurde sie geöffnet & gespeichert?`;
+      } else {
+        chip.classList.add("live");
+        txt.textContent = `Dashboard: ${s.label} · ${fmtDT.format(s.ts)}${check}`;
+      }
     }
   }
-  const lc = [sources.PD.lastCheck, sources.SD.lastCheck].filter(Boolean).sort((a, b) => b - a)[0];
+  const lc = sources.ALL.lastCheck;
   document.getElementById("standTs").textContent = fmtDT.format(new Date()) + (lc ? ` · letzte Prüfung ${fmtT.format(lc)}` : "");
   updateMini();
 }
 /* Kompakter Quellen-Status unten links in der Seitenleiste */
 function updateMini() {
-  for (const q of ["PD", "SD"]) {
-    const dot = document.getElementById("mini" + q + "Dot");
-    const txt = document.getElementById("mini" + q + "Text");
-    if (!dot) continue;
-    const s = sources[q];
+  {
+    const dot = document.getElementById("miniAllDot");
+    const txt = document.getElementById("miniAllText");
+    if (!dot) return;
+    const s = sources.ALL;
     let cls = "", info = "keine Datei";
     const check = s.lastCheck ? "gepr. " + fmtT.format(s.lastCheck) : "";
     if (s.checkError) { cls = "stale"; info = "Prüf-Fehler" + (check ? " · " + check : ""); }
@@ -895,7 +934,7 @@ function updateMini() {
       if (stale) info += " · unverändert";
     }
     dot.className = "dot " + cls;
-    txt.textContent = `${q}-Dashboard · ${info}`;
+    txt.textContent = `Dashboard · ${info}`;
   }
   const tDot = document.getElementById("miniTeamDot"), tTxt = document.getElementById("miniTeamText");
   if (!tDot) return;
@@ -914,7 +953,7 @@ async function readWatched(q) {
     s.lastCheck = new Date();
     s.fileMtime = new Date(file.lastModified);
     const stamp = file.lastModified + ":" + file.size;
-    if (stamp !== s.stamp) { s.stamp = stamp; await importCallFile(file, q, true); }
+    if (stamp !== s.stamp) { s.stamp = stamp; await importCallFile(file, true); }
     else updateChips(); // sichtbar machen, dass geprüft wurde – auch ohne Änderung
   } catch (e) {
     s.checkError = String(e?.message || e);
@@ -925,34 +964,29 @@ async function readWatched(q) {
 function armWatch() {
   clearInterval(watchTimer);
   const min = +document.getElementById("watchInterval").value;
-  watchTimer = setInterval(() => { readWatched("PD"); readWatched("SD"); }, min * 60000);
+  watchTimer = setInterval(() => readWatched("ALL"), min * 60000);
 }
 document.getElementById("watchInterval").addEventListener("change", armWatch);
-async function pickWatch(q) {
+async function pickWatch() {
   if (!window.showOpenFilePicker) { alert("Die automatische Überwachung benötigt Chrome oder Edge. Alternativ: Datei manuell laden."); return; }
   try {
     const [h] = await window.showOpenFilePicker({ types: [{ description: "Excel/CSV", accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"], "text/csv": [".csv"] } }] });
-    sources[q].handle = h; sources[q].stamp = null; sources[q].demo = false;
-    saveHandle(q, h);
-    await readWatched(q); armWatch();
-    document.getElementById(q === "PD" ? "btnWatchPd" : "btnWatchSd").textContent = `${q}: ${h.name} ✓`;
+    sources.ALL.handle = h; sources.ALL.stamp = null; sources.ALL.demo = false;
+    saveHandle("ALL", h);
+    await readWatched("ALL"); armWatch();
+    document.getElementById("btnWatchAll").textContent = `${h.name} ✓`;
   } catch (e) { /* Abbruch */ }
 }
-document.getElementById("btnWatchPd").addEventListener("click", () => pickWatch("PD"));
-document.getElementById("btnWatchSd").addEventListener("click", () => pickWatch("SD"));
-document.getElementById("btnImpPd").addEventListener("click", () => document.getElementById("filePd").click());
-document.getElementById("btnImpSd").addEventListener("click", () => document.getElementById("fileSd").click());
-document.getElementById("filePd").addEventListener("change", e => { if (e.target.files[0]) { sources.PD.demo = false; importCallFile(e.target.files[0], "PD", false); } e.target.value = ""; });
-document.getElementById("fileSd").addEventListener("change", e => { if (e.target.files[0]) { sources.SD.demo = false; importCallFile(e.target.files[0], "SD", false); } e.target.value = ""; });
+document.getElementById("btnWatchAll").addEventListener("click", pickWatch);
+document.getElementById("btnImpAll").addEventListener("click", () => document.getElementById("fileAll").click());
+document.getElementById("fileAll").addEventListener("change", e => { if (e.target.files[0]) { sources.ALL.demo = false; importCallFile(e.target.files[0], false); } e.target.value = ""; });
 ["dragover", "dragenter"].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); document.body.classList.add("dragging"); }));
 ["dragleave", "drop"].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); if (ev === "drop" || e.target === document.documentElement) document.body.classList.remove("dragging"); }));
 document.addEventListener("drop", e => {
   for (const f of e.dataTransfer?.files || []) {
     const n = f.name.toLowerCase();
-    const q = n.includes("sd") && !n.includes("pd") ? "SD" : n.includes("pd") ? "PD" : null;
-    if (q) { sources[q].demo = false; importCallFile(f, q, false); }
-    else if (/personen|kürzel|kuerzel/.test(n)) importPersonenFile(f);
-    else alert(`„${f.name}“: Quelle nicht erkennbar – bitte über die Buttons „PD-/SD-Datei laden“ zuordnen.`);
+    if (/personen|kürzel|kuerzel/.test(n)) importPersonenFile(f);
+    else { sources.ALL.demo = false; importCallFile(f, false); }
   }
 });
 
@@ -973,13 +1007,20 @@ function prioName(p) {
   return "";
 }
 function applyFilters(fkey, rows) {
-  const internAus = !!state.filters[fkey]?.intern;
+  const f = state.filters[fkey] || {};
   return rows.filter(r => !fexcl(fkey, "status", r.Status) && !fexcl(fkey, "gruppe", r.Gruppe)
-    && !(state.filters[fkey]?.prio ?? []).includes(prioName(r.Prio))
-    && !(internAus && isInternKunde(r)));
+    && !(f.prio ?? []).includes(prioName(r.Prio))
+    && !(f.intern && isInternKunde(r))
+    && !(f.hxmp && bearbeiterExcluded(r)));
 }
 const STATUS_KNOWN = ["Customer Care", "In Bearbeitung", "Pre-Update", "Update", "Wartend"];
-const GRUPPE_KNOWN = ["3rd_PD", "3rd_SD", "Productmanagement"];
+const GRUPPE_KNOWN = ["3rd_PD", "3rd_SD", "Productmanagement", "2nd_CAQ", "2nd_MF", "2nd_HR", "1st_Level", "Hotline"];
+/* Filtergruppen aus der Verwaltung: bündeln mehrere Bearbeitergruppen zu einem Chip */
+function gruppenFilterDefs() {
+  return (Array.isArray(state.gruppenFilter) ? state.gruppenFilter : [])
+    .map(g => ({ name: String(g.name ?? "").trim(), members: String(g.members ?? "").split(/[;,\n]/).map(x => x.trim()).filter(Boolean) }))
+    .filter(g => g.name && g.members.length);
+}
 function unionVals(known, candidates, field) {
   const seen = new Map(known.map(v => [v.toLowerCase(), v]));
   for (const r of candidates) {
@@ -995,15 +1036,25 @@ function filterPanel(fkey, candidates, opts = {}) {
     const col = v === "Rot" ? "var(--crit)" : v === "Blau" ? "var(--accent)" : "var(--good)";
     return `<button class="fchip ${(f.prio ?? []).includes(v.toLowerCase()) ? "f-off" : ""}" data-f="${fkey}|prio|${esc(v)}"><span class="pd-dot" style="background:${col};margin-right:5px"></span>${esc(v)}</button>`;
   };
-  const hasIntern = "intern" in f;
-  const active = (f.status?.length || 0) + (f.gruppe?.length || 0) + (f.prio?.length || 0) + (f.intern ? 1 : 0);
-  return `<details class="fpanel"${active ? " open" : ""}><summary>Filter${active ? ` <span class="fcount">${active} ausgeblendet</span>` : ""}</summary>
+  // Bearbeitergruppen: definierte Filtergruppen als Sammel-Chips, der Rest einzeln
+  const defs = gruppenFilterDefs();
+  const covered = new Set(defs.flatMap(g => g.members.map(m => m.toLowerCase())));
+  const singles = unionVals(GRUPPE_KNOWN, candidates, "Gruppe").filter(v => !covered.has(v.toLowerCase()));
+  const fgOff = g => g.members.every(m => (f.gruppe ?? []).includes(m.toLowerCase()));
+  const fgChips = defs.map(g => `<button class="fchip ${fgOff(g) ? "f-off" : ""}" data-fgrp="${fkey}|${esc(g.name)}" title="Enthält: ${esc(g.members.join(", "))}">${esc(g.name)}</button>`).join("");
+  const gruppeHidden = defs.filter(fgOff).length + singles.filter(v => fexcl(fkey, "gruppe", v)).length;
+  const hidden = (f.status?.length || 0) + gruppeHidden + (f.prio?.length || 0) + (f.intern ? 1 : 0) + (f.hxmp ? 1 : 0);
+  const open = (f.status?.length || 0) + gruppeHidden + (f.prio?.length || 0);
+  return `<details class="fpanel"${open ? " open" : ""}><summary>Filter${hidden ? ` <span class="fcount">${hidden} ausgeblendet</span>` : ""}</summary>
     ${opts.tage ? `<div class="frow"><span class="flabel">${esc(opts.tageLabel)}</span><input type="number" min="1" data-fnum="${fkey}|${opts.tage}" value="${esc(f[opts.tage])}"></div>` : ""}
     <div class="frow"><span class="flabel">Status</span>${unionVals(STATUS_KNOWN, candidates, "Status").map(v => chip("status", v)).join("")}</div>
-    <div class="frow"><span class="flabel">Bearbeitergruppe</span>${unionVals(GRUPPE_KNOWN, candidates, "Gruppe").map(v => chip("gruppe", v)).join("")}</div>
+    <div class="frow"><span class="flabel">Bearbeitergruppe</span>${fgChips}${singles.map(v => chip("gruppe", v)).join("")}</div>
     <div class="frow"><span class="flabel">Priorität</span>${["Grün", "Blau", "Rot"].map(prioChipHtml).join("")}</div>
-    ${hasIntern ? `<div class="frow"><span class="flabel">Interne Calls</span><button class="fchip ${f.intern ? "f-off" : ""}" data-fintern="${fkey}" title="Calls des internen Kunden (${esc(state.internKunde || "MPDV")}) ein- oder ausblenden">${esc(state.internKunde || "MPDV")}-Calls</button></div>` : ""}
-    <p class="hint">Klick blendet einen Wert aus bzw. wieder ein. Durchgestrichen = ausgeblendet. Einstellungen bleiben gespeichert.</p>
+    <div class="frow"><span class="flabel">Sonstiges</span>
+      <button class="fchip ${f.intern ? "f-off" : ""}" data-fintern="${fkey}" title="Calls des internen Kunden (${esc(state.internKunde || "MPDV")}) ein- oder ausblenden">${esc(state.internKunde || "MPDV")}-Calls</button>
+      <button class="fchip ${f.hxmp ? "f-off" : ""}" data-fhxmp="${fkey}" title="Calls des Pseudo-Bearbeiters ${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")} ein- oder ausblenden">${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")}</button>
+    </div>
+    <p class="hint">Klick blendet einen Wert aus bzw. wieder ein. Durchgestrichen = ausgeblendet. Einstellungen bleiben gespeichert. Filtergruppen (z. B. Hotline) pflegt die Verwaltung.</p>
   </details>`;
 }
 function bindFilterPanel(view) {
@@ -1013,6 +1064,17 @@ function bindFilterPanel(view) {
     const arr = state.filters[fkey][kind];
     const i = arr.indexOf(v);
     if (i >= 0) arr.splice(i, 1); else arr.push(v);
+    touch("cfg|filters"); saveState(); render();
+  }));
+  view.querySelectorAll("[data-fgrp]").forEach(b => b.addEventListener("click", () => {
+    const [fkey, name] = b.dataset.fgrp.split("|");
+    const g = gruppenFilterDefs().find(x => x.name === name);
+    if (!g) return;
+    const arr = state.filters[fkey].gruppe;
+    const members = g.members.map(m => m.toLowerCase());
+    const allOff = members.every(m => arr.includes(m));
+    if (allOff) { for (const m of members) { const i = arr.indexOf(m); if (i >= 0) arr.splice(i, 1); } }
+    else { for (const m of members) if (!arr.includes(m)) arr.push(m); }
     touch("cfg|filters"); saveState(); render();
   }));
   view.querySelectorAll("[data-fnum]").forEach(inp => inp.addEventListener("change", () => {
@@ -1025,6 +1087,11 @@ function bindFilterPanel(view) {
     state.filters[fkey].intern = !state.filters[fkey].intern;
     touch("cfg|filters"); saveState(); render();
   }));
+  view.querySelectorAll("[data-fhxmp]").forEach(b => b.addEventListener("click", () => {
+    const fkey = b.dataset.fhxmp;
+    state.filters[fkey].hxmp = !state.filters[fkey].hxmp;
+    touch("cfg|filters"); saveState(); render();
+  }));
 }
 const WF = [
   { id: "lt", title: "Überschrittene LTs", tpl: "lt",
@@ -1032,8 +1099,8 @@ const WF = [
     filter: r => r["Lösung_bis"] && r["Lösung_bis"] < todayStart(),
     sort: (a, b) => a["Lösung_bis"] - b["Lösung_bis"] },
   { id: "kdkomm", title: "Ohne Kd.-Komm.", tpl: "kdkomm",
-    desc: "Länger ohne Kundenkommunikation. Ausgenommen: Haken gesetzt, interne Calls.",
-    filter: r => statusNorm(r) === "in bearbeitung" && !hakenGesetzt(r) && !isInternKunde(r) && (tageOhneInfo(r) ?? 0) >= ruleNum(state.filters.kdkomm.tage, 7),
+    desc: "Länger ohne Kundenkommunikation. Ausgenommen: Haken gesetzt (interne Calls über den Filter „Sonstiges“).",
+    filter: r => statusNorm(r) === "in bearbeitung" && !hakenGesetzt(r) && (tageOhneInfo(r) ?? 0) >= ruleNum(state.filters.kdkomm.tage, 7),
     sort: (a, b) => (tageOhneInfo(b) ?? 0) - (tageOhneInfo(a) ?? 0) },
   { id: "aender", title: "Ohne Änderung", tpl: "aender",
     desc: "Länger keine Änderung am Call.",
@@ -1041,7 +1108,7 @@ const WF = [
     sort: (a, b) => (daysSince(b["Letzte_Änderung"]) ?? 0) - (daysSince(a["Letzte_Änderung"]) ?? 0) },
   { id: "haken", title: "LT ohne Kd.-Info", tpl: "haken",
     desc: "LT gesetzt, Haken „nicht werten für Kd.Komm.“ fehlt. Prüfen, ob der Kunde informiert ist: ja → Haken im Ticketsystem setzen; nein → Bearbeiter informieren.",
-    filter: r => !hakenGesetzt(r) && r["Lösung_bis"] != null && r["Lösung_bis"] >= todayStart() && !isInternKunde(r),
+    filter: r => !hakenGesetzt(r) && r["Lösung_bis"] != null && r["Lösung_bis"] >= todayStart(),
     sort: (a, b) => a["Lösung_bis"] - b["Lösung_bis"] },
   { id: "wartend", title: "Wartend o. Datum", tpl: "wartend",
     desc: "Status „Wartend“, aber das „Wartend bis“-Datum fehlt oder liegt in der Vergangenheit. Ein Datum in der Zukunft setzen (lassen).",
@@ -1080,6 +1147,7 @@ function setAck(r, wf, on) {
   if (on) state.acks[ackKey(r, wf)] = { d: todayKey(), ts: Date.now(), w: watchVal(r, wf), by: currentUser().k || undefined };
   else delete state.acks[ackKey(r, wf)];
   touch("acks|" + ackKey(r, wf));
+  logHist(r.Call, { t: on ? "ack" : "ackoff", wf });
   saveState();
 }
 function setAckMeta(r, wf, field, value) {
@@ -1091,9 +1159,70 @@ function setAckMeta(r, wf, field, value) {
     else { delete a.noteTs; delete a.noteBy; }
   }
   touch("acks|" + ackKey(r, wf));
+  logHist(r.Call, { t: field === "note" ? "grund" : "bis", wf, text: value ? (field === "until" ? fmtD.format(new Date(value)) : String(value)) : "" });
   saveState();
 }
 const openAcks = new Set(); // "call|wf" -> ACK-Details aufgeklappt (nur für diese Sitzung)
+
+/* Historie je Call: ACKs, Gründe und Kommentare bleiben mit Zeitstempel nachvollziehbar,
+   auch wenn ein ACK abläuft oder entfernt wird. Einträge sind einzeln löschbar (teamweit). */
+function logHist(call, ev) {
+  const key = String(call);
+  const arr = state.hist[key] ?? (state.hist[key] = []);
+  arr.push({ ts: Date.now(), by: currentUser().k || "?", ...ev });
+  while (arr.length > 40) arr.shift();
+  touch("hist|" + key);
+}
+const HIST_LABEL = { ack: "ACK gesetzt", ackoff: "ACK entfernt", grund: "ACK-Grund", bis: "ACK gültig bis", kommentar: "Kommentar" };
+function histOf(call) { return state.hist[String(call)] ?? []; }
+function histBtn(call) {
+  return histOf(call).length ? `<button class="hist-btn" data-hist="${esc(call)}" title="Historie: ACKs, Gründe und Kommentare mit Zeitstempel">🕘</button>` : "";
+}
+function openHistPopover(btn, call) {
+  closeColPopover();
+  const wfTitle = wf => WF.find(x => x.id === wf)?.title ?? wf ?? "";
+  const rowsHtml = () => {
+    const arr = histOf(call);
+    return [...arr].reverse().map(e => {
+      const i = arr.indexOf(e);
+      const lbl = HIST_LABEL[e.t] ?? e.t;
+      const txt = e.text !== undefined ? (e.text === "" ? " <i>(entfernt)</i>" : ": „" + esc(e.text) + "“") : "";
+      return `<div class="hist-item"><span class="when">${fmtDT.format(new Date(e.ts))} · ${esc(e.by)}</span>
+        <span class="what"><b>${esc(lbl)}</b>${e.wf ? ` <span class="hint">(${esc(wfTitle(e.wf))})</span>` : ""}${txt}</span>
+        <button data-hdel="${i}" title="Diesen Eintrag löschen (für das ganze Team)">✕</button></div>`;
+    }).join("") || '<p class="hint" style="padding:6px">Keine Einträge.</p>';
+  };
+  colPopEl = document.createElement("div");
+  colPopEl.className = "cpop wide";
+  colPopEl.innerHTML = `<div class="hist-list">${rowsHtml()}</div>
+    <div class="btnrow" style="margin:0"><button class="cpop-clear small" data-hclear>Alle Einträge löschen</button></div>
+    <p class="hint" style="margin:6px 0 0">Historie zu Call ${esc(call)} – Löschen wirkt teamweit.</p>`;
+  document.body.appendChild(colPopEl);
+  const r = btn.getBoundingClientRect();
+  colPopEl.style.left = Math.min(r.left, innerWidth - 360) + "px";
+  colPopEl.style.top = Math.min(r.bottom + 4, innerHeight - Math.min(360, colPopEl.offsetHeight + 20)) + "px";
+  const bindDel = () => {
+    colPopEl.querySelectorAll("[data-hdel]").forEach(b => b.addEventListener("click", () => {
+      const arr = histOf(call);
+      arr.splice(+b.dataset.hdel, 1);
+      if (!arr.length) delete state.hist[String(call)];
+      touch("hist|" + call); saveState();
+      const list = colPopEl.querySelector(".hist-list");
+      list.innerHTML = rowsHtml(); bindDel();
+    }));
+  };
+  bindDel();
+  colPopEl.querySelector("[data-hclear]").addEventListener("click", () => {
+    if (!confirm(`Wirklich die komplette Historie zu Call ${call} löschen (teamweit)?`)) return;
+    delete state.hist[String(call)];
+    touch("hist|" + call); saveState();
+    closeColPopover(); render();
+  });
+  setTimeout(() => document.addEventListener("click", function h(e) {
+    if (!colPopEl) { document.removeEventListener("click", h); return; }
+    if (!colPopEl.contains(e.target) && e.target !== btn && !btn.contains(e.target)) { closeColPopover(); document.removeEventListener("click", h); }
+  }), 0);
+}
 
 /* WVL-Texte */
 function fillTemplate(tpl, r) {
@@ -1150,33 +1279,38 @@ const MAILCLR = { yellow: "#ffff99", red: "#ffc7ce", redText: "#9c0006", green: 
 function mailTableStyle() { return 'border-collapse:collapse;font-family:Calibri,Arial,sans-serif;font-size:11pt;'; }
 function fmtMarkup(text) {
   // einfache Auszeichnung für Mail-Texte: [gelb] [rot] [rottext] [fett] [kursiv] [link=…]
-  // background-color statt background – Outlook (Word-Renderer) verwirft die Kurzform.
+  // Outlook rendert mit Words HTML-Import: Hintergründe auf Text brauchen mso-highlight,
+  // Schriftfarben zusätzlich ein <font>-Tag – sonst kommen die Markierungen nicht an.
   let h = esc(text);
-  h = h.replace(/\[gelb\]([\s\S]*?)\[\/gelb\]/g, '<span style="background-color:#ffff00;">$1</span>');
-  h = h.replace(/\[rot\]([\s\S]*?)\[\/rot\]/g, '<span style="background-color:#ff0000;color:#000000;">$1</span>');
-  h = h.replace(/\[rottext\]([\s\S]*?)\[\/rottext\]/g, '<span style="color:#c00000;"><font color="#c00000">$1</font></span>');
+  h = h.replace(/\[gelb\]([\s\S]*?)\[\/gelb\]/g, '<span style="background:#ffff00;background-color:#ffff00;mso-highlight:yellow;">$1</span>');
+  h = h.replace(/\[rot\]([\s\S]*?)\[\/rot\]/g, '<span style="background:#ff0000;background-color:#ff0000;mso-highlight:red;color:#000000;"><font color="#000000">$1</font></span>');
+  h = h.replace(/\[rottext\]([\s\S]*?)\[\/rottext\]/g, '<font color="#c00000"><span style="color:#c00000;">$1</span></font>');
   h = h.replace(/\[fett\]([\s\S]*?)\[\/fett\]/g, "<b>$1</b>");
   h = h.replace(/\[kursiv\]([\s\S]*?)\[\/kursiv\]/g, "<i>$1</i>");
   h = h.replace(/\[link=([^\]]*)\]([\s\S]*?)\[\/link\]/g, '<a href="$1">$2</a>');
   return h.replace(/\n/g, "<br>");
 }
-/* Zellen Outlook-fest: bgcolor-Attribut zusätzlich zum Style, background-color statt
-   background, Kopfschriftfarbe zusätzlich als <font> – Words HTML-Import verwirft sonst gern. */
+/* Zellen Outlook-fest: bgcolor-Attribut zusätzlich zum Style (background + background-color
+   doppelt), Schriftfarbe zusätzlich als <font>-Tag – Words HTML-Import verwirft sonst gern. */
 function cellCss(style) {
-  const s = String(style || "").replace(/background:/g, "background-color:");
+  let s = String(style || "").replace(/background:/g, "background-color:");
   const bg = s.match(/background-color:(#[0-9a-fA-F]{3,8})/);
+  if (bg) s += `background:${bg[1]};`;
   return { s, attr: bg ? ` bgcolor="${bg[1]}"` : "" };
 }
+function cellColor(s) { const m = s.match(/(?:^|;)color:(#[0-9a-fA-F]{3,8})/); return m ? m[1] : null; }
 function td(v, style, nowrap) {
   const c = cellCss(style);
-  const inner = nowrap ? esc(v ?? "").replace(/ /g, "&nbsp;") : esc(v ?? "");
+  let inner = nowrap ? esc(v ?? "").replace(/ /g, "&nbsp;") : esc(v ?? "");
+  const fc = cellColor(c.s);
+  if (fc) inner = `<font color="${fc}">${inner}</font>`;
   return `<td${c.attr} style="border:1px solid #999;padding:2px 6px;${c.s}">${inner}</td>`;
 }
 function th(v, hdr) {
   const c = cellCss(hdr || "background-color:#dce6f1;");
-  const fc = c.s.match(/(?:^|;)color:(#[0-9a-fA-F]{3,8})/);
-  const inner = fc ? `<font color="${fc[1]}">${esc(v)}</font>` : esc(v);
-  return `<td${c.attr} style="border:1px solid #999;padding:2px 6px;font-weight:bold;${c.s}"><b>${inner}</b></td>`;
+  const fc = cellColor(c.s);
+  const inner = fc ? `<font color="${fc}"><b>${esc(v)}</b></font>` : `<b>${esc(v)}</b>`;
+  return `<td${c.attr} style="border:1px solid #999;padding:2px 6px;font-weight:bold;${c.s}">${inner}</td>`;
 }
 function gruppeKurz(g) { return String(g ?? "").replace(/productmanagement/i, "ProdM"); }
 function markStyleOf(mark) {
@@ -1230,7 +1364,7 @@ function splitList(s) { return String(s || "").split(/[;\n]/).map(x => x.trim())
 
 function mittwochCandidates(quelle) {
   const min = ruleNum(state.filters.mi.minDauer, 10);
-  return sources[quelle].rows.filter(r => (Number(r.Dauer) || 0) > min && !bearbeiterExcluded(r));
+  return areaRows(quelle).filter(r => (Number(r.Dauer) || 0) > min);
 }
 function mittwochRows(quelle) {
   return applyFilters("mi", mittwochCandidates(quelle))
@@ -1262,10 +1396,10 @@ function buildMittwochMail(quelle, mitVerbleib) {
   const intro = state.intros[quelle === "PD" ? "miPd" : "miSd"];
   const header = ["Callnr.", "Datum", "Gruppe", "Bearbeiter", "Kurzz.", "Titel", "Status", "zul.bearb.", "Termin", "Dauer", "Kommentar SupMan"];
   if (mitVerbleib) header.push("Verbleib nach Sichtung der Langläufercalls");
-  const HDR = "background-color:#4472c4;color:#ffffff;";
+  const HDR = "background-color:#000000;color:#ffffff;"; // gleiche Tabellen-Optik wie die Freitagsmail
   let html = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;">${mitVerbleib ? "" : fmtMarkup(intro) + "<br><br>"}<table style="${mailTableStyle()}"><tr>${header.map(v => th(v, HDR)).join("")}</tr>`;
   rows.forEach((r, i) => {
-    const zeb = i % 2 ? "background-color:#dbe5f1;" : "";
+    const zeb = i % 2 ? "background-color:#f2f2f2;" : "";
     html += "<tr>" + td(r.Call, zeb) + td(r["Eröffnet"] ? fmtD.format(r["Eröffnet"]) : "", zeb) + td(gruppeKurz(r.Gruppe), zeb, true) + td(r.Bearbeiter, zeb) + td(r.Kunde, zeb)
       + td(r.Titel, zeb) + td(r.Status, zeb, true) + td(r["Letzte_Änderung"] ? fmtD.format(r["Letzte_Änderung"]) : "", zeb)
       + td(r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "", zeb + terminStyle(r))
@@ -1280,7 +1414,7 @@ function buildMittwochMail(quelle, mitVerbleib) {
 }
 function freitagCandidates(quelle) {
   const limit = nextWeekFriday();
-  return sources[quelle].rows.filter(r => r["Lösung_bis"] && r["Lösung_bis"] <= limit && !bearbeiterExcluded(r));
+  return areaRows(quelle).filter(r => r["Lösung_bis"] && r["Lösung_bis"] <= limit);
 }
 function freitagRows(quelle) {
   return applyFilters("fr", freitagCandidates(quelle))
@@ -1361,11 +1495,17 @@ function loadDemo() {
   const pickW = pairs => { const tot = pairs.reduce((s, p) => s + p[1], 0); let x = rnd() * tot; for (const [v, w] of pairs) { x -= w; if (x <= 0) return v; } return pairs[0][0]; };
   const kunden = ["ACME", "BHKW", "CONT", "DRAX", "EWG", "FLTX", "GMD", "HANS", "KRON", "LMT", "MEWA", "NOVA", "OPTI", "PWG", "RHEIN", "STIX", "TWB", "VOSS", "WEBA", "ZERO", "MPDV"];
   const titles = ["Auftragsrückmeldung wird nicht übernommen", "Performance-Problem im Leitstand", "Etikettendruck: falsche Chargennummer", "Schnittstelle ERP: Aufträge fehlen", "Report Ausschussgründe: Summen fehlerhaft", "Terminal friert bei Mengenbuchung ein", "Filterfeld wird nicht gespeichert", "Kennzahl OEE weicht ab", "Werkzeugverwaltung: Standmenge falsch", "Zeiterfassung: Pausenregel greift nicht", "Leeres Dropdown-Feld für die Handling Unit", "Sehr langsame Abfrage von Materialrelationen"];
-  const bearb = { PD: ["KRA", "DWI", "NIH", "MCW", "TJE", "ALM", "MST", "MRI", "HCH"], SD: ["TBS", "CJD", "PUH", "TK", "FLE", "WAG"] };
+  const bearb = {
+    "3rd_PD": ["KRA", "DWI", "NIH", "MCW", "TJE", "ALM", "MST", "MRI", "HCH"],
+    "Productmanagement": ["PMA", "PMB", "PMC"],
+    "3rd_SD": ["TBS", "CJD", "PUH", "TK", "FLE", "WAG"],
+    "2nd_CAQ": ["CQA", "CQB"], "2nd_MF": ["MFA", "MFB"], "2nd_HR": ["HRA", "HRB"],
+    "1st_Level": ["FLA", "FLB", "FLC"], "Hotline": ["HOA", "HOB"]
+  };
   const vor = ["Anna", "Ben", "Clara", "David", "Eva", "Felix", "Greta", "Henrik", "Ida", "Jonas", "Katrin", "Lukas", "Mara", "Nils", "Ole"];
   const nach = ["Albrecht", "Brandt", "Claußen", "Dorn", "Ebert", "Falk", "Grimm", "Hauser", "Ilg", "Jung", "Kaiser", "Lorenz", "Mohr", "Nagel", "Oswald"];
   const personen = [];
-  for (const q of ["PD", "SD"]) for (const k of bearb[q]) {
+  for (const g of Object.keys(bearb)) for (const k of bearb[g]) {
     const v = pick(vor), n = pick(nach);
     personen.push({ k, name: `${n}, ${v}`, mail: `${v[0].toLowerCase()}.${n.toLowerCase()}@firma.example` });
   }
@@ -1376,48 +1516,49 @@ function loadDemo() {
   state.verteiler.miSdCc = state.verteiler.miSdCc || "sup-management@firma.example";
   state.verteiler.frCc = state.verteiler.frCc || "sup-dispatcher@firma.example; sup-management@firma.example";
   saveState();
-  for (const [q, n] of [["PD", 84], ["SD", 26]]) {
-    const rows = [];
-    for (let i = 0; i < n; i++) {
-      const status = pickW([["In Bearbeitung", 46], ["Wartend", 18], ["CC", 8], ["Update", 7], ["Pre-Update", 5], ["Analyse", 8], ["Testphase", 8]]);
-      const age = Math.floor(Math.pow(rnd(), 2) * 500) + 1;
-      const er = new Date(now() - age * DAY);
-      const ch = Math.min(age, Math.floor(Math.pow(rnd(), 2.2) * 60));
-      const dauer = Math.round(Math.pow(rnd(), 1.8) * 80 * 100) / 100;
-      let lt = null;
-      if (rnd() < 0.6) lt = new Date(todayStart().getTime() + Math.floor((rnd() - 0.4) * 40) * DAY);
-      const haken = rnd() < 0.18;
-      const infoDays = rnd() < 0.75 ? Math.floor(Math.pow(rnd(), 1.6) * 30) : null;
-      const gruppe = q === "PD" ? pickW([["3rd_PD", 70], ["ProdM", 20], ["3rd_SFI", 10]]) : "3rd_SD";
-      const prio = pickW([["1 - Rot", 12], ["2 - Blau", 34], ["3 - Grün", 54]]);
-      const mult = prio.startsWith("1") ? 3 : prio.startsWith("2") ? 2 : 1;
-      let pts = 0;
-      if (age > 365) pts += 1;
-      pts += dauer >= 20 ? 2 : dauer >= 10 ? 1 : 0;
-      pts += ch >= 30 ? 2 : ch >= 14 ? 1 : 0;
-      if (lt && lt < todayStart()) pts += daysSince(lt) > 7 ? 2 : 1;
-      rows.push({
-        Quelle: q, Prio: prio, Call: (q === "PD" ? 156000 : 157000) + i * 7 + Math.floor(rnd() * 6),
-        "Eröffnet": er, Gruppe: gruppe, Bearbeiter: pick(bearb[q]), Kunde: pick(kunden),
-        Titel: pick(titles), SupMan: rnd() < 0.25 ? pick(["MLH", "APA", "RRE", "VKU"]) : "", Status: status, Dauer: dauer,
-        Weiterleitung: new Date(er.getTime() + rnd() * (now() - er) * 0.5),
-        "Letzte_Änderung": new Date(now() - ch * DAY),
-        Wartend_bis: status === "Wartend" && rnd() < 0.7 ? new Date(now().getTime() + (rnd() - 0.4) * 30 * DAY) : null,
-        "Lösung_bis": lt, "Terminänderungen": pickW([[0, 45], [1, 25], [2, 14], [3, 8], [5, 5], [9, 3]]),
-        Haken: haken ? "Ja" : "Nein", LetzteInfo: null, TageOhneInfo: infoDays,
-        Score: mult * pts
-      });
-    }
-    sources[q].rows = rows; sources[q].label = "Beispieldaten"; sources[q].ts = new Date(); sources[q].demo = true;
+  const rows = [];
+  const GRP_W = [["3rd_PD", 38], ["3rd_SD", 22], ["Productmanagement", 10], ["2nd_CAQ", 8], ["2nd_MF", 7], ["2nd_HR", 5], ["1st_Level", 10], ["Hotline", 8]];
+  for (let i = 0; i < 118; i++) {
+    const gruppe = pickW(GRP_W);
+    const hx = gruppe === "3rd_SD" && rnd() < 0.08; // ein paar Update-Calls des Pseudo-Bearbeiters
+    const status = hx ? "Update" : pickW([["In Bearbeitung", 46], ["Wartend", 18], ["CC", 8], ["Update", 7], ["Pre-Update", 5], ["Analyse", 8], ["Testphase", 8]]);
+    const age = Math.floor(Math.pow(rnd(), 2) * 500) + 1;
+    const er = new Date(now() - age * DAY);
+    const ch = Math.min(age, Math.floor(Math.pow(rnd(), 2.2) * 60));
+    const dauer = Math.round(Math.pow(rnd(), 1.8) * 80 * 100) / 100;
+    let lt = null;
+    if (rnd() < 0.6) lt = new Date(todayStart().getTime() + Math.floor((rnd() - 0.4) * 40) * DAY);
+    const haken = rnd() < 0.18;
+    const infoDays = rnd() < 0.75 ? Math.floor(Math.pow(rnd(), 1.6) * 30) : null;
+    const prio = pickW([["1 - Rot", 12], ["2 - Blau", 34], ["3 - Grün", 54]]);
+    const mult = prio.startsWith("1") ? 3 : prio.startsWith("2") ? 2 : 1;
+    let pts = 0;
+    if (age > 365) pts += 1;
+    pts += dauer >= 20 ? 2 : dauer >= 10 ? 1 : 0;
+    pts += ch >= 30 ? 2 : ch >= 14 ? 1 : 0;
+    if (lt && lt < todayStart()) pts += daysSince(lt) > 7 ? 2 : 1;
+    rows.push({
+      Quelle: quelleOf(gruppe), Prio: prio, Call: 156000 + i * 7 + Math.floor(rnd() * 6),
+      "Eröffnet": er, Gruppe: gruppe, Bearbeiter: hx ? "HX-MP-UPDATE" : pick(bearb[gruppe]), Kunde: pick(kunden),
+      Titel: pick(titles), SupMan: rnd() < 0.25 ? pick(["MLH", "APA", "RRE", "VKU"]) : "", Status: status, Dauer: dauer,
+      Weiterleitung: new Date(er.getTime() + rnd() * (now() - er) * 0.5),
+      "Letzte_Änderung": new Date(now() - ch * DAY),
+      Wartend_bis: status === "Wartend" && rnd() < 0.7 ? new Date(now().getTime() + (rnd() - 0.4) * 30 * DAY) : null,
+      "Lösung_bis": lt, "Terminänderungen": pickW([[0, 45], [1, 25], [2, 14], [3, 8], [5, 5], [9, 3]]),
+      Haken: haken ? "Ja" : "Nein", LetzteInfo: null, TageOhneInfo: infoDays,
+      Score: mult * pts
+    });
   }
+  sources.ALL.rows = rows; sources.ALL.label = "Beispieldaten"; sources.ALL.ts = new Date(); sources.ALL.demo = true;
   updateChips(); render();
-  toast("Beispieldaten geladen (PD 84 / SD 26 Calls, fiktive Personen)");
+  toast(`Beispieldaten geladen (${rows.length} Calls über alle Gruppen, fiktive Personen)`);
 }
 
 /* ================= Rendering ================= */
 const TABS = [
-  { id: "heute", label: "Heute offen" },
+  { id: "heute", label: "Übersicht" },
   ...WF.map(w => ({ id: w.id, label: w.title, wf: true })),
+  { id: "extreakt", label: "Keine ext. Reaktion" },
   { id: "mi", label: "Mittwochsmail" },
   { id: "fr", label: "Freitagsmail" },
   { id: "tpl", label: "Vorlagen" },
@@ -1429,7 +1570,7 @@ let tplWf = "lt";
 let markMode = false;
 function touch(k) { state.touch[k] = Date.now(); }
 
-function wfCandidates(w) { return allRows().filter(r => !bearbeiterExcluded(r)).filter(w.filter); }
+function wfCandidates(w) { return allRows().filter(w.filter); }
 function wfRows(w) { return applyFilters(w.id, wfCandidates(w)).sort(w.sort); }
 function wfOpenCount(w) { const rows = wfRows(w); return rows.filter(r => !ackInfo(r, w.id).done).length; }
 
@@ -1448,7 +1589,7 @@ function computeKpis() {
 }
 function snapshotKpis(k) {
   if (!allRows().length) return;
-  if (sources.PD.demo || sources.SD.demo) return; // Beispieldaten verfälschen keinen Trend
+  if (sources.ALL.demo) return; // Beispieldaten verfälschen keinen Trend
   state.history[todayKey()] = k;
   const keys = Object.keys(state.history).sort();
   while (keys.length > 60) delete state.history[keys.shift()];
@@ -1472,6 +1613,7 @@ const NAV_ICONS = {
   aender: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
   haken: '<rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8 12.5l2.8 2.8L16.5 9"/>',
   wartend: '<path d="M6.5 3.5h11M6.5 20.5h11"/><path d="M7.5 3.5v1.8c0 3.2 4.5 4.2 4.5 6.7s-4.5 3.5-4.5 6.7v1.8"/><path d="M16.5 3.5v1.8c0 3.2-4.5 4.2-4.5 6.7s4.5 3.5 4.5 6.7v1.8"/>',
+  extreakt: '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/>',
   mi: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
   fr: '<path d="M21.5 3 3 10.5l7 2.5m11.5-10L14 21l-3.5-8m11-10L10.5 13"/>',
   tpl: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>',
@@ -1510,7 +1652,7 @@ const COLS = {
   prio:   { label: "Prio", sort: r => parseInt(String(r.Prio ?? "9").charAt(0), 10) || 9, quick: r => prioName(r.Prio),
             cell: r => { const n = prioName(r.Prio); return `<td class="nowrap"><span class="pd-dot" style="background:${prioColor(r.Prio)};margin-right:6px"></span>${esc(n ? n[0].toUpperCase() + n.slice(1) : (r.Prio ?? "–"))}</td>`; } },
   call:   { label: "Call", sort: r => Number(r.Call) || 0, quick: r => r.Call, cell: r => `<td class="num">${esc(r.Call)}</td>` },
-  quelle: { label: "Quelle", sort: r => String(r.Quelle ?? ""), quick: r => r.Quelle, cell: r => `<td class="nowrap">${esc(r.Quelle ?? "–")}</td>` },
+  quelle: { label: "Bereich", sort: r => String(r.Quelle ?? ""), quick: r => r.Quelle, cell: r => `<td class="nowrap">${esc(r.Quelle || "–")}</td>` },
   gruppe: { label: "Gruppe", sort: r => String(r.Gruppe ?? ""), quick: r => r.Gruppe, cell: r => `<td class="nowrap">${esc(gruppeKurz(r.Gruppe) || "–")}</td>` },
   bearbeiter: { label: "Bearbeiter", sort: r => String(r.Bearbeiter ?? ""), quick: r => r.Bearbeiter,
             cell: r => `<td class="nowrap" title="${esc(resolveName(r.Bearbeiter) ?? "")}">${esc(r.Bearbeiter ?? "–")}</td>` },
@@ -1579,7 +1721,7 @@ function wfRowHtml(r, wf) {
     </div>` : ""}` : "";
   const changed = a.done && a.changed ? ` <span class="veraltet" title="${esc(WF_WATCH[wf.id]?.label ?? "Der überwachte Teil")} hat sich seit dem ACK geändert – das ACK bleibt bestehen.">geändert!</span>` : "";
   return `<tr data-call="${esc(r.Call)}" class="${a.done ? "acked" : ""}">
-    <td class="nowrap"><input type="checkbox" data-ack="${esc(r.Call)}" ${a.done ? "checked" : ""} title="ACK (acknowledged) – ohne Datum nur für heute">${changed}${ackDetails}</td>
+    <td class="nowrap"><input type="checkbox" data-ack="${esc(r.Call)}" ${a.done ? "checked" : ""} title="ACK (acknowledged) – ohne Datum nur für heute">${histBtn(r.Call)}${changed}${ackDetails}</td>
     ${wfCols(wf.id).map(k => COLS[k].cell(r)).join("")}
     <td class="nowrap"><button class="small" data-teams="${esc(r.Call)}" title="Teams-Nachricht kopieren">Teams</button>
         <button class="small" data-wvl="${esc(r.Call)}" title="Wiedervorlage-Text kopieren">WVL</button></td>
@@ -1673,6 +1815,10 @@ function bindWfRowEvents(container, rows, wf) {
     if (cb.checked) openAcks.add(ackKey(r, wf.id)); else openAcks.delete(ackKey(r, wf.id));
     render();
   }));
+  container.querySelectorAll("[data-hist]").forEach(b => b.addEventListener("click", e => {
+    e.stopPropagation();
+    openHistPopover(b, b.dataset.hist);
+  }));
   container.querySelectorAll("[data-atgl]").forEach(b => b.addEventListener("click", () => {
     const r = rowOf(b.dataset.atgl);
     if (!r) return;
@@ -1717,7 +1863,7 @@ function renderHeute(view) {
   const k = computeKpis();
   snapshotKpis(k);
   let kpis = `<div class="kpis">
-    <button class="kpi hero" data-goto="heute"><div class="k-label">Offene Calls</div><div class="k-value">${fmtN.format(k.open)}${trendHtml("open", k.open)}</div><div class="k-note">PD ${sources.PD.rows.length} · SD ${sources.SD.rows.length}</div></button>
+    <button class="kpi hero" data-goto="heute"><div class="k-label">Offene Calls</div><div class="k-value">${fmtN.format(k.open)}${trendHtml("open", k.open)}</div><div class="k-note">PD ${areaRows("PD").length} · SD ${areaRows("SD").length} · 2nd ${areaRows("2nd").length} · 1st/Hotline ${areaRows("1st").length}</div></button>
     <button class="kpi crit" data-goto="heute"><div class="k-label">Kritisch (Score ≥ 6)</div><div class="k-value">${fmtN.format(k.crit)}${trendHtml("crit", k.crit)}</div></button>
     <button class="kpi" data-goto="mi"><div class="k-label">Dauer über 10 h</div><div class="k-value">${fmtN.format(k.d10)}${trendHtml("d10", k.d10)}</div><div class="k-note">Basis der Mittwochsmail</div></button>
     <button class="kpi" data-goto="fr"><div class="k-label">LT bis ${fmtD.format(nextWeekFriday()).slice(0, 6)}</div><div class="k-value">${fmtN.format(k.ltfr)}${trendHtml("ltfr", k.ltfr)}</div><div class="k-note">Basis der Freitagsmail (inkl. überfälliger)</div></button>
@@ -1728,7 +1874,7 @@ function renderHeute(view) {
   }
   kpis += "</div>";
   const top = [...rows].sort((a, b) => (b.Score ?? 0) - (a.Score ?? 0)).slice(0, 12);
-  let list = `<div class="card"><h2>Was brennt</h2><p class="sub">Die 12 Calls mit dem höchsten Score im aktuellen Datenstand</p>
+  let list = `<div class="card"><h2>Kritische Calls</h2><p class="sub">Die 12 Calls mit dem höchsten Score im aktuellen Datenstand</p>
     <div class="tscroll"><table class="list"><thead><tr><th>Score</th><th>Quelle</th><th>Call</th><th>Prio</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th><th>LT</th><th>Tage o. Kd.-Info</th></tr></thead><tbody>`;
   for (const r of top) {
     list += `<tr><td class="num"><span class="pill ${SEVCLS[severity(r.Score)]}">${fmtN.format(r.Score ?? 0)}</span></td>
@@ -1738,7 +1884,7 @@ function renderHeute(view) {
       <td class="num${ltNichtFreitag(r) ? " lt-nofr" : ""}"${ltNichtFreitag(r) ? ' title="LT liegt nicht auf einem Freitag (PD)"' : ""}>${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "–"}</td><td class="num">${tageOhneInfo(r) ?? "–"}</td></tr>`;
   }
   list += "</tbody></table></div></div>";
-  view.innerHTML = kpis + (rows.length ? list : `<div class="card"><p class="empty">Keine Daten. PD-/SD-Datei in der Verwaltung verknüpfen, Datei hierher ziehen — oder <button class="small" id="btnDemo">Beispieldaten anzeigen</button>.</p></div>`);
+  view.innerHTML = kpis + (rows.length ? list : `<div class="card"><p class="empty">Keine Daten. Dashboard-Datei in der Verwaltung verknüpfen, Datei hierher ziehen — oder <button class="small" id="btnDemo">Beispieldaten anzeigen</button>.</p></div>`);
   view.querySelectorAll("[data-goto]").forEach(el => el.addEventListener("click", () => { const id = el.dataset.goto; if (id !== "heute") { activeTab = id; render(); } }));
   const bd = view.querySelector("#btnDemo"); if (bd) bd.addEventListener("click", loadDemo);
 }
@@ -1826,6 +1972,7 @@ function renderMi(view) {
       <td class="markcell cmtcell ${lang ? "collapsed" : ""} mk-${mk.kommentar ?? "auto"}" data-markcell="${esc(r.Call)}|kommentar" title="${markMode ? "Klicken zum Umfärben" : ""}">
         <div class="cmt-head">
           ${src ? `<span class="kw-flag" title="Kommentar aus KW ${esc(src)}">aus KW ${esc(src)}</span>` : ""}
+          ${histBtn(r.Call)}
           <span class="cmt-meta">${metaTxt}</span>
           ${lang ? `<button class="cmt-tgl" data-ctgl="${esc(r.Call)}" title="Kommentar auf-/zuklappen">▸</button>` : ""}
         </div>
@@ -1848,14 +1995,17 @@ function renderMi(view) {
     archiveMiWeek();
   });
   view.querySelector("#btnMarkMode").addEventListener("click", () => { markMode = !markMode; render(); });
+  view.querySelectorAll("[data-hist]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); openHistPopover(b, b.dataset.hist); }));
   bindFilterPanel(view);
   view.querySelectorAll("[data-cmt]").forEach(ta => ta.addEventListener("change", () => {
     const call = ta.dataset.cmt;
+    const vorher = state.comments[call] ?? "";
     state.comments[call] = ta.value.trim();
     if (!ta.value.trim()) { delete state.comments[call]; delete state.commentMeta[call]; }
     else state.commentMeta[call] = { ts: Date.now(), by: currentUser().k || undefined };
     delete state.commentSrc[call]; // angefasst = aktuell, KW-Flag fällt weg
     touch("comments|" + call); touch("commentSrc|" + call); touch("commentMeta|" + call);
+    if (ta.value.trim() !== vorher) logHist(call, { t: "kommentar", text: ta.value.trim() });
     saveState();
     ta.closest("td")?.querySelector(".kw-flag")?.remove();
     const mEl = ta.closest("td")?.querySelector(".cmt-meta");
@@ -1890,6 +2040,59 @@ function renderMi(view) {
     touch("miMark|" + call);
     saveState(); render();
   }));
+}
+
+/* „Keine externe Reaktion" – Logik steht, wartet aber auf das Feld „Letzte externe
+   Reaktion" aus der Schattendatenbank. Bis dahin als „to be finished" gekennzeichnet. */
+const EXT_LIMITS = { rot: 30 * 60000, blau: 4 * 3600000, "grün": 48 * 3600000 };
+function extLimitLabel(p) { return p === "rot" ? "30 Min." : p === "blau" ? "4 Std." : "48 Std."; }
+function fmtAgo(ms) {
+  const m = Math.floor(ms / 60000);
+  if (m < 60) return `${m} Min.`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `${h} Std.`;
+  return `${Math.floor(h / 24)} Tage`;
+}
+function extReaktCandidates() { return allRows().filter(r => r.LetzteExtReaktion instanceof Date); }
+function extReaktRows() {
+  return applyFilters("extreakt", extReaktCandidates())
+    .filter(r => (now() - r.LetzteExtReaktion) > (EXT_LIMITS[prioName(r.Prio)] ?? EXT_LIMITS["grün"]))
+    .sort((a, b) => a.LetzteExtReaktion - b.LetzteExtReaktion);
+}
+function renderExtReakt(view) {
+  const cands = extReaktCandidates();
+  const rows = extReaktRows();
+  const regeln = `Meldet Calls ohne externe Reaktion seit: <b>Rot</b> 30 Minuten · <b>Blau</b> 4 Stunden · <b>Grün</b> 48 Stunden.`;
+  if (!cands.length) {
+    view.innerHTML = `<div class="card">
+      <h2>Keine externe Reaktion <span class="tbf" style="margin-left:6px">– to be finished –</span></h2>
+      <p class="sub">${regeln}</p>
+      <p class="empty">Die Quelle liefert das Feld <b>„Letzte externe Reaktion“</b> noch nicht – es kommt mit dem Zugriff auf die Schattendatenbank.
+      Sobald die Spalte in der Abfrageliste enthalten ist, füllt sich diese Ansicht automatisch; die Auswertung ist bereits eingebaut.</p>
+    </div>`;
+    return;
+  }
+  view.innerHTML = `<div class="card">
+    <h2>Keine externe Reaktion <span class="pill ${rows.length ? "s-crit" : "s-ok"}" style="margin-left:6px">${rows.length} Calls</span> <span class="tbf" style="margin-left:6px">– to be finished –</span></h2>
+    <p class="sub">${regeln}</p>
+    ${filterPanel("extreakt", cands)}
+    ${rows.length ? `<div class="tscroll"><table class="list"><thead><tr>
+      <th>Call</th><th>Prio</th><th>Gruppe</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th><th>Letzte ext. Reaktion</th><th>Überfällig (Limit)</th>
+    </tr></thead><tbody>
+    ${rows.map(r => { const p = prioName(r.Prio); return `<tr>
+      <td class="num">${esc(r.Call)}</td>
+      <td class="nowrap"><span class="pd-dot" style="background:${prioColor(r.Prio)};margin-right:6px"></span>${esc(p ? p[0].toUpperCase() + p.slice(1) : (r.Prio ?? "–"))}</td>
+      <td class="nowrap">${esc(gruppeKurz(r.Gruppe) || "–")}</td>
+      <td class="nowrap" title="${esc(resolveName(r.Bearbeiter) ?? "")}">${esc(r.Bearbeiter ?? "–")}</td>
+      <td class="nowrap">${esc(r.Kunde ?? "–")}${smBadge(r)}</td>
+      <td class="titlecell">${esc(r.Titel ?? "–")}</td>
+      <td class="nowrap">${esc(r.Status ?? "–")}</td>
+      <td class="num c-crit">${fmtDT.format(r.LetzteExtReaktion)}</td>
+      <td class="num">seit ${fmtAgo(now() - r.LetzteExtReaktion)} (Limit ${extLimitLabel(p)})</td>
+    </tr>`; }).join("")}
+    </tbody></table></div>` : `<p class="empty"><b>Nichts offen.</b> Alle Calls liegen innerhalb der Reaktionszeiten.</p>`}
+  </div>`;
+  bindFilterPanel(view);
 }
 
 function renderFr(view) {
@@ -1979,8 +2182,8 @@ function renderAdmin(view) {
   const p = state.personen;
   view.innerHTML = `<div class="admin-grid">
     <div class="card" style="grid-column:1/-1">
-      <h2>Datenquellen &amp; Team-Speicher</h2>
-      <p class="sub">Dashboards verknüpfen, Aktualisierungs-Intervall und gemeinsame Team-Datei. Der kompakte Status steht unten links in der Seitenleiste.
+      <h2>Datenquelle &amp; Team-Speicher</h2>
+      <p class="sub">Dashboard-Datei (eine Liste, alle Gruppen) verknüpfen, Aktualisierungs-Intervall und gemeinsame Team-Datei. Der kompakte Status steht unten links in der Seitenleiste.
       Nach einem Neustart genügt ein beliebiger Klick (z. B. die Anmeldung), um die Überwachung fortzusetzen – im Browser-Dialog „Bei jedem Besuch zulassen“ wählen, dann entfällt auch diese Nachfrage.</p>
       <div id="srcbarHost"></div>
     </div>
@@ -2022,12 +2225,19 @@ function renderAdmin(view) {
         <tr><td>Freitag</td><td><span class="hint">automatisch: betroffene Bearbeiter</span></td><td><input data-v="frCc" value="${esc(state.verteiler.frCc)}"></td></tr>
       </tbody></table>
       <h2 style="margin-top:18px">Grundregeln</h2>
-      <p class="sub">Sichtbarkeits-Filter stehen direkt in den jeweiligen Ansichten („Filter“).</p>
+      <p class="sub">Sichtbarkeits-Filter stehen direkt in den jeweiligen Ansichten („Filter“) – dort lassen sich unter „Sonstiges“ auch ${esc(state.internKunde || "MPDV")}-Calls und ${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")} ein- und ausblenden.</p>
       <table class="grid"><tbody>
-        <tr><td style="width:230px">Bearbeiter überall ausschließen</td><td><input data-r="exclBearbeiter" value="${esc(state.rules.exclBearbeiter)}"></td></tr>
-        <tr><td>Interner Kunde (ausgenommen)</td><td><input data-cfg="internKunde" value="${esc(state.internKunde)}" style="width:140px"></td></tr>
-        <tr><td>Warnung „Datei unverändert“ ab (Min.)</td><td><input data-cfg="staleWarnMin" value="${esc(state.staleWarnMin)}" type="number" min="5" style="width:90px"></td></tr>
+        <tr><td style="width:230px">Warnung „Datei unverändert“ ab (Min.)</td><td><input data-cfg="staleWarnMin" value="${esc(state.staleWarnMin)}" type="number" min="5" style="width:90px"></td></tr>
       </tbody></table>
+      <h2 style="margin-top:18px">Filtergruppen (Bearbeitergruppen)</h2>
+      <p class="sub">Bündeln mehrere Bearbeitergruppen zu einem Filter-Chip in den Listen (z. B. Hotline = Hotline + 1st_Level). Mitglieder mit Semikolon trennen.</p>
+      <table class="grid"><thead><tr><th style="width:120px">Name</th><th>Enthaltene Gruppen</th><th></th></tr></thead><tbody>
+      ${(state.gruppenFilter || []).map((g, i) => `<tr>
+        <td><input data-fg="${i}|name" value="${esc(g.name ?? "")}"></td>
+        <td><input data-fg="${i}|members" value="${esc(g.members ?? "")}"></td>
+        <td><button class="small" data-fgdel="${i}" title="Filtergruppe entfernen">✕</button></td></tr>`).join("")}
+      </tbody></table>
+      <div class="btnrow"><button class="small" id="btnFgAdd">+ Filtergruppe</button></div>
       <div class="btnrow" style="margin-top:16px"><button class="small" id="btnDemo2">Beispieldaten laden</button><button class="small" id="btnReset">Alles zurücksetzen</button></div>
     </div>
   </div>`;
@@ -2046,7 +2256,19 @@ function renderAdmin(view) {
   view.querySelectorAll("[data-tmdel]").forEach(b => b.addEventListener("click", () => { state.team.splice(+b.dataset.tmdel, 1); touch("cfg|team"); saveState(); render(); }));
   view.querySelector("#btnTeamAdd").addEventListener("click", () => { state.team.push({ k: "", name: "" }); touch("cfg|team"); saveState(); render(); });
   view.querySelectorAll("[data-cfg]").forEach(inp => inp.addEventListener("change", () => { state[inp.dataset.cfg] = inp.value.trim(); touch("cfg|" + inp.dataset.cfg); saveState(); render(); }));
-  view.querySelectorAll("[data-r]").forEach(inp => inp.addEventListener("change", () => { state.rules[inp.dataset.r] = inp.value.trim(); touch("cfg|rules"); saveState(); render(); }));
+  view.querySelectorAll("[data-fg]").forEach(inp => inp.addEventListener("change", () => {
+    const [i, f] = inp.dataset.fg.split("|");
+    state.gruppenFilter[+i][f] = inp.value.trim();
+    touch("cfg|gruppenFilter"); saveState(); render();
+  }));
+  view.querySelectorAll("[data-fgdel]").forEach(b => b.addEventListener("click", () => {
+    state.gruppenFilter.splice(+b.dataset.fgdel, 1);
+    touch("cfg|gruppenFilter"); saveState(); render();
+  }));
+  view.querySelector("#btnFgAdd").addEventListener("click", () => {
+    (state.gruppenFilter ??= []).push({ name: "", members: "" });
+    touch("cfg|gruppenFilter"); saveState(); render();
+  });
   view.querySelector("#btnBackup").addEventListener("click", () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
@@ -2059,6 +2281,7 @@ function renderAdmin(view) {
     try {
       const s = JSON.parse(await f.text());
       state = { ...structuredClone(DEFAULT_STATE), ...s };
+      normalizeState();
       saveState(); render(); toast("Sicherung geladen");
     } catch (err) { alert("Sicherung konnte nicht gelesen werden: " + err.message); }
     e.target.value = "";
@@ -2067,8 +2290,7 @@ function renderAdmin(view) {
   view.querySelector("#btnReset").addEventListener("click", () => {
     if (confirm("Wirklich alle lokalen Daten (Personen, Verteiler, Haken, Kommentare, Daten-Cache) zurücksetzen?")) {
       state = structuredClone(DEFAULT_STATE); saveState();
-      sources.PD.rows = []; sources.SD.rows = []; sources.PD.demo = sources.SD.demo = false;
-      sources.PD.handle = sources.SD.handle = null;
+      sources.ALL.rows = []; sources.ALL.demo = false; sources.ALL.handle = null;
       try { localStorage.removeItem("smbCache_v1"); } catch (e) {}
       try { indexedDB.deleteDatabase("smbHandles"); } catch (e) {}
       updateChips(); render();
@@ -2084,6 +2306,7 @@ function render() {
   const w = WF.find(x => x.id === activeTab);
   if (activeTab === "heute") renderHeute(view);
   else if (w) renderWf(view, w);
+  else if (activeTab === "extreakt") renderExtReakt(view);
   else if (activeTab === "mi") renderMi(view);
   else if (activeTab === "fr") renderFr(view);
   else if (activeTab === "tpl") renderTpl(view);
