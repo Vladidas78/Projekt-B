@@ -138,6 +138,20 @@
   .hist-btn { border: none; background: none; padding: 0 3px; font-size: 12px; color: var(--muted); cursor: pointer; }
   .hist-btn:hover { color: var(--accent); }
   .tbf { font-size: 11px; font-weight: 650; border-radius: 999px; padding: 1px 8px; background: var(--warn-wash); box-shadow: inset 0 0 0 1px var(--warn); white-space: nowrap; }
+  /* Supportmanager-Protokoll (Montagsmeeting) */
+  .proto-block { border: 1px solid var(--grid); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; display: grid; grid-template-columns: minmax(0,1fr) 130px 110px; gap: 12px; align-items: start; }
+  .proto-block.done { opacity: 0.55; }
+  .proto-head { font-weight: 650; }
+  .proto-head .hint { font-weight: 400; }
+  .proto-title { font-style: italic; color: var(--ink-2); margin: 2px 0 6px; }
+  .proto-row { display: flex; gap: 7px; margin: 3px 0; align-items: center; }
+  .proto-row .pdate { flex: none; width: 84px; font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 12.5px; }
+  .proto-row input.ptext { flex: 1; min-width: 0; padding: 3px 8px; font-size: 12.5px; }
+  .proto-row .prowdel { border: none; background: none; color: var(--muted); padding: 0 4px; }
+  .proto-row .prowdel:hover { color: var(--crit); }
+  .proto-side { display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
+  .proto-side input[type="text"] { width: 76px; padding: 3px 8px; font-size: 12.5px; }
+  .proto-sec { font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); font-weight: 650; margin: 16px 0 8px; }
   .sm-badge { display: inline-block; font-size: 10px; font-weight: 650; border-radius: 5px; padding: 0 5px; margin-left: 5px; background: var(--accent-soft); color: var(--accent); vertical-align: 1px; }
   .cmt-head { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; min-height: 14px; }
   .cmt-meta { font-size: 10.5px; color: var(--muted); margin-left: auto; white-space: nowrap; }
@@ -361,7 +375,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.11";
+const VERSION = "1.12";
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -465,6 +479,7 @@ const DEFAULT_STATE = {
   commentMeta: {}, // call -> {ts: Epoche, by: Kürzel} – letzter Bearbeitungsstand des Kommentars
   staleWarnMin: "45", // Minuten, ab denen der Quellen-Chip vor altem Datenstand warnt
   hist: {},      // call -> [{ts, by, t, wf?, text?}] – Historie zu ACKs, Gründen und Kommentaren
+  protokoll: {}, // Supportmanager-Protokoll (Montagsmeeting): key -> {kind, call/kunde, owner, chk, status, rows:[{d,t}]}
   miMark: {},    // call -> {termin: "gelb"|"rot"|"none"|undefined, kommentar: ...} (Markierungen Mittwochsmail)
   miHistory: {}, // "JJJJ-Www" -> {calls: [..], comments: {call: text}} – Kommentar-Archiv der letzten Wochen
   verbleib: {},  // call -> Text für OneNote-Spalte „Verbleib nach Sichtung der Langläufercalls"
@@ -506,6 +521,7 @@ function normalizeState() {
   state.filters = Object.fromEntries(Object.entries(DEFAULT_STATE.filters).map(([k, v]) => [k, { ...structuredClone(v), ...((state.filters || {})[k] || {}) }]));
   if (!Array.isArray(state.gruppenFilter)) state.gruppenFilter = structuredClone(DEFAULT_STATE.gruppenFilter);
   state.hist ??= {};
+  state.protokoll ??= {};
 }
 function saveState() {
   state.configStand = new Date().toISOString();
@@ -766,7 +782,7 @@ async function resumeWatch() {
    Haken, Kommentare, Markierungen, Personen, Verteiler und Vorlagen werden mit einer
    JSON-Datei abgeglichen, die alle Boards im Team lesen und schreiben. Je Eintrag
    gewinnt die jüngste Änderung (Zeitstempel in state.touch). */
-const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist"];
+const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll"];
 const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "rules", "filters", "cols", "gruppenFilter"];
 let sharedHandle = null, pendingSharedHandle = null, sharedDirty = false, sharedBusy = false, sharedLastSync = null;
 function sharedPayload() {
@@ -1294,11 +1310,20 @@ function fmtMarkup(text) {
    doppelt), Schriftfarbe zusätzlich als <font>-Tag – Words HTML-Import verwirft sonst gern. */
 function cellCss(style) {
   let s = String(style || "").replace(/background:/g, "background-color:");
-  const bg = s.match(/background-color:(#[0-9a-fA-F]{3,8})/);
-  if (bg) s += `background:${bg[1]};`;
-  return { s, attr: bg ? ` bgcolor="${bg[1]}"` : "" };
+  // Bei kombinierten Styles (Zebra + Markierung) gewinnt die LETZTE Hintergrundfarbe –
+  // frühere werden entfernt, sonst greift Outlooks bgcolor die falsche (grau statt grün/gelb).
+  const bgs = [...s.matchAll(/background-color:(#[0-9a-fA-F]{3,8});?/g)];
+  const bg = bgs.length ? bgs[bgs.length - 1][1] : null;
+  if (bg) {
+    s = s.replace(/background-color:#[0-9a-fA-F]{3,8};?/g, "");
+    s += `background-color:${bg};background:${bg};`;
+  }
+  return { s, attr: bg ? ` bgcolor="${bg}"` : "" };
 }
-function cellColor(s) { const m = s.match(/(?:^|;)color:(#[0-9a-fA-F]{3,8})/); return m ? m[1] : null; }
+function cellColor(s) {
+  const ms = [...s.matchAll(/(?:^|;)color:(#[0-9a-fA-F]{3,8})/g)];
+  return ms.length ? ms[ms.length - 1][1] : null;
+}
 function td(v, style, nowrap) {
   const c = cellCss(style);
   let inner = nowrap ? esc(v ?? "").replace(/ /g, "&nbsp;") : esc(v ?? "");
@@ -1559,6 +1584,7 @@ const TABS = [
   { id: "heute", label: "Übersicht" },
   ...WF.map(w => ({ id: w.id, label: w.title, wf: true })),
   { id: "extreakt", label: "Keine ext. Reaktion" },
+  { id: "proto", label: "Supportmanager Protokoll" },
   { id: "mi", label: "Mittwochsmail" },
   { id: "fr", label: "Freitagsmail" },
   { id: "tpl", label: "Vorlagen" },
@@ -1614,6 +1640,7 @@ const NAV_ICONS = {
   haken: '<rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8 12.5l2.8 2.8L16.5 9"/>',
   wartend: '<path d="M6.5 3.5h11M6.5 20.5h11"/><path d="M7.5 3.5v1.8c0 3.2 4.5 4.2 4.5 6.7s-4.5 3.5-4.5 6.7v1.8"/><path d="M16.5 3.5v1.8c0 3.2-4.5 4.2-4.5 6.7s4.5 3.5 4.5 6.7v1.8"/>',
   extreakt: '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/>',
+  proto: '<rect x="5" y="4.5" width="14" height="16.5" rx="2"/><path d="M9 4.5a3 3 0 0 1 6 0"/><line x1="8.5" y1="10.5" x2="15.5" y2="10.5"/><line x1="8.5" y1="14" x2="15.5" y2="14"/><line x1="8.5" y1="17.5" x2="13" y2="17.5"/>',
   mi: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
   fr: '<path d="M21.5 3 3 10.5l7 2.5m11.5-10L14 21l-3.5-8m11-10L10.5 13"/>',
   tpl: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>',
@@ -2095,6 +2122,223 @@ function renderExtReakt(view) {
   bindFilterPanel(view);
 }
 
+/* ================= Supportmanager-Protokoll (Montagsmeeting) =================
+   Automatisch befüllt aus zwei Quellen:
+   1. Calls im 2nd Level ohne Supportmanager mit Dauer > 10h (je Call ein Block)
+   2. Kunden mit mehr als 5 offenen Calls (je Kunde ein „…-Callsituation“-Block)
+   Je Block eine Zeile pro Meeting-Montag; neue Zeilen enthalten nur das Datum.
+   Blöcke, Zeilen und Status werden teamweit geteilt (state.protokoll). Bei
+   Beispieldaten bleibt alles sitzungslokal (protoTemp), damit der Team-Speicher
+   sauber bleibt. */
+const protoTemp = {}; // Blöcke aus Beispieldaten – nur für diese Sitzung
+function protoMeetingDate() { const d = todayStart(); return new Date(d.getTime() + ((8 - d.getDay()) % 7) * DAY); }
+function isoDateOf(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+function fmtIsoD(iso) { const m = String(iso).split("-"); return m.length === 3 ? `${m[2]}.${m[1]}.${m[0]}` : iso; }
+function protoCallCandidates() {
+  return allRows().filter(r => r.Quelle === "2nd" && !String(r.SupMan ?? "").trim() && (Number(r.Dauer) || 0) > 10);
+}
+function kundenRowsMap() {
+  const by = new Map();
+  for (const r of allRows()) {
+    const k = String(r.Kunde ?? "").trim();
+    if (!k) continue;
+    if (!by.has(k)) by.set(k, []);
+    by.get(k).push(r);
+  }
+  return by;
+}
+function protoKundenCandidates() { // Kunden mit mehr als 5 offenen Calls
+  return [...kundenRowsMap().entries()].filter(([, rows]) => rows.length > 5)
+    .map(([kunde, rows]) => ({ kunde, rows })).sort((a, b) => b.rows.length - a.rows.length);
+}
+function supmanInfo(rows) {
+  const cnt = {};
+  for (const r of rows) { const s = String(r.SupMan ?? "").trim(); if (s) cnt[s] = (cnt[s] || 0) + 1; }
+  const namen = Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+  const belegt = rows.filter(r => String(r.SupMan ?? "").trim()).length;
+  return { namen, belegt, voll: belegt === rows.length && rows.length > 0 };
+}
+function supmanVorschlag(kunde) {
+  const rows = kundenRowsMap().get(String(kunde ?? "").trim()) ?? [];
+  return supmanInfo(rows).namen[0] ?? "";
+}
+function kundeSummary(kunde) { // Wording wie im Protokoll: „4 Calls (3x In Bearbeitung, 1x Wartend)“
+  const rows = kundenRowsMap().get(String(kunde ?? "").trim()) ?? [];
+  const cnt = {};
+  for (const r of rows) { const s = String(r.Status ?? "?").trim() || "?"; cnt[s] = (cnt[s] || 0) + 1; }
+  const teile = Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([s, n]) => `${n}x ${s}`);
+  return `${rows.length} Calls (${teile.join(", ")})`;
+}
+function protoGet(key) { return state.protokoll[key] ?? protoTemp[key] ?? null; }
+function protoCommit(key) {
+  if (sources.ALL.demo && protoTemp[key]) return; // Beispieldaten: nichts teilen
+  if (protoTemp[key]) { state.protokoll[key] = protoTemp[key]; delete protoTemp[key]; }
+  touch("protokoll|" + key);
+  saveState();
+}
+function protoEnsure() {
+  const demo = !!sources.ALL.demo;
+  const store = demo ? protoTemp : state.protokoll;
+  let added = false;
+  const mk = (key, b) => { if (!protoGet(key)) { store[key] = b; if (!demo) touch("protokoll|" + key); added = true; } };
+  for (const r of protoCallCandidates())
+    mk("c" + r.Call, { kind: "call", call: String(r.Call), kunde: String(r.Kunde ?? ""), owner: supmanVorschlag(r.Kunde), chk: false, status: "Offen", rows: [], created: Date.now() });
+  for (const { kunde } of protoKundenCandidates())
+    mk("k" + kunde, { kind: "kunde", kunde, owner: supmanVorschlag(kunde), chk: false, status: "Offen", rows: [], created: Date.now() });
+  // je offenem Block eine Zeile für den anstehenden Meeting-Montag (nur Datum, ohne Inhalt)
+  if (allRows().length) {
+    const md = isoDateOf(protoMeetingDate());
+    for (const [key, b] of [...Object.entries(state.protokoll), ...Object.entries(protoTemp)]) {
+      if (b.status !== "Offen") continue;
+      if (!b.rows.some(x => x.d === md)) { b.rows.push({ d: md, t: "" }); if (state.protokoll[key]) touch("protokoll|" + key); added = true; }
+    }
+  }
+  if (added && !demo) saveState();
+}
+function protoLive(b) { // aktuelle Call-Daten zum Block (falls noch im Datenstand)
+  if (b.kind !== "call") return null;
+  return allRows().find(r => String(r.Call) === String(b.call)) ?? null;
+}
+function protoHeader(b) {
+  if (b.kind === "kunde") return `${b.kunde}-Callsituation`;
+  const r = protoLive(b);
+  return r ? `#${b.call}, ${r.Kunde ?? b.kunde}, ${r.Status ?? "?"} bei ${r.Bearbeiter ?? "?"}` : `#${b.call}, ${b.kunde}`;
+}
+function protoBlocksSorted() {
+  const all = { ...protoTemp, ...state.protokoll };
+  const entries = Object.entries(all);
+  const calls = entries.filter(([, b]) => b.kind === "call").sort((a, b) => String(a[1].call).localeCompare(String(b[1].call)));
+  const kunden = entries.filter(([, b]) => b.kind === "kunde").sort((a, b) => String(a[1].kunde).localeCompare(String(b[1].kunde), "de"));
+  const off = x => x[1].status === "Offen" ? 0 : 1;
+  calls.sort((a, b) => off(a) - off(b)); kunden.sort((a, b) => off(a) - off(b));
+  return { calls, kunden };
+}
+function buildProtoHtml() {
+  const B = "border:1px solid #999;padding:2px 6px;vertical-align:top;";
+  const { calls, kunden } = protoBlocksSorted();
+  let rowsHtml = "";
+  for (const [, b] of [...kunden, ...calls]) {
+    if (b.status !== "Offen") continue;
+    const r = protoLive(b);
+    let inner = "";
+    for (const row of b.rows) inner += `<tr><td style="${B}white-space:nowrap;">${fmtIsoD(row.d)}</td><td style="${B}min-width:700px;">${esc(row.t || "?")}</td></tr>`;
+    const head = b.kind === "kunde"
+      ? `<b>${esc(b.kunde)}-Callsituation</b>`
+      : `<b>${esc(protoHeader(b))}</b><br><br>&quot;${esc(r?.Titel ?? "")}&quot;`;
+    rowsHtml += `<tr><td style="${B}width:85%;">${head}<br><table style="border-collapse:collapse;font-family:Calibri,Arial,sans-serif;font-size:11pt;width:100%;">${inner}</table></td>
+      <td style="${B}white-space:nowrap;text-align:center;">${b.chk ? "&#9745; " : ""}${esc(b.owner || "")}</td>
+      <td style="${B}text-align:center;">${esc(b.status)}</td></tr>`;
+  }
+  return `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><table style="border-collapse:collapse;width:100%;">${rowsHtml}</table></div>`;
+}
+function protoBlockHtml(key, b) {
+  const r = protoLive(b);
+  const weg = b.kind === "call" && !protoCallCandidates().some(x => String(x.Call) === String(b.call));
+  const wegK = b.kind === "kunde" && !protoKundenCandidates().some(x => x.kunde === b.kunde);
+  const md = isoDateOf(protoMeetingDate());
+  const rows = [...b.rows].sort((a, c) => a.d < c.d ? -1 : 1);
+  return `<div class="proto-block ${b.status === "Offen" ? "" : "done"}">
+    <div>
+      <div class="proto-head">${esc(protoHeader(b))}
+        ${b.kind === "kunde" ? `<span class="hint">· aktuell: ${esc(kundeSummary(b.kunde) || "keine Calls im Datenstand")}</span>` : ""}
+        ${(weg || wegK) ? `<span class="veraltet" title="Der Auslöser trifft im aktuellen Datenstand nicht mehr zu – Block kann erledigt oder gelöscht werden.">nicht mehr im Kriterium</span>` : ""}
+      </div>
+      ${b.kind === "call" ? `<div class="proto-title">„${esc(r?.Titel ?? "Titel nicht im aktuellen Datenstand")}“</div>` : ""}
+      ${rows.map((row) => {
+        const i = b.rows.indexOf(row);
+        const ph = row.d === md ? (b.kind === "kunde" ? esc(kundeSummary(b.kunde)) : "?") : "?";
+        return `<div class="proto-row"><span class="pdate">${fmtIsoD(row.d)}</span>
+          <input class="ptext" data-prow="${esc(key)}|${i}" value="${esc(row.t)}" placeholder="${ph}">
+          <button class="prowdel" data-prowdel="${esc(key)}|${i}" title="Zeile löschen">✕</button></div>`;
+      }).join("")}
+      ${b.kind === "kunde" ? `<button class="small" data-pfill="${esc(key)}" title="Aktuelle Zählung in die Zeile des anstehenden Meetings übernehmen">Zählung einfügen</button>` : ""}
+    </div>
+    <div class="proto-side">
+      <span class="hint">Supportmanager</span>
+      <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-pchk="${esc(key)}" ${b.chk ? "checked" : ""} title="Übernommen/bestätigt">
+      <input type="text" data-powner="${esc(key)}" value="${esc(b.owner ?? "")}" placeholder="Kürzel" title="Zuständiger bzw. vorgeschlagener Supportmanager"></label>
+      ${b.kind === "call" && b.owner ? `<span class="hint" title="Aus anderen Calls dieses Kunden abgeleitet">Vorschlag</span>` : ""}
+    </div>
+    <div class="proto-side">
+      <button class="small ${b.status === "Offen" ? "" : "primary"}" data-pstat="${esc(key)}" title="Status umschalten">${esc(b.status)}</button>
+      <button class="small" data-pdel="${esc(key)}" title="Block samt Verlauf löschen (teamweit)">✕ löschen</button>
+    </div>
+  </div>`;
+}
+function renderProto(view) {
+  protoEnsure();
+  const kandidaten = protoKundenCandidates();
+  const { calls, kunden } = protoBlocksSorted();
+  const kTable = kandidaten.length ? `<div class="tscroll"><table class="list"><thead><tr>
+      <th>Kunde</th><th>Offene Calls</th><th>Supportmanager</th><th>Abdeckung</th></tr></thead><tbody>
+    ${kandidaten.map(({ kunde, rows }) => {
+      const si = supmanInfo(rows);
+      const abd = si.voll ? "in allen Calls eingetragen"
+        : si.namen.length ? `<span class="veraltet">nur in ${si.belegt} von ${rows.length} Calls</span> · Vorschlag: <b>${esc(si.namen[0])}</b>`
+        : `<span class="veraltet">kein Supportmanager eingetragen</span>`;
+      return `<tr><td class="nowrap">${esc(kunde)}</td><td class="num">${rows.length}</td>
+        <td class="nowrap">${si.namen.length ? si.namen.map(esc).join(", ") : "–"}</td><td>${abd}</td></tr>`;
+    }).join("")}
+    </tbody></table></div>` : `<p class="empty">Kein Kunde hat mehr als 5 offene Calls${allRows().length ? "" : " – keine Daten geladen"}.</p>`;
+  view.innerHTML = `<div class="card">
+      <h2>Supportmanager Protokoll <span class="pill s-ok" style="margin-left:6px">Meeting ${fmtD.format(protoMeetingDate())}</span></h2>
+      <p class="sub">Für das Montagsmeeting. Neue Wochenzeilen enthalten nur das Datum – Inhalte werden im Meeting ergänzt und teamweit geteilt.
+      Automatisch aufgenommen: 2nd-Level-Calls ohne Supportmanager mit Dauer über 10 h sowie Kunden mit mehr als 5 offenen Calls.</p>
+      <div class="btnrow"><button class="primary" id="btnProtoCopy">Protokoll kopieren (für OneNote)</button></div>
+      <h2 style="margin-top:14px">Kunden mit mehr als 5 offenen Calls</h2>
+      <p class="sub">Rot markiert: Kunden ohne Supportmanager in allen zugehörigen Calls – mit Vorschlag, falls in einzelnen Calls schon jemand eingetragen ist.</p>
+      ${kTable}
+    </div>
+    <div class="card">
+      <div class="proto-sec">Calls 2nd Level · Dauer &gt; 10 h · ohne Supportmanager</div>
+      ${calls.length ? calls.map(([k, b]) => protoBlockHtml(k, b)).join("") : `<p class="empty"><b>Nichts offen.</b> Kein 2nd-Level-Call über 10 h ohne Supportmanager.</p>`}
+      <div class="proto-sec">Callsituation je Kunde (&gt; 5 offene Calls)</div>
+      ${kunden.length ? kunden.map(([k, b]) => protoBlockHtml(k, b)).join("") : `<p class="empty"><b>Nichts offen.</b></p>`}
+    </div>`;
+  view.querySelector("#btnProtoCopy").addEventListener("click", e =>
+    copyHtml(buildProtoHtml(), "(Protokoll: bitte HTML-Einfügen verwenden)", e.target));
+  view.querySelectorAll("[data-prow]").forEach(inp => inp.addEventListener("change", () => {
+    const [key, i] = inp.dataset.prow.split("|");
+    const b = protoGet(key); if (!b || !b.rows[+i]) return;
+    b.rows[+i].t = inp.value.trim();
+    protoCommit(key);
+  }));
+  view.querySelectorAll("[data-prowdel]").forEach(btn => btn.addEventListener("click", () => {
+    const [key, i] = btn.dataset.prowdel.split("|");
+    const b = protoGet(key); if (!b) return;
+    b.rows.splice(+i, 1);
+    protoCommit(key); render();
+  }));
+  view.querySelectorAll("[data-pfill]").forEach(btn => btn.addEventListener("click", () => {
+    const key = btn.dataset.pfill;
+    const b = protoGet(key); if (!b) return;
+    const md = isoDateOf(protoMeetingDate());
+    const row = b.rows.find(x => x.d === md);
+    if (row) { row.t = kundeSummary(b.kunde); protoCommit(key); render(); }
+  }));
+  view.querySelectorAll("[data-pchk]").forEach(cb => cb.addEventListener("change", () => {
+    const b = protoGet(cb.dataset.pchk); if (!b) return;
+    b.chk = cb.checked; protoCommit(cb.dataset.pchk);
+  }));
+  view.querySelectorAll("[data-powner]").forEach(inp => inp.addEventListener("change", () => {
+    const b = protoGet(inp.dataset.powner); if (!b) return;
+    b.owner = inp.value.trim().toUpperCase(); protoCommit(inp.dataset.powner);
+  }));
+  view.querySelectorAll("[data-pstat]").forEach(btn => btn.addEventListener("click", () => {
+    const b = protoGet(btn.dataset.pstat); if (!b) return;
+    b.status = b.status === "Offen" ? "Erledigt" : "Offen";
+    protoCommit(btn.dataset.pstat); render();
+  }));
+  view.querySelectorAll("[data-pdel]").forEach(btn => btn.addEventListener("click", () => {
+    const key = btn.dataset.pdel;
+    const b = protoGet(key); if (!b) return;
+    if (!confirm(`Block „${protoHeader(b)}“ samt Verlauf löschen (teamweit)?\nHinweis: Trifft das Kriterium weiterhin zu, wird der Block beim nächsten Öffnen neu angelegt.`)) return;
+    delete state.protokoll[key]; delete protoTemp[key];
+    if (!sources.ALL.demo) { touch("protokoll|" + key); saveState(); }
+    render();
+  }));
+}
+
 function renderFr(view) {
   const m = buildFreitagMail();
   view.innerHTML = `<div class="card">
@@ -2307,6 +2551,7 @@ function render() {
   if (activeTab === "heute") renderHeute(view);
   else if (w) renderWf(view, w);
   else if (activeTab === "extreakt") renderExtReakt(view);
+  else if (activeTab === "proto") renderProto(view);
   else if (activeTab === "mi") renderMi(view);
   else if (activeTab === "fr") renderFr(view);
   else if (activeTab === "tpl") renderTpl(view);
