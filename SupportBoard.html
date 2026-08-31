@@ -312,6 +312,7 @@
   .ph-row { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
   .ph-row .ph { font-family: ui-monospace, Consolas, monospace; font-size: 11px; padding: 2px 7px; }
   .tpl-text { width: 100%; resize: vertical; font-size: 13px; }
+  .tpl-warn { background: var(--crit-wash); box-shadow: inset 0 0 0 1px var(--crit); border-radius: 8px; padding: 7px 11px; margin: 0 0 8px; font-size: 12px; line-height: 1.4; }
   .preview { background: var(--surface-2); border-radius: 8px; padding: 8px 12px; margin-top: 8px; max-height: 110px; overflow: auto; font-size: 12.5px; }
 </style>
 
@@ -418,7 +419,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.17";
+const VERSION = "1.18";
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -473,16 +474,16 @@ const DEFAULT_STATE = {
   templates: {
     teams: {
       lt: "Hi {BearbeiterVorname}, kurzer Reminder zu Call {Call} ({Kunde} – {Titel}): Der Lösungstermin {LT} ist überschritten. Magst du die Kundenkommunikation aufnehmen und den LT anpassen? Danke dir!",
-      kdkomm: "Hi {BearbeiterVorname}, Call {Call} ({Kunde} – {Titel}) hat seit {TageOhneInfo} Tagen keine Info an den Kunden. Gibst du dem Kunden kurz einen Zwischenstand? Falls der LT schon kommuniziert ist, bitte den Haken „nicht werten für Kd.Komm.“ setzen. Danke!",
+      kdkomm: "Hi {BearbeiterVorname}, Call {Call} ({Kunde} – {Titel}) hat seit {TageOhneInfo} Tagen keine Info an den Kunden. Gibst du dem Kunden kurz einen Zwischenstand? Falls du ihn bereits informiert hast, sag mir einfach kurz Bescheid. Danke!",
       aender: "Hi {BearbeiterVorname}, bei Call {Call} ({Kunde} – {Titel}) ist seit {TageOhneAenderung} Tagen nichts passiert. Passt da alles bzw. gibt es einen neuen Stand? Danke dir!",
-      haken: "Hi {BearbeiterVorname}, zu Call {Call} ({Kunde} – {Titel}) ist der LT {LT} gesetzt. Wurde der Kunde darüber schon informiert? Falls ja, gib mir kurz Bescheid – dann setzen wir den Haken „nicht werten für Kd.Komm.“. Falls nein, informiere bitte den Kunden. Danke dir!",
+      haken: "Hi {BearbeiterVorname}, zu Call {Call} ({Kunde} – {Titel}) ist der Lösungstermin {LT} gesetzt. Wurde der Kunde darüber schon informiert? Falls ja, gib mir kurz Bescheid – falls nein, informiere ihn bitte. Danke dir!",
       wartend: "Hi {BearbeiterVorname}, Call {Call} ({Kunde} – {Titel}) steht auf „Wartend“, aber das „Wartend bis“-Datum {WartendBis}. Magst du ein Datum in der Zukunft eintragen? Danke dir!"
     },
     wvl: {
       lt: "{MeinKuerzel} => {Bearbeiter}\n\nDer Lösungstermin ({LT}) zu Call {Call} ({Kunde} – {Titel}) ist überschritten. Bitte Kundenkommunikation aufnehmen und den LT anpassen.\n\nGruß\n{MeinVorname}",
-      kdkomm: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) hat seit {TageOhneInfo} Tagen keine Kundenkommunikation. Bitte dem Kunden einen aktuellen Stand mitteilen oder – falls der LT kommuniziert ist – den Haken „nicht werten für Kd.Komm.“ setzen.\n\nGruß\n{MeinVorname}",
+      kdkomm: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) hat seit {TageOhneInfo} Tagen keine Kundenkommunikation. Bitte dem Kunden einen aktuellen Stand mitteilen. Wurde der Kunde bereits informiert, genügt eine kurze Rückmeldung.\n\nGruß\n{MeinVorname}",
       aender: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) wurde seit {TageOhneAenderung} Tagen nicht bearbeitet. Bitte Stand prüfen und den Call aktualisieren.\n\nGruß\n{MeinVorname}",
-      haken: "{MeinKuerzel} => {Bearbeiter}\n\nZu Call {Call} ({Kunde} – {Titel}) ist der Lösungstermin {LT} gesetzt. Bitte prüfen, ob der Kunde über den LT informiert wurde, und ihn andernfalls informieren. Sobald die Info beim Kunden ist, bitte kurze Rückmeldung – dann wird der Haken „nicht werten für Kd.Komm.“ gesetzt.\n\nGruß\n{MeinVorname}",
+      haken: "{MeinKuerzel} => {Bearbeiter}\n\nZu Call {Call} ({Kunde} – {Titel}) ist der Lösungstermin {LT} gesetzt. Bitte prüfen, ob der Kunde über den Termin informiert wurde, und ihn andernfalls informieren. Sobald die Info beim Kunden ist, bitte kurze Rückmeldung.\n\nGruß\n{MeinVorname}",
       wartend: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) steht auf „Wartend“, aber das „Wartend bis“-Datum {WartendBis}. Bitte ein Datum in der Zukunft setzen.\n\nGruß\n{MeinVorname}"
     }
   },
@@ -559,6 +560,46 @@ function loadState() {
   } catch (e) { /* leerer Start */ }
   return structuredClone(DEFAULT_STATE);
 }
+/* Texte, die an Bearbeiter herausgehen (Teams-Nachricht, WVL), dürfen keine
+   internen Controlling-Begriffe enthalten – der Haken „nicht werten für
+   Kd.Komm.“ ist allein Sache des Supportmanagements. Frühere Standardtexte
+   erwähnten ihn; die werden hier einmalig auf die neutrale Fassung gehoben.
+   Selbst geschriebene Texte bleiben unangetastet – dort warnt der Editor. */
+const TPL_ALTLASTEN = [
+  "Falls der LT schon kommuniziert ist, bitte den Haken „nicht werten für Kd.Komm.“ setzen. Danke!",
+  "Falls ja, gib mir kurz Bescheid – dann setzen wir den Haken „nicht werten für Kd.Komm.“. Falls nein, informiere bitte den Kunden. Danke dir!",
+  "Bitte dem Kunden einen aktuellen Stand mitteilen oder – falls der LT kommuniziert ist – den Haken „nicht werten für Kd.Komm.“ setzen.",
+  "Sobald die Info beim Kunden ist, bitte kurze Rückmeldung – dann wird der Haken „nicht werten für Kd.Komm.“ gesetzt."
+];
+const TPL_ERSATZ = [
+  "Falls du ihn bereits informiert hast, sag mir einfach kurz Bescheid. Danke!",
+  "Falls ja, gib mir kurz Bescheid – falls nein, informiere ihn bitte. Danke dir!",
+  "Bitte dem Kunden einen aktuellen Stand mitteilen. Wurde der Kunde bereits informiert, genügt eine kurze Rückmeldung.",
+  "Sobald die Info beim Kunden ist, bitte kurze Rückmeldung."
+];
+function migrateTemplates() {
+  let geaendert = false;
+  for (const art of ["teams", "wvl"]) {
+    const grp = state.templates?.[art];
+    if (!grp) continue;
+    for (const [k, txt] of Object.entries(grp)) {
+      if (typeof txt !== "string") continue;
+      let neu = txt;
+      TPL_ALTLASTEN.forEach((a, i) => { if (neu.includes(a)) neu = neu.replace(a, TPL_ERSATZ[i]); });
+      if (neu !== txt) { grp[k] = neu; geaendert = true; }
+    }
+  }
+  if (geaendert) { touch("cfg|templates"); try { localStorage.setItem("smbState_v1", JSON.stringify(state)); } catch (e) {} }
+  return geaendert;
+}
+/* Begriffe, die in Texten an Bearbeiter nichts zu suchen haben */
+const TPL_INTERN = ["nicht werten", "haken", "kd.komm", "controlling", "score", "auswerten"];
+function internWarnung(txt) {
+  const t = String(txt || "").toLowerCase();
+  const treffer = TPL_INTERN.filter(w => t.includes(w));
+  return treffer.length ? treffer : null;
+}
+
 /* Nach Laden/Abgleich mit älteren Ständen (z. B. Team-JSON aus v1.10): neue
    Filter-Schlüssel und Strukturen ergänzen, damit nichts undefiniert bleibt. */
 function normalizeState() {
@@ -566,6 +607,7 @@ function normalizeState() {
   if (!Array.isArray(state.gruppenFilter)) state.gruppenFilter = structuredClone(DEFAULT_STATE.gruppenFilter);
   state.hist ??= {};
   state.protokoll ??= {};
+  migrateTemplates();
 }
 function saveState() {
   state.configStand = new Date().toISOString();
@@ -2707,9 +2749,15 @@ function previewHtml(tplText) {
   return fmtMarkup(filled).replace(/\{(\w+)\}/g, '<span style="color:var(--crit);font-weight:650">{$1}</span>');
 }
 const FORMAT_CHIPS = ["[gelb]…[/gelb]", "[rot]…[/rot]", "[rottext]…[/rottext]", "[fett]…[/fett]", "[kursiv]…[/kursiv]", "[link=https://…]Text[/link]"];
-function tplEditorCard(label, getVal, setVal, rows, chips) {
+function tplWarnHtml(txt, extern) {
+  if (!extern) return "";
+  const t = internWarnung(txt);
+  return `<div class="tpl-warn ${t ? "" : "hidden"}">⚠ Dieser Text geht an den Bearbeiter. Interner Begriff gefunden: <b>${t ? esc(t.join(", ")) : ""}</b> – der Haken „nicht werten für Kd.Komm.“ ist allein Sache des Supportmanagements und sollte hier nicht auftauchen.</div>`;
+}
+function tplEditorCard(label, getVal, setVal, rows, chips, extern) {
   return `<div class="card tpl-editor">
     <h2>${esc(label)} <span class="pill s-ok save-pill hidden">Gespeichert ✓</span></h2>
+    ${tplWarnHtml(getVal(), extern)}
     <div class="ph-row">${(chips ?? PLACEHOLDERS).map(p => `<button class="small ph" data-ph="${esc(p)}" title="An Cursorposition einfügen">${esc(p)}</button>`).join("")}</div>
     <textarea class="tpl-text" rows="${rows || 5}">${esc(getVal())}</textarea>
     <div class="hint preview"><b>Vorschau (Beispiel-Call):</b><br><span class="pv">${previewHtml(getVal())}</span></div>
@@ -2719,9 +2767,15 @@ function bindTplEditor(cardEl, getVal, setVal) {
   const ta = cardEl.querySelector(".tpl-text");
   const pv = cardEl.querySelector(".pv");
   const pill = cardEl.querySelector(".save-pill");
+  const warn = cardEl.querySelector(".tpl-warn");
   ta.addEventListener("input", () => {
     setVal(ta.value); touch("cfg|templates"); touch("cfg|intros"); saveState();
     pv.innerHTML = previewHtml(ta.value);
+    if (warn) {
+      const t = internWarnung(ta.value);
+      warn.classList.toggle("hidden", !t);
+      if (t) warn.querySelector("b").textContent = t.join(", ");
+    }
     pill.classList.remove("hidden");
     clearTimeout(pill._t); pill._t = setTimeout(() => pill.classList.add("hidden"), 1500);
   });
@@ -2734,7 +2788,7 @@ function renderTpl(view) {
   const wfLabels = { lt: "Überschrittener LT", kdkomm: "Ohne Kundenkommunikation", aender: "Ohne Änderung", haken: "Haken-Prüfung", wartend: "Wartend ohne Datum" };
   view.innerHTML = `<div class="card">
     <h2>Textbausteine</h2>
-    <p class="sub">Platzhalter per Klick einfügen; unbekannte erscheinen in der Vorschau rot.</p>
+    <p class="sub">Platzhalter per Klick einfügen; unbekannte erscheinen in der Vorschau rot. Diese Texte gehen an die Bearbeiter – interne Controlling-Begriffe (Haken „nicht werten für Kd.Komm.“, Score) gehören nicht hinein.</p>
     <div class="seg">${WF.map(w => `<button class="chip segbtn ${tplWf === w.tpl ? "seg-on" : ""}" data-wf="${w.tpl}">${esc(wfLabels[w.tpl])}</button>`).join("")}</div>
     <div class="tpl-grid" id="tplGrid"></div>
   </div>
@@ -2745,8 +2799,8 @@ function renderTpl(view) {
   </div>`;
   const grid = view.querySelector("#tplGrid");
   grid.innerHTML =
-    tplEditorCard("Teams-Nachricht", () => state.templates.teams[tplWf], v => state.templates.teams[tplWf] = v) +
-    tplEditorCard("WVL Omnitracker", () => state.templates.wvl[tplWf], v => state.templates.wvl[tplWf] = v, 7);
+    tplEditorCard("Teams-Nachricht", () => state.templates.teams[tplWf], v => state.templates.teams[tplWf] = v, 5, null, true) +
+    tplEditorCard("WVL Omnitracker", () => state.templates.wvl[tplWf], v => state.templates.wvl[tplWf] = v, 7, null, true);
   const [c1, c2] = grid.querySelectorAll(".tpl-editor");
   bindTplEditor(c1, () => state.templates.teams[tplWf], v => state.templates.teams[tplWf] = v);
   bindTplEditor(c2, () => state.templates.wvl[tplWf], v => state.templates.wvl[tplWf] = v);
@@ -2949,6 +3003,7 @@ setInterval(syncShared, 15000); // Team-Abgleich im Hintergrund (liest die Datei
 // Sofort-Abgleich, wenn man ins Board wechselt – wer hinschaut, sieht den frischen Stand
 window.addEventListener("focus", () => syncShared());
 document.addEventListener("visibilitychange", () => { if (!document.hidden) syncShared(); });
+normalizeState();
 restoreSources();
 dailyBackup();
 updateVerInfo();
