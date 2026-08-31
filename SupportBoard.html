@@ -151,6 +151,11 @@
   .proto-row .prowdel:hover { color: var(--crit); }
   .proto-side { display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
   .proto-side input[type="text"] { width: 76px; padding: 3px 8px; font-size: 12.5px; }
+  /* Auslastung: Balken in Tabellenzellen – Länge relativ zum Spaltenmaximum */
+  td.lastcell { min-width: 170px; }
+  .lb { position: relative; height: 20px; display: flex; align-items: center; justify-content: flex-end; }
+  .lb-fill { position: absolute; left: 0; top: 3px; bottom: 3px; background: var(--accent-soft); border-radius: 4px; }
+  .lb-val { position: relative; font-variant-numeric: tabular-nums; padding-right: 2px; }
   .proto-sec { font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); font-weight: 650; margin: 16px 0 8px; }
   /* Suche + Mehrfach-Kennzeichnung + ACK-Hinweise */
   .side-search { padding: 0 6px 8px; }
@@ -424,7 +429,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.19";
+const VERSION = "1.20";
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -518,6 +523,7 @@ const DEFAULT_STATE = {
     haken:  { status: [], gruppe: [], prio: [], intern: true, hxmp: true },
     wartend: { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     extreakt: { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
+    last:    { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     mi:     { status: ["cc", "customer care", "update", "pre-update"], gruppe: [], prio: [], minDauer: "10", intern: false, hxmp: true },
     fr:     { status: [], gruppe: [], prio: [], intern: false, hxmp: true }
   },
@@ -964,7 +970,16 @@ function mergeShared(remote) {
   for (const c of SHARED_CFG) {
     const tk = `cfg|${c}`;
     const lt_ = state.touch[tk] || 0, rt_ = rt[tk] || 0;
-    if (rt_ > lt_ && remote.cfg && c in remote.cfg) { state[c] = remote.cfg[c]; state.touch[tk] = rt_; changed = true; }
+    if (rt_ > lt_ && remote.cfg && c in remote.cfg) {
+      if (c === "filters") {
+        // Ältere Board-Versionen kennen neuere Listen (z. B. "last") nicht – deren
+        // lokale Einstellungen bleiben erhalten, statt auf Standardwerte zu fallen.
+        const lokal = state.filters || {};
+        state.filters = remote.cfg.filters || {};
+        for (const [k, v] of Object.entries(lokal)) if (!(k in state.filters)) state.filters[k] = v;
+      } else state[c] = remote.cfg[c];
+      state.touch[tk] = rt_; changed = true;
+    }
     else if (lt_ > rt_) localNewer = true;
   }
   const rh = remote.miHistory || {};
@@ -1846,6 +1861,7 @@ const TABS = [
   { id: "heute", label: "Übersicht" },
   ...WF.map(w => ({ id: w.id, label: w.title, wf: true })),
   { id: "extreakt", label: "Keine ext. Reaktion" },
+  { id: "last", label: "Auslastung", nurFuer: ["VKU"] },
   { id: "proto", label: "Supportmanager Protokoll" },
   { id: "mi", label: "Mittwochsmail" },
   { id: "fr", label: "Freitagsmail" },
@@ -1930,6 +1946,7 @@ const NAV_ICONS = {
   haken: '<rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8 12.5l2.8 2.8L16.5 9"/>',
   wartend: '<path d="M6.5 3.5h11M6.5 20.5h11"/><path d="M7.5 3.5v1.8c0 3.2 4.5 4.2 4.5 6.7s-4.5 3.5-4.5 6.7v1.8"/><path d="M16.5 3.5v1.8c0 3.2-4.5 4.2-4.5 6.7s4.5 3.5 4.5 6.7v1.8"/>',
   extreakt: '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/>',
+  last: '<line x1="5" y1="20" x2="5" y2="12"/><line x1="10.5" y1="20" x2="10.5" y2="6"/><line x1="16" y1="20" x2="16" y2="9.5"/><line x1="3" y1="20" x2="19" y2="20"/>',
   proto: '<rect x="5" y="4.5" width="14" height="16.5" rx="2"/><path d="M9 4.5a3 3 0 0 1 6 0"/><line x1="8.5" y1="10.5" x2="15.5" y2="10.5"/><line x1="8.5" y1="14" x2="15.5" y2="14"/><line x1="8.5" y1="17.5" x2="13" y2="17.5"/>',
   mi: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
   fr: '<path d="M21.5 3 3 10.5l7 2.5m11.5-10L14 21l-3.5-8m11-10L10.5 13"/>',
@@ -1939,10 +1956,14 @@ const NAV_ICONS = {
 function navIcon(id) {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NAV_ICONS[id] || ""}</svg>`;
 }
+function sichtbareTabs() {
+  const k = currentUser().k;
+  return TABS.filter(t => !t.nurFuer || t.nurFuer.includes(k));
+}
 function renderTabs() {
   const nav = document.getElementById("tabs");
   nav.innerHTML = "";
-  for (const t of TABS) {
+  for (const t of sichtbareTabs()) {
     const b = document.createElement("button");
     b.className = "navitem" + (activeTab === t.id ? " active" : "");
     let cnt = "";
@@ -2469,6 +2490,68 @@ function renderSuche(view) {
   }));
 }
 
+/* ================= Auslastung (nur VKU) =================
+   Wer trägt gerade wie viel? Je Bearbeiter: Anzahl offener Calls und Summe der
+   Call-Dauern. Die Dauer ist die kumulierte Gesamtdauer des Calls – der beste
+   verfügbare Näherungswert für Aufwand, auch wenn mehrere daran gearbeitet haben. */
+let lastSort = { key: "dauer", dir: -1 };
+function lastAgg() {
+  const rows = applyFilters("last", allRows());
+  const by = new Map();
+  for (const r of rows) {
+    const k = String(r.Bearbeiter ?? "").trim().toUpperCase();
+    if (!k) continue;
+    if (!by.has(k)) by.set(k, { k, calls: 0, dauer: 0, krit: 0, gruppen: new Set() });
+    const e = by.get(k);
+    e.calls++;
+    e.dauer += Number(r.Dauer) || 0;
+    if (severity(r.Score) === 2) e.krit++;
+    if (r.Gruppe) e.gruppen.add(gruppeKurz(String(r.Gruppe).trim()));
+  }
+  return [...by.values()].map(e => ({ ...e, mittel: e.calls ? e.dauer / e.calls : 0 }));
+}
+function renderLast(view) {
+  if (currentUser().k !== "VKU") { activeTab = "heute"; render(); return; }
+  const daten = lastAgg();
+  const dir = lastSort.dir, key = lastSort.key;
+  daten.sort((a, b) => (typeof a[key] === "string" ? a[key].localeCompare(b[key], "de") : (a[key] - b[key])) * dir);
+  const maxCalls = Math.max(1, ...daten.map(d => d.calls));
+  const maxDauer = Math.max(1, ...daten.map(d => d.dauer));
+  const topCalls = [...daten].sort((a, b) => b.calls - a.calls || a.k.localeCompare(b.k, "de"))[0];
+  const topDauer = [...daten].sort((a, b) => b.dauer - a.dauer || a.k.localeCompare(b.k, "de"))[0];
+  const th = (k, label, right) => `<th class="sortable${right ? " ta-r" : ""}" data-lsort="${k}" title="Klick sortiert">${label}${lastSort.key === k ? `<span class="arrow">${lastSort.dir < 0 ? " ▼" : " ▲"}</span>` : ""}</th>`;
+  const bar = (wert, max, text) => `<td class="lastcell"><div class="lb"><span class="lb-fill" style="width:${Math.round(wert / max * 100)}%"></span><span class="lb-val">${text}</span></div></td>`;
+  view.innerHTML = `<div class="card">
+    <h2>Auslastung der Bearbeiter <span class="pill s-ok" style="margin-left:6px">${daten.length} Bearbeiter</span></h2>
+    <p class="sub">Nur sichtbar, wenn du als VKU angemeldet bist. Grundlage: alle offenen Calls im aktuellen Datenstand.
+    „Aufwand“ ist die Summe der Call-Gesamtdauern je Bearbeiter – der beste verfügbare Näherungswert, auch wenn an einem Call mehrere beteiligt waren.</p>
+    ${daten.length ? `<div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+      <div class="kpi"><div class="k-label">Meiste offene Calls</div><div class="k-value">${esc(topCalls.k)}</div><div class="k-note">${topCalls.calls} Calls · ${esc(resolveName(topCalls.k) ?? "")}</div></div>
+      <div class="kpi"><div class="k-label">Höchster Aufwand</div><div class="k-value">${esc(topDauer.k)}</div><div class="k-note">${fmtDauer.format(topDauer.dauer)} h gesamt · ${esc(resolveName(topDauer.k) ?? "")}</div></div>
+    </div>` : ""}
+    ${filterPanel("last", allRows())}
+    ${daten.length ? `<div class="tscroll"><table class="list"><thead><tr>
+      ${th("k", "Bearbeiter")}<th>Gruppe</th>${th("calls", "Offene Calls", true)}${th("dauer", "Aufwand gesamt (h)", true)}${th("mittel", "Ø h je Call", true)}${th("krit", "Kritische", true)}
+    </tr></thead><tbody>
+    ${daten.map(d => `<tr>
+      <td class="nowrap" title="${esc(resolveName(d.k) ?? "")}">${esc(d.k)}</td>
+      <td class="nowrap">${esc([...d.gruppen].sort().join(", ") || "–")}</td>
+      ${bar(d.calls, maxCalls, fmtN.format(d.calls))}
+      ${bar(d.dauer, maxDauer, fmtDauer.format(d.dauer))}
+      <td class="ta-r tnum">${fmtDauer.format(d.mittel)}</td>
+      <td class="ta-r tnum">${d.krit ? `<span class="pill s-crit">${d.krit}</span>` : "0"}</td>
+    </tr>`).join("")}
+    </tbody></table></div>` : `<p class="empty">${allRows().length ? "Alle Calls ausgefiltert – Filter oben anpassen." : "Keine Daten geladen."}</p>`}
+  </div>`;
+  view.querySelectorAll("[data-lsort]").forEach(h => h.addEventListener("click", () => {
+    const k = h.dataset.lsort;
+    if (lastSort.key === k) lastSort.dir = -lastSort.dir;
+    else lastSort = { key: k, dir: k === "k" ? 1 : -1 };
+    render();
+  }));
+  bindFilterPanel(view);
+}
+
 /* ================= Supportmanager-Protokoll (Montagsmeeting) =================
    Automatisch befüllt aus zwei Quellen:
    1. Calls im 2nd Level ohne Supportmanager mit Dauer > 10h (je Call ein Block)
@@ -2972,6 +3055,8 @@ function renderAdmin(view) {
 }
 
 function render() {
+  const def = TABS.find(t => t.id === activeTab);
+  if (def?.nurFuer && !def.nurFuer.includes(currentUser().k)) activeTab = "heute";
   buildMemberMap();
   renderTabs();
   const view = document.getElementById("view");
@@ -2981,6 +3066,7 @@ function render() {
   else if (w) renderWf(view, w);
   else if (activeTab === "extreakt") renderExtReakt(view);
   else if (activeTab === "suche") renderSuche(view);
+  else if (activeTab === "last") renderLast(view);
   else if (activeTab === "proto") renderProto(view);
   else if (activeTab === "mi") renderMi(view);
   else if (activeTab === "fr") renderFr(view);
