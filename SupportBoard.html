@@ -418,7 +418,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.16";
+const VERSION = "1.17";
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -520,6 +520,7 @@ const DEFAULT_STATE = {
   comments: {},  // call -> text (Kommentar SupMan, Mittwochsmail)
   commentSrc: {}, // call -> KW, aus der der Kommentar uebernommen wurde (leer = aktuell)
   commentMeta: {}, // call -> {ts: Epoche, by: Kürzel} – letzter Bearbeitungsstand des Kommentars
+  protoMinCalls: "5", // Supportmanager-Protokoll: ab wie vielen offenen Calls ein Kunde auftaucht
   staleWarnMin: "45", // Minuten, ab denen der Quellen-Chip vor altem Datenstand warnt
   hist: {},      // call -> [{ts, by, t, wf?, text?}] – Historie zu ACKs, Gründen und Kommentaren
   protokoll: {}, // Supportmanager-Protokoll (Montagsmeeting): key -> {kind, call/kunde, owner, chk, status, rows:[{d,t}]}
@@ -881,7 +882,7 @@ async function resumeWatch() {
    JSON-Datei abgeglichen, die alle Boards im Team lesen und schreiben. Je Eintrag
    gewinnt die jüngste Änderung (Zeitstempel in state.touch). */
 const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll"];
-const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "rules", "filters", "cols", "gruppenFilter"];
+const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "protoMinCalls", "rules", "filters", "cols", "gruppenFilter"];
 let sharedHandle = null, pendingSharedHandle = null, sharedDirty = false, sharedBusy = false, sharedLastSync = null;
 /* Härtung v1.14: geschrieben wird NUR nach einem erfolgreichen Lese-/Merge-Zyklus.
    Lese- oder Parse-Fehler (Datei gesperrt, halb geschrieben, defekt) führen nie mehr
@@ -2435,18 +2436,23 @@ function protoRelevant(r) { return !isInternKunde(r) && !bearbeiterExcluded(r); 
 function protoCallCandidates() {
   return allRows().filter(r => protoRelevant(r) && r.Quelle === "2nd" && !String(r.SupMan ?? "").trim() && (Number(r.Dauer) || 0) > 10);
 }
+function kundeKey(v) { return String(v ?? "").trim().toUpperCase(); }
 function kundenRowsMap() {
+  // Schlüssel ist der normalisierte Kundenname – unterschiedliche Schreibweisen
+  // (Groß-/Kleinbuchstaben, Leerzeichen) zählen sonst als verschiedene Kunden.
   const by = new Map();
   for (const r of allRows()) {
-    const k = String(r.Kunde ?? "").trim();
+    const k = kundeKey(r.Kunde);
     if (!k || !protoRelevant(r)) continue;
     if (!by.has(k)) by.set(k, []);
     by.get(k).push(r);
   }
   return by;
 }
-function protoKundenAlle() { // alle Kunden mit mehr als 5 offenen Calls
-  return [...kundenRowsMap().entries()].filter(([, rows]) => rows.length > 5)
+function protoMinCalls() { return ruleNum(state.protoMinCalls, 5); }
+function protoKundenAlle() { // Kunden ab der eingestellten Anzahl offener Calls
+  const min = protoMinCalls();
+  return [...kundenRowsMap().entries()].filter(([, rows]) => rows.length >= min)
     .map(([kunde, rows]) => ({ kunde, rows, sm: supmanInfo(rows) })).sort((a, b) => b.rows.length - a.rows.length);
 }
 /* Fürs Protokoll zählen die Kunden, bei denen der Supportmanager NICHT in allen
@@ -2462,11 +2468,11 @@ function supmanInfo(rows) {
   return { namen, belegt, voll: belegt === rows.length && rows.length > 0 };
 }
 function supmanVorschlag(kunde) {
-  const rows = kundenRowsMap().get(String(kunde ?? "").trim()) ?? [];
+  const rows = kundenRowsMap().get(kundeKey(kunde)) ?? [];
   return supmanInfo(rows).namen[0] ?? "";
 }
 function kundeSummary(kunde) { // Wording wie im Protokoll: „4 Calls (3x In Bearbeitung, 1x Wartend)“
-  const rows = kundenRowsMap().get(String(kunde ?? "").trim()) ?? [];
+  const rows = kundenRowsMap().get(kundeKey(kunde)) ?? [];
   const cnt = {};
   for (const r of rows) { const s = String(r.Status ?? "?").trim() || "?"; cnt[s] = (cnt[s] || 0) + 1; }
   const teile = Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([s, n]) => `${n}x ${s}`);
@@ -2587,6 +2593,9 @@ function renderProto(view) {
   protoEnsure();
   const alle = protoKundenAlle();
   const luecken = alle.filter(k => !k.sm.voll);
+  const min = protoMinCalls();
+  const kundenGesamt = kundenRowsMap().size;
+  const callsGesamt = [...kundenRowsMap().values()].reduce((n, r) => n + r.length, 0);
   const betreut = alle.length - luecken.length;
   const kandidaten = protoAlleKunden ? alle : luecken;
   const { calls, kunden } = protoBlocksSorted();
@@ -2599,26 +2608,33 @@ function renderProto(view) {
       return `<tr><td class="nowrap">${esc(kunde)}</td><td class="num">${rows.length}</td>
         <td class="nowrap">${sm.namen.length ? sm.namen.map(esc).join(", ") : "–"}</td><td>${abd}</td></tr>`;
     }).join("")}
-    </tbody></table></div>` : `<p class="empty"><b>Nichts offen.</b> ${alle.length ? "Bei allen Kunden mit mehr als 5 offenen Calls ist der Supportmanager durchgängig eingetragen." : "Kein Kunde hat mehr als 5 offene Calls" + (allRows().length ? "." : " – keine Daten geladen.")}</p>`;
+    </tbody></table></div>` : `<p class="empty"><b>Nichts offen.</b> ${alle.length ? `Bei allen ${alle.length} Kunden ab ${min} offenen Calls ist der Supportmanager durchgängig eingetragen.` : `Kein Kunde hat ${min} oder mehr offene Calls` + (allRows().length ? "." : " – keine Daten geladen.")}</p>`;
   view.innerHTML = `<div class="card">
       <h2>Supportmanager Protokoll <span class="pill s-ok" style="margin-left:6px">Meeting ${fmtD.format(protoMeetingDate())}</span></h2>
       <p class="sub">Für das Montagsmeeting. Neue Wochenzeilen enthalten nur das Datum – Inhalte werden im Meeting ergänzt und teamweit geteilt.
-      Automatisch aufgenommen: 2nd-Level-Calls ohne Supportmanager mit Dauer über 10 h sowie Kunden mit mehr als 5 offenen Calls, bei denen der Supportmanager nicht durchgängig eingetragen ist. Interne Calls (${esc(state.internKunde || "MPDV")}) bleiben außen vor.</p>
+      Automatisch aufgenommen: 2nd-Level-Calls ohne Supportmanager mit Dauer über 10 h sowie Kunden ab ${min} offenen Calls, bei denen der Supportmanager nicht durchgängig eingetragen ist. Interne Calls (${esc(state.internKunde || "MPDV")}) bleiben außen vor.</p>
       <div class="btnrow"><button class="primary" id="btnProtoCopy">Protokoll kopieren (für OneNote)</button></div>
-      <h2 style="margin-top:14px">Kunden mit mehr als 5 offenen Calls <span class="pill ${luecken.length ? "s-warn" : "s-ok"}" style="margin-left:6px">${luecken.length} ohne durchgängigen SupMan</span></h2>
+      <h2 style="margin-top:14px">Kunden ab ${min} offenen Calls <span class="pill ${luecken.length ? "s-warn" : "s-ok"}" style="margin-left:6px">${luecken.length} ohne durchgängigen SupMan</span></h2>
       <p class="sub">Rot markiert: Kunden ohne Supportmanager in allen zugehörigen Calls – mit Vorschlag, falls in einzelnen Calls schon jemand eingetragen ist.
         ${betreut ? `<button class="small" id="btnProtoAlle" style="margin-left:6px">${protoAlleKunden ? "Nur Lücken zeigen" : `Auch ${betreut} vollständig betreute anzeigen`}</button>` : ""}</p>
+      <div class="frow" style="margin:0 0 10px"><span class="flabel">Ab wie vielen Calls</span>
+        <input type="number" min="2" id="protoMin" value="${esc(state.protoMinCalls ?? "5")}" title="Ab dieser Anzahl offener Calls kommt ein Kunde ins Protokoll (teamweit gespeichert)">
+        <span class="hint">Datengrundlage: ${fmtN.format(callsGesamt)} Calls · ${fmtN.format(kundenGesamt)} Kunden · ${alle.length} davon ab ${min} Calls${state.internKunde ? ` (ohne ${esc(state.internKunde)})` : ""}</span></div>
       ${kTable}
     </div>
     <div class="card">
       <div class="proto-sec">Calls 2nd Level · Dauer &gt; 10 h · ohne Supportmanager</div>
       ${calls.length ? calls.map(([k, b]) => protoBlockHtml(k, b)).join("") : `<p class="empty"><b>Nichts offen.</b> Kein 2nd-Level-Call über 10 h ohne Supportmanager.</p>`}
-      <div class="proto-sec">Callsituation je Kunde (&gt; 5 offene Calls)</div>
+      <div class="proto-sec">Callsituation je Kunde (ab ${min} offenen Calls)</div>
       ${kunden.length ? kunden.map(([k, b]) => protoBlockHtml(k, b)).join("") : `<p class="empty"><b>Nichts offen.</b></p>`}
     </div>`;
   view.querySelector("#btnProtoCopy").addEventListener("click", e =>
     copyHtml(buildProtoHtml(), "(Protokoll: bitte HTML-Einfügen verwenden)", e.target));
   view.querySelector("#btnProtoAlle")?.addEventListener("click", () => { protoAlleKunden = !protoAlleKunden; render(); });
+  view.querySelector("#protoMin")?.addEventListener("change", e => {
+    state.protoMinCalls = String(Math.max(2, Number(e.target.value) || 5));
+    touch("cfg|protoMinCalls"); saveState(); render();
+  });
   view.querySelectorAll("[data-prow]").forEach(inp => inp.addEventListener("change", () => {
     const [key, i] = inp.dataset.prow.split("|");
     const b = protoGet(key); if (!b || !b.rows[+i]) return;
