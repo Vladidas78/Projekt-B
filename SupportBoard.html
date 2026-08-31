@@ -162,6 +162,13 @@
   .wf-badge { display: inline-block; font-size: 11px; font-weight: 650; border-radius: 6px; padding: 1px 7px; margin: 1px 3px 1px 0; background: var(--accent-soft); color: var(--accent); border: none; cursor: pointer; }
   .wf-badge.done { background: var(--surface-2); color: var(--good-text); }
   .wf-badge:hover { filter: brightness(1.1); }
+  /* Sync-Banner: Unverbunden-/Störungs-Zustand ist unübersehbar */
+  #syncBanner { display: flex; align-items: center; gap: 12px; padding: 9px 22px; font-size: 13.5px; font-weight: 600; color: #fff; background: var(--crit); position: sticky; top: 0; z-index: 55; }
+  #syncBanner.warn { background: #b57e00; }
+  #syncBanner.slim { padding: 4px 22px; font-size: 12px; font-weight: 500; }
+  #syncBanner button { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.4); color: #fff; padding: 3px 12px; font-size: 12.5px; border-radius: 7px; }
+  #syncBanner button:hover { background: rgba(255,255,255,0.28); }
+  #syncBanner .bx { margin-left: auto; border: none; background: none; font-size: 15px; padding: 0 4px; }
   .sm-badge { display: inline-block; font-size: 10px; font-weight: 650; border-radius: 5px; padding: 0 5px; margin-left: 5px; background: var(--accent-soft); color: var(--accent); vertical-align: 1px; }
   .cmt-head { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; min-height: 14px; }
   .cmt-meta { font-size: 10.5px; color: var(--muted); margin-left: auto; white-space: nowrap; }
@@ -322,6 +329,7 @@
     </div>
   </aside>
   <div class="main">
+  <div id="syncBanner" class="hidden"></div>
   <div id="srcbarStash" class="hidden">
   <div class="srcbar" id="srcbar">
     <span class="chip" id="chipAll"><span class="dot"></span><span id="chipAllText">Dashboard: keine Datei</span></span>
@@ -337,6 +345,7 @@
     <div class="grp">
       <button class="small" id="btnTeamFile" title="Gemeinsame Team-Datei: gleicht Haken, Kommentare und Stammdaten im Team ab">Team-Speicher …</button>
       <span class="hint" id="teamFileInfo"></span>
+      <button class="small hidden" id="btnForceShared" title="Nur für den Notfall: die (defekte) Team-Datei bewusst mit dem lokalen Stand neu schreiben">Notfall: Team-Datei neu schreiben</button>
     </div>
     <button id="btnResume" class="small primary hidden" title="Die zuletzt überwachten Dateien wieder aktivieren (der Browser fragt einmal nach Erlaubnis)">Überwachung fortsetzen</button>
     <span class="hint">… oder die Datei irgendwo ins Board ziehen</span>
@@ -386,7 +395,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.13";
+const VERSION = "1.14";
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -536,7 +545,13 @@ function normalizeState() {
 }
 function saveState() {
   state.configStand = new Date().toISOString();
-  try { localStorage.setItem("smbState_v1", JSON.stringify(state)); } catch (e) { /* Speicher blockiert */ }
+  try { localStorage.setItem("smbState_v1", JSON.stringify(state)); }
+  catch (e) { // Speicher voll/blockiert: laut werden statt still veralten
+    if (!saveState._warned || Date.now() - saveState._warned > 60000) {
+      saveState._warned = Date.now();
+      toast("⚠ Lokales Speichern fehlgeschlagen (Browser-Speicher voll?) – Änderungen könnten beim Neuladen fehlen!");
+    }
+  }
   updateVerInfo();
   if (typeof scheduleSharedWrite === "function") scheduleSharedWrite();
 }
@@ -562,9 +577,16 @@ function backupMergeIn(slot) { // ergänzt nur, was heute fehlt (ACKs, Kommentar
     const b = JSON.parse(localStorage.getItem("smbBackup_" + slot) || "null");
     if (!b?.state) return -1;
     let n = 0;
+    const bt = b.state.touch || {};
     for (const m of ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "hist", "protokoll"]) {
       for (const [k, v] of Object.entries(b.state[m] || {})) {
-        if (state[m] && state[m][k] === undefined) { state[m][k] = v; touch(`${m}|${k}`); n++; }
+        if (state[m] && state[m][k] === undefined) {
+          state[m][k] = v;
+          // Original-Zeitstempel aus der Sicherung übernehmen: so gewinnen bewusste
+          // (jüngere) Team-Löschungen weiterhin, verlorene Einträge kommen aber zurück.
+          state.touch[`${m}|${k}`] = bt[`${m}|${k}`] || (Date.now() - 3600000);
+          n++;
+        }
       }
     }
     if (n) saveState();
@@ -787,8 +809,9 @@ async function tryRestoreWatch() {
   }
   const ht = hs.TEAM;
   if (ht) {
+    teamKnown = true;
     const perm = await ht.queryPermission({ mode: "readwrite" });
-    if (perm === "granted") { sharedHandle = ht; syncShared(); }
+    if (perm === "granted") { sharedHandle = ht; firstMergeDone = false; syncShared(); }
     else { pendingSharedHandle = ht; needGesture = true; }
     updateTeamInfo();
   }
@@ -821,7 +844,7 @@ async function resumeWatch() {
   if (pendingSharedHandle) {
     try {
       const perm = await pendingSharedHandle.requestPermission({ mode: "readwrite" });
-      if (perm === "granted") { sharedHandle = pendingSharedHandle; pendingSharedHandle = null; await syncShared(); updateTeamInfo(); }
+      if (perm === "granted") { sharedHandle = pendingSharedHandle; pendingSharedHandle = null; firstMergeDone = false; await syncShared(); updateTeamInfo(); }
     } catch (e) { /* abgelehnt */ }
   }
   armWatch();
@@ -837,10 +860,20 @@ async function resumeWatch() {
 const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll"];
 const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "rules", "filters", "cols", "gruppenFilter"];
 let sharedHandle = null, pendingSharedHandle = null, sharedDirty = false, sharedBusy = false, sharedLastSync = null;
+/* Härtung v1.14: geschrieben wird NUR nach einem erfolgreichen Lese-/Merge-Zyklus.
+   Lese- oder Parse-Fehler (Datei gesperrt, halb geschrieben, defekt) führen nie mehr
+   dazu, dass der lokale Stand die Team-Datei überschreibt – früher der Haupt-Verlustpfad. */
+let firstMergeDone = false;   // Schreibquarantäne: erst nach erstem erfolgreichen Lesen
+let sharedReadFail = 0;       // Zähler fehlgeschlagener Lese-Zyklen in Folge
+let sharedCorrupt = false;    // Team-Datei ist dauerhaft nicht lesbar (Parse-Fehler)
+let sharedGenInfo = null;     // {gen, writer, ts} – wer hat die Datei zuletzt geschrieben
+let offlineEdits = 0;         // Änderungen, die auf die Team-Verbindung warten
+let bannerMuted = false;      // „bewusst offline“ – Banner schmal statt rot
+let teamKnown = false;        // ein Team-Handle ist (aus früherer Sitzung) bekannt
 function sharedPayload() {
   const maps = {}; for (const m of SHARED_MAPS) maps[m] = state[m];
   const cfg = {}; for (const c of SHARED_CFG) cfg[c] = state[c];
-  return { v: 1, touch: state.touch, maps, cfg, miHistory: state.miHistory };
+  return { v: 1, minVersion: "1.14", touch: state.touch, maps, cfg, miHistory: state.miHistory };
 }
 function mergeShared(remote) {
   const rt = remote.touch || {};
@@ -880,38 +913,109 @@ async function syncShared() {
     try {
       const f = await sharedHandle.getFile();
       const txt = await f.text();
-      if (txt.trim()) remote = JSON.parse(txt);
-    } catch (e) { /* Datei neu oder gerade im Schreiben – nächster Zyklus */ }
+      if (txt.trim()) remote = JSON.parse(txt); // leere Datei = gültige Erstbefüllungs-Basis
+      sharedReadFail = 0; sharedCorrupt = false;
+    } catch (e) {
+      // Lesen fehlgeschlagen oder Datei defekt: NIEMALS schreiben – nächster Zyklus versucht es erneut.
+      sharedReadFail++;
+      if (e instanceof SyntaxError) sharedCorrupt = true;
+      console.warn("Team-Abgleich: Lesen fehlgeschlagen", e);
+      updateTeamInfo();
+      return;
+    }
     let res = { changed: false, localNewer: sharedDirty || !remote };
-    if (remote) res = mergeShared(remote);
+    if (remote) {
+      res = mergeShared(remote);
+      if (remote.gen) sharedGenInfo = { gen: remote.gen, writer: remote.writer, ts: remote.writtenAt };
+    }
+    firstMergeDone = true; // erfolgreich gelesen (auch leer) – ab jetzt darf geschrieben werden
     if (res.changed) {
       try { localStorage.setItem("smbState_v1", JSON.stringify(state)); } catch (e) {}
       renderUserChip(); render();
     }
-    if (res.localNewer) {
+    if (res.localNewer && firstMergeDone) {
+      const payload = sharedPayload();
+      payload.gen = (remote?.gen || 0) + 1;
+      payload.writer = currentUser().k || "?";
+      payload.writtenAt = Date.now();
       const w = await sharedHandle.createWritable();
-      await w.write(JSON.stringify(sharedPayload()));
+      await w.write(JSON.stringify(payload));
       await w.close();
-      sharedDirty = false;
+      sharedDirty = false; offlineEdits = 0;
+      sharedGenInfo = { gen: payload.gen, writer: payload.writer, ts: payload.writtenAt };
     }
     sharedLastSync = new Date();
     updateTeamInfo();
-  } catch (e) { console.warn("Team-Abgleich:", e); }
+  } catch (e) { console.warn("Team-Abgleich:", e); sharedReadFail++; updateTeamInfo(); }
   finally { sharedBusy = false; }
+}
+/* Notfall-Override (Verwaltung): dauerhaft defekte Team-Datei bewusst mit dem
+   lokalen Stand neu schreiben – der einzige Weg, an der Lese-Sperre vorbeizukommen. */
+async function forceWriteShared() {
+  if (!sharedHandle) return false;
+  try {
+    const payload = sharedPayload();
+    payload.gen = (sharedGenInfo?.gen || 0) + 1;
+    payload.writer = currentUser().k || "?";
+    payload.writtenAt = Date.now();
+    const w = await sharedHandle.createWritable();
+    await w.write(JSON.stringify(payload));
+    await w.close();
+    sharedDirty = false; sharedCorrupt = false; sharedReadFail = 0; firstMergeDone = true; offlineEdits = 0;
+    sharedLastSync = new Date();
+    sharedGenInfo = { gen: payload.gen, writer: payload.writer, ts: payload.writtenAt };
+    updateTeamInfo();
+    return true;
+  } catch (e) { alert("Neu schreiben fehlgeschlagen: " + (e?.message || e)); return false; }
 }
 let sharedWriteTimer = null;
 function scheduleSharedWrite() {
-  if (!sharedHandle) return;
+  if (!sharedHandle) {
+    // Unverbunden gearbeitet: Änderung bleibt lokal, wird gezählt und beim
+    // nächsten erfolgreichen Verbinden regulär gemergt und geteilt.
+    if (pendingSharedHandle || teamKnown) { offlineEdits++; sharedDirty = true; updateSyncBanner(); }
+    return;
+  }
   sharedDirty = true;
   clearTimeout(sharedWriteTimer);
   sharedWriteTimer = setTimeout(syncShared, 1000);
 }
+function genInfoText() {
+  return sharedGenInfo ? `Stand von ${sharedGenInfo.writer ?? "?"} ${sharedGenInfo.ts ? fmtT.format(new Date(sharedGenInfo.ts)) : ""}`.trim() : "";
+}
 function updateTeamInfo() {
   updateMini();
   const el = document.getElementById("teamFileInfo");
-  if (sharedHandle) el.textContent = `${sharedHandle.name} ✓${sharedLastSync ? " · Abgleich " + fmtT.format(sharedLastSync) : ""}`;
+  const gi = genInfoText();
+  if (sharedHandle && sharedCorrupt) el.innerHTML = `${esc(sharedHandle.name)} · <span class="veraltet">Datei nicht lesbar (defekt?)</span> – Abgleich pausiert, unten „Notfall“ nutzen`;
+  else if (sharedHandle && sharedReadFail >= 2) el.innerHTML = `${esc(sharedHandle.name)} · <span class="veraltet">Lesen fehlgeschlagen (${sharedReadFail}×)</span> – es wird NICHT geschrieben, nächster Versuch läuft`;
+  else if (sharedHandle) el.textContent = `${sharedHandle.name} ✓${sharedLastSync ? " · Abgleich " + fmtT.format(sharedLastSync) : ""}${gi ? " · " + gi : ""}`;
   else if (pendingSharedHandle) el.textContent = "verbunden – „Überwachung fortsetzen“ klicken";
   else el.textContent = "";
+  const nf = document.getElementById("btnForceShared");
+  if (nf) nf.classList.toggle("hidden", !(sharedHandle && (sharedCorrupt || sharedReadFail >= 3)));
+}
+/* Unübersehbares Banner, solange Änderungen das Team nicht erreichen können */
+function updateSyncBanner() {
+  const b = document.getElementById("syncBanner");
+  if (!b) return;
+  const wart = offlineEdits ? ` · ${offlineEdits} Änderung${offlineEdits === 1 ? "" : "en"} warten` : "";
+  let html = null, cls = "";
+  if (sharedHandle && sharedCorrupt) {
+    html = `⚠ Team-Datei nicht lesbar – Abgleich pausiert, es wird nichts überschrieben.${wart} <button id="bnAdmin">Zur Verwaltung</button>`;
+  } else if (sharedHandle && sharedReadFail >= 2) {
+    html = `⚠ Team-Abgleich gestört (Lesen fehlgeschlagen) – Änderungen bleiben vorerst lokal.${wart}`;
+  } else if (pendingSharedHandle) {
+    if (bannerMuted) { html = `Offline – Änderungen bleiben lokal${wart}. <button id="bnConnect">Jetzt verbinden</button>`; cls = "warn slim"; }
+    else html = `⚠ Team-Speicher NICHT verbunden – Änderungen bleiben nur lokal${wart}. <button id="bnConnect">Jetzt verbinden</button> <button class="bx" id="bnMute" title="Bewusst offline arbeiten – Banner verkleinern">×</button>`;
+  }
+  if (html === null) { b.classList.add("hidden"); return; }
+  b.className = cls;
+  b.innerHTML = html;
+  b.classList.remove("hidden");
+  b.querySelector("#bnConnect")?.addEventListener("click", resumeWatch);
+  b.querySelector("#bnMute")?.addEventListener("click", () => { bannerMuted = true; updateSyncBanner(); });
+  b.querySelector("#bnAdmin")?.addEventListener("click", () => { activeTab = "admin"; render(); });
 }
 async function connectShared() {
   if (!window.showOpenFilePicker) { alert("Der Team-Speicher benötigt Chrome oder Edge."); return; }
@@ -926,6 +1030,7 @@ async function connectShared() {
     const perm = await h.requestPermission({ mode: "readwrite" });
     if (perm !== "granted") return;
     sharedHandle = h; pendingSharedHandle = null;
+    teamKnown = true; firstMergeDone = false; // Quarantäne: erst lesen/mergen, dann schreiben
     saveHandle("TEAM", h);
     sharedDirty = true;
     await syncShared();
@@ -1006,9 +1111,15 @@ function updateMini() {
   }
   const tDot = document.getElementById("miniTeamDot"), tTxt = document.getElementById("miniTeamText");
   if (!tDot) return;
-  if (sharedHandle) { tDot.className = "dot live"; tTxt.textContent = "Team-Speicher · " + (sharedLastSync ? "Abgleich " + fmtT.format(sharedLastSync) : "verbunden"); }
-  else if (pendingSharedHandle) { tDot.className = "dot demo"; tTxt.textContent = "Team-Speicher · fortsetzen …"; }
+  if (sharedHandle && (sharedCorrupt || sharedReadFail >= 2)) { tDot.className = "dot stale"; tTxt.textContent = "Team-Speicher · Abgleich gestört!"; }
+  else if (sharedHandle) {
+    tDot.className = "dot live";
+    const gi = genInfoText();
+    tTxt.textContent = "Team-Speicher · " + (sharedLastSync ? "Abgleich " + fmtT.format(sharedLastSync) : "verbunden") + (gi ? " · " + gi : "");
+  }
+  else if (pendingSharedHandle) { tDot.className = "dot stale"; tTxt.textContent = "Team-Speicher · NICHT verbunden!"; }
   else { tDot.className = "dot"; tTxt.textContent = "Team-Speicher · nicht verbunden"; }
+  updateSyncBanner();
 }
 
 /* Datei-Überwachung */
@@ -2742,6 +2853,10 @@ document.getElementById("btnResume").addEventListener("click", resumeWatch);
 document.getElementById("btnResumeMini").addEventListener("click", resumeWatch);
 document.getElementById("srcMini").addEventListener("click", () => { activeTab = "admin"; markMode = false; closeColPopover(); render(); });
 document.getElementById("btnTeamFile").addEventListener("click", connectShared);
+document.getElementById("btnForceShared").addEventListener("click", async () => {
+  if (!confirm("NOTFALL: Die Team-Datei wird komplett mit dem lokalen Stand dieses PCs neu geschrieben.\n\nNur verwenden, wenn die Datei dauerhaft defekt ist. Sicher fortfahren?")) return;
+  if (await forceWriteShared()) toast("Team-Datei neu geschrieben – Abgleich läuft wieder");
+});
 setInterval(syncShared, 15000); // Team-Abgleich im Hintergrund (liest die Datei, schreibt nur bei Änderungen)
 // Sofort-Abgleich, wenn man ins Board wechselt – wer hinschaut, sieht den frischen Stand
 window.addEventListener("focus", () => syncShared());
