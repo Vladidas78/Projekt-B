@@ -152,6 +152,16 @@
   .proto-side { display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
   .proto-side input[type="text"] { width: 76px; padding: 3px 8px; font-size: 12.5px; }
   .proto-sec { font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); font-weight: 650; margin: 16px 0 8px; }
+  /* Suche + Mehrfach-Kennzeichnung + ACK-Hinweise */
+  .side-search { padding: 0 6px 8px; }
+  .side-search input { width: 100%; background: var(--side-bg2); border: 1px solid var(--side-line); color: var(--side-ink); border-radius: 10px; padding: 6px 12px; font-size: 12.5px; }
+  .side-search input::placeholder { color: var(--side-muted); }
+  .multi-warn { color: #e6a700; font-size: 13px; margin-left: 4px; cursor: help; }
+  .ack-x { font-size: 11px; color: var(--muted); margin-top: 2px; max-width: 210px; }
+  .ack-x b { color: var(--ink-2); font-weight: 600; }
+  .wf-badge { display: inline-block; font-size: 11px; font-weight: 650; border-radius: 6px; padding: 1px 7px; margin: 1px 3px 1px 0; background: var(--accent-soft); color: var(--accent); border: none; cursor: pointer; }
+  .wf-badge.done { background: var(--surface-2); color: var(--good-text); }
+  .wf-badge:hover { filter: brightness(1.1); }
   .sm-badge { display: inline-block; font-size: 10px; font-weight: 650; border-radius: 5px; padding: 0 5px; margin-left: 5px; background: var(--accent-soft); color: var(--accent); vertical-align: 1px; }
   .cmt-head { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; min-height: 14px; }
   .cmt-meta { font-size: 10.5px; color: var(--muted); margin-left: auto; white-space: nowrap; }
@@ -299,6 +309,7 @@
       <span class="mark">SB</span>
       <span class="side-title">Supportmanagement<br>Board</span>
     </div>
+    <div class="side-search"><input id="globalSearch" type="search" placeholder="Suche Call / Kunde …" title="Call-Nummer, Kunde, Titel oder Bearbeiter suchen – zeigt, wo der Call im Controlling auftaucht"></div>
     <nav class="nav" id="tabs"></nav>
     <div class="side-foot">
       <button class="srcmini" id="srcMini" title="Status der Datenquellen – klicken für Details und Verknüpfen (Verwaltung)">
@@ -375,7 +386,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.12";
+const VERSION = "1.13";
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -528,6 +539,47 @@ function saveState() {
   try { localStorage.setItem("smbState_v1", JSON.stringify(state)); } catch (e) { /* Speicher blockiert */ }
   updateVerInfo();
   if (typeof scheduleSharedWrite === "function") scheduleSharedWrite();
+}
+/* Tägliche Notfall-Sicherung: 7 rotierende Kopien des lokalen Stands (je Wochentag eine).
+   Wiederherstellung in der Verwaltung – entweder nur Fehlendes ergänzen oder komplett. */
+function dailyBackup() {
+  try {
+    const k = "smbBackup_" + new Date().getDay();
+    const ex = JSON.parse(localStorage.getItem(k) || "null");
+    if (ex?.date === todayKey()) return;
+    localStorage.setItem(k, JSON.stringify({ date: todayKey(), state }));
+  } catch (e) { /* Speicher knapp – Sicherung optional */ }
+}
+function backupSlots() {
+  const out = [];
+  for (let i = 0; i < 7; i++) {
+    try { const b = JSON.parse(localStorage.getItem("smbBackup_" + i) || "null"); if (b?.date) out.push({ slot: i, date: b.date }); } catch (e) {}
+  }
+  return out.sort((a, b) => b.date.localeCompare(a.date));
+}
+function backupMergeIn(slot) { // ergänzt nur, was heute fehlt (ACKs, Kommentare, Historie …) – als neuester Stand fürs Team
+  try {
+    const b = JSON.parse(localStorage.getItem("smbBackup_" + slot) || "null");
+    if (!b?.state) return -1;
+    let n = 0;
+    for (const m of ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "hist", "protokoll"]) {
+      for (const [k, v] of Object.entries(b.state[m] || {})) {
+        if (state[m] && state[m][k] === undefined) { state[m][k] = v; touch(`${m}|${k}`); n++; }
+      }
+    }
+    if (n) saveState();
+    return n;
+  } catch (e) { return -1; }
+}
+function backupRestore(slot) {
+  try {
+    const b = JSON.parse(localStorage.getItem("smbBackup_" + slot) || "null");
+    if (!b?.state) return false;
+    state = { ...structuredClone(DEFAULT_STATE), ...b.state };
+    normalizeState();
+    saveState();
+    return true;
+  } catch (e) { return false; }
 }
 function updateVerInfo() {
   const d = state.configStand ? fmtD.format(new Date(state.configStand)) : "–";
@@ -1160,8 +1212,13 @@ function ackInfo(r, wf) {
   return { done: true, a, changed: a.w != null && a.w !== watchVal(r, wf) };
 }
 function setAck(r, wf, on) {
-  if (on) state.acks[ackKey(r, wf)] = { d: todayKey(), ts: Date.now(), w: watchVal(r, wf), by: currentUser().k || undefined };
-  else delete state.acks[ackKey(r, wf)];
+  if (on) {
+    // Grund und dessen Zeitstempel eines früheren (abgelaufenen) ACKs bleiben erhalten –
+    // die Vorarbeit soll beim erneuten Abhaken nicht verloren gehen.
+    const alt = state.acks[ackKey(r, wf)];
+    state.acks[ackKey(r, wf)] = { d: todayKey(), ts: Date.now(), w: watchVal(r, wf), by: currentUser().k || undefined,
+      ...(alt?.note ? { note: alt.note, noteTs: alt.noteTs, noteBy: alt.noteBy } : {}) };
+  } else delete state.acks[ackKey(r, wf)];
   touch("acks|" + ackKey(r, wf));
   logHist(r.Call, { t: on ? "ack" : "ackoff", wf });
   saveState();
@@ -1599,6 +1656,34 @@ function touch(k) { state.touch[k] = Date.now(); }
 function wfCandidates(w) { return allRows().filter(w.filter); }
 function wfRows(w) { return applyFilters(w.id, wfCandidates(w)).sort(w.sort); }
 function wfOpenCount(w) { const rows = wfRows(w); return rows.filter(r => !ackInfo(r, w.id).done).length; }
+/* In welchen Tageslisten steht ein Call gerade? (einmal je Render berechnet) */
+let memberMap = new Map();
+function buildMemberMap() {
+  memberMap = new Map();
+  for (const w of WF) for (const r of wfRows(w)) {
+    const k = String(r.Call);
+    if (!memberMap.has(k)) memberMap.set(k, []);
+    memberMap.get(k).push(w.id);
+  }
+}
+function multiWarn(call, curWf) {
+  const andere = (memberMap.get(String(call)) ?? []).filter(id => id !== curWf);
+  if (!andere.length) return "";
+  const namen = andere.map(id => WF.find(w => w.id === id)?.title ?? id).join(", ");
+  return `<span class="multi-warn" title="Dieser Call steht auch in: ${esc(namen)}">⚠</span>`;
+}
+/* Gültige ACKs des Calls aus anderen Tageslisten – der Grund soll überall sichtbar sein */
+function otherAcks(r, curWf) {
+  const out = [];
+  for (const w of WF) {
+    if (w.id === curWf) continue;
+    const a = state.acks[`${r.Call}|${w.id}`];
+    if (!a) continue;
+    const valid = a.until ? todayKey() <= a.until : a.d === todayKey();
+    if (valid) out.push({ w, a });
+  }
+  return out;
+}
 
 /* Kennzahlen + Tages-Schnappschuss für Trends */
 function computeKpis() {
@@ -1747,8 +1832,14 @@ function wfRowHtml(r, wf) {
       ${noteMeta ? `<span class="hint">${noteMeta}</span>` : ""}
     </div>` : ""}` : "";
   const changed = a.done && a.changed ? ` <span class="veraltet" title="${esc(WF_WATCH[wf.id]?.label ?? "Der überwachte Teil")} hat sich seit dem ACK geändert – das ACK bleibt bestehen.">geändert!</span>` : "";
+  // Abgelaufenes ACK: die Vorarbeit (Datum, Kürzel, Grund) bleibt sichtbar
+  const alt = !a.done ? state.acks[akey] : null;
+  const altHtml = alt ? `<div class="ack-x" title="Das ACK ist abgelaufen (galt ${alt.until ? "bis " + esc(fmtD.format(new Date(alt.until))) : "nur am Tag des Setzens"}). Beim erneuten Abhaken bleibt der Grund erhalten.">zuletzt ACK ${alt.ts ? esc(fmtD.format(new Date(alt.ts))) : esc(alt.d ?? "")}${alt.by ? " · " + esc(alt.by) : ""}${alt.note ? `<br><b>„${esc(alt.note)}“</b>` : ""}</div>` : "";
+  // Gültige ACKs aus anderen Tageslisten: Grund callübergreifend zeigen
+  const xHtml = otherAcks(r, wf.id).map(({ w, a: xa }) =>
+    `<div class="ack-x" title="In der Liste „${esc(w.title)}“ per ACK bestätigt${xa.by ? " von " + esc(xa.by) : ""}${xa.until ? ", gilt bis " + esc(fmtD.format(new Date(xa.until))) : ""}">ACK in „${esc(w.title)}“${xa.note ? `: <b>„${esc(xa.note)}“</b>` : ""}</div>`).join("");
   return `<tr data-call="${esc(r.Call)}" class="${a.done ? "acked" : ""}">
-    <td class="nowrap"><input type="checkbox" data-ack="${esc(r.Call)}" ${a.done ? "checked" : ""} title="ACK (acknowledged) – ohne Datum nur für heute">${histBtn(r.Call)}${changed}${ackDetails}</td>
+    <td class="nowrap"><input type="checkbox" data-ack="${esc(r.Call)}" ${a.done ? "checked" : ""} title="ACK (acknowledged) – ohne Datum nur für heute">${histBtn(r.Call)}${multiWarn(r.Call, wf.id)}${changed}${ackDetails}${altHtml}${xHtml}</td>
     ${wfCols(wf.id).map(k => COLS[k].cell(r)).join("")}
     <td class="nowrap"><button class="small" data-teams="${esc(r.Call)}" title="Teams-Nachricht kopieren">Teams</button>
         <button class="small" data-wvl="${esc(r.Call)}" title="Wiedervorlage-Text kopieren">WVL</button></td>
@@ -2122,6 +2213,54 @@ function renderExtReakt(view) {
   bindFilterPanel(view);
 }
 
+/* ================= Globale Suche (Call / Kunde) ================= */
+let searchQuery = "";
+function renderSuche(view) {
+  const q = searchQuery.trim().toLowerCase();
+  const hits = !q ? [] : allRows().filter(r =>
+    String(r.Call ?? "").toLowerCase().includes(q) ||
+    String(r.Kunde ?? "").toLowerCase().includes(q) ||
+    String(r.Titel ?? "").toLowerCase().includes(q) ||
+    String(r.Bearbeiter ?? "").toLowerCase().includes(q));
+  const miSet = new Set([...mittwochRows("PD"), ...mittwochRows("SD")].map(r => String(r.Call)));
+  const frSet = new Set([...freitagRows("PD"), ...freitagRows("SD")].map(r => String(r.Call)));
+  const exSet = new Set(extReaktRows().map(r => String(r.Call)));
+  const prSet = new Set(protoCallCandidates().map(r => String(r.Call)));
+  const badges = r => {
+    const k = String(r.Call);
+    let h = (memberMap.get(k) ?? []).map(id => {
+      const w = WF.find(x => x.id === id);
+      const done = ackInfo(r, id).done;
+      return `<button class="wf-badge ${done ? "done" : ""}" data-jump="${id}|${esc(k)}" title="Zur Liste „${esc(w.title)}“ springen (gefiltert auf diesen Call)${done ? " – per ACK bestätigt" : ""}">${esc(w.title)}${done ? " ✓" : ""}</button>`;
+    }).join("");
+    if (miSet.has(k)) h += `<button class="wf-badge" data-jump="mi|" title="Kandidat der Mittwochsmail">Mittwochsmail</button>`;
+    if (frSet.has(k)) h += `<button class="wf-badge" data-jump="fr|" title="In der Freitagsmail enthalten">Freitagsmail</button>`;
+    if (exSet.has(k)) h += `<button class="wf-badge" data-jump="extreakt|" title="Keine externe Reaktion innerhalb des Limits">Keine ext. Reaktion</button>`;
+    if (prSet.has(k)) h += `<button class="wf-badge" data-jump="proto|" title="Im Supportmanager-Protokoll (2nd Level > 10 h ohne SupMan)">SupMan-Protokoll</button>`;
+    return h || '<span class="hint">in keiner Controlling-Liste</span>';
+  };
+  view.innerHTML = `<div class="card">
+    <h2>Suche <span class="pill s-ok" style="margin-left:6px">${hits.length} Treffer</span></h2>
+    <p class="sub">Suchbegriff: „${esc(searchQuery)}“ – gefunden wird in Call-Nummer, Kunde, Titel und Bearbeiter. Die Spalte „Im Controlling“ zeigt, wo der Call gerade auftaucht; Klick springt in die Liste.</p>
+    ${hits.length ? `<div class="tscroll"><table class="list"><thead><tr>
+      <th>Call</th><th>Bereich</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th><th>LT</th><th>Im Controlling</th></tr></thead><tbody>
+    ${hits.slice(0, 80).map(r => `<tr>
+      <td class="num">${esc(r.Call)}</td><td class="nowrap">${esc(r.Quelle || "–")}</td>
+      <td class="nowrap" title="${esc(resolveName(r.Bearbeiter) ?? "")}">${esc(r.Bearbeiter ?? "–")}</td>
+      <td class="nowrap">${esc(r.Kunde ?? "–")}${smBadge(r)}</td>
+      <td class="titlecell">${esc(r.Titel ?? "–")}</td><td class="nowrap">${esc(r.Status ?? "–")}</td>
+      <td class="num">${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "–"}</td>
+      <td>${badges(r)}</td></tr>`).join("")}
+    </tbody></table></div>${hits.length > 80 ? '<p class="hint">Nur die ersten 80 Treffer angezeigt – Suchbegriff verfeinern.</p>' : ""}`
+    : `<p class="empty">${q ? "Keine Treffer im aktuellen Datenstand." : "Suchbegriff oben links eingeben."}</p>`}
+  </div>`;
+  view.querySelectorAll("[data-jump]").forEach(b => b.addEventListener("click", () => {
+    const [tab, call] = b.dataset.jump.split("|");
+    if (call && WF.some(w => w.id === tab)) { const u = tUI(tab); u.quick = { call }; }
+    activeTab = tab; render();
+  }));
+}
+
 /* ================= Supportmanager-Protokoll (Montagsmeeting) =================
    Automatisch befüllt aus zwei Quellen:
    1. Calls im 2nd Level ohne Supportmanager mit Dauer > 10h (je Call ein Block)
@@ -2430,6 +2569,16 @@ function renderAdmin(view) {
       <p class="sub">Dashboard-Datei (eine Liste, alle Gruppen) verknüpfen, Aktualisierungs-Intervall und gemeinsame Team-Datei. Der kompakte Status steht unten links in der Seitenleiste.
       Nach einem Neustart genügt ein beliebiger Klick (z. B. die Anmeldung), um die Überwachung fortzusetzen – im Browser-Dialog „Bei jedem Besuch zulassen“ wählen, dann entfällt auch diese Nachfrage.</p>
       <div id="srcbarHost"></div>
+      <details class="fpanel" style="margin-top:10px"><summary>Der Browser fragt immer wieder nach der Datei-Freigabe? (Hilfe)</summary>
+        <p class="hint" style="margin:8px 0 4px">Die Verknüpfung zu Dashboard- und Team-Datei merkt sich der <b>Browser</b>, nicht das Board. Damit die Nachfrage dauerhaft verschwindet:</p>
+        <ol class="hint" style="margin:4px 0 8px 18px;padding:0;display:grid;gap:4px">
+          <li>Beim Freigabe-Dialog <b>„Bei jedem Besuch zulassen“</b> wählen (Chrome/Edge ab Version 122). Erscheint nur „Zulassen“, bietet der Browser bzw. die Firmenrichtlinie die dauerhafte Freigabe nicht an – dann bleibt es bei einem Klick pro Sitzung.</li>
+          <li>Der Browser darf <b>Websitedaten beim Schließen nicht löschen</b> (Einstellung „Cookies und Websitedaten beim Beenden löschen“ bzw. entsprechende IT-Richtlinie). Sonst vergisst er die Verknüpfung komplett und die Dateien müssen neu gewählt werden.</li>
+          <li>Das Board immer über <b>denselben Pfad</b> öffnen (eine feste Verknüpfung) – nicht mal vom Share, mal aus einer lokalen Kopie.</li>
+          <li>Am einfachsten: den <b>Tab offen lassen</b> – solange er offen ist, fragt niemand nach.</li>
+        </ol>
+        <p class="hint">Nach dem Öffnen genügt sonst ein beliebiger Klick ins Board, um die Überwachung fortzusetzen.</p>
+      </details>
     </div>
     <div class="card">
       <h2>Personen (Kürzel → Name → E-Mail)</h2>
@@ -2482,6 +2631,13 @@ function renderAdmin(view) {
         <td><button class="small" data-fgdel="${i}" title="Filtergruppe entfernen">✕</button></td></tr>`).join("")}
       </tbody></table>
       <div class="btnrow"><button class="small" id="btnFgAdd">+ Filtergruppe</button></div>
+      <h2 style="margin-top:18px">Notfall-Sicherung (automatisch, lokal)</h2>
+      <p class="sub">Jeden Tag wird der lokale Stand gesichert (7 Tage rollierend, nur auf diesem PC). „Fehlendes ergänzen“ spielt verschwundene ACKs, Gründe und Kommentare zurück, ohne Aktuelles zu überschreiben – und teilt sie wieder mit dem Team.</p>
+      ${backupSlots().length ? `<table class="grid"><tbody>${backupSlots().map(s => `<tr>
+        <td style="width:120px">${esc(fmtIsoD(s.date))}</td>
+        <td><button class="small" data-bmerge="${s.slot}" title="ACKs, Gründe, Kommentare und Historie aus dieser Sicherung ergänzen, wo sie heute fehlen">Fehlendes ergänzen</button>
+            <button class="small" data-brest="${s.slot}" title="Kompletten lokalen Stand dieser Sicherung wiederherstellen (überschreibt den aktuellen)">Komplett wiederherstellen</button></td></tr>`).join("")}
+      </tbody></table>` : `<p class="hint">Noch keine Sicherung vorhanden – die erste entsteht automatisch.</p>`}
       <div class="btnrow" style="margin-top:16px"><button class="small" id="btnDemo2">Beispieldaten laden</button><button class="small" id="btnReset">Alles zurücksetzen</button></div>
     </div>
   </div>`;
@@ -2513,6 +2669,16 @@ function renderAdmin(view) {
     (state.gruppenFilter ??= []).push({ name: "", members: "" });
     touch("cfg|gruppenFilter"); saveState(); render();
   });
+  view.querySelectorAll("[data-bmerge]").forEach(b => b.addEventListener("click", () => {
+    const n = backupMergeIn(+b.dataset.bmerge);
+    if (n < 0) alert("Sicherung konnte nicht gelesen werden.");
+    else { toast(n ? `${n} Einträge aus der Sicherung ergänzt` : "Nichts zu ergänzen – alles schon vorhanden"); render(); }
+  }));
+  view.querySelectorAll("[data-brest]").forEach(b => b.addEventListener("click", () => {
+    if (!confirm("Wirklich den kompletten lokalen Stand dieser Sicherung wiederherstellen? Der aktuelle Stand wird überschrieben.\nHinweis: Beim nächsten Team-Abgleich können jüngere Team-Änderungen einzelne Einträge wieder überschreiben.")) return;
+    if (backupRestore(+b.dataset.brest)) { renderUserChip(); render(); toast("Sicherung wiederhergestellt"); }
+    else alert("Sicherung konnte nicht gelesen werden.");
+  }));
   view.querySelector("#btnBackup").addEventListener("click", () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
@@ -2544,6 +2710,7 @@ function renderAdmin(view) {
 }
 
 function render() {
+  buildMemberMap();
   renderTabs();
   const view = document.getElementById("view");
   document.getElementById("srcbarStash").appendChild(srcbarEl); // vor dem Neuaufbau in Sicherheit bringen
@@ -2551,6 +2718,7 @@ function render() {
   if (activeTab === "heute") renderHeute(view);
   else if (w) renderWf(view, w);
   else if (activeTab === "extreakt") renderExtReakt(view);
+  else if (activeTab === "suche") renderSuche(view);
   else if (activeTab === "proto") renderProto(view);
   else if (activeTab === "mi") renderMi(view);
   else if (activeTab === "fr") renderFr(view);
@@ -2560,6 +2728,16 @@ function render() {
 
 /* ================= Start ================= */
 document.getElementById("chipUser").addEventListener("click", () => askUser(false));
+const searchEl = document.getElementById("globalSearch");
+let searchTimer = null;
+searchEl.addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    const v = searchEl.value.trim();
+    if (v) { searchQuery = v; activeTab = "suche"; render(); }
+    else if (activeTab === "suche") { searchQuery = ""; activeTab = "heute"; render(); }
+  }, 250);
+});
 document.getElementById("btnResume").addEventListener("click", resumeWatch);
 document.getElementById("btnResumeMini").addEventListener("click", resumeWatch);
 document.getElementById("srcMini").addEventListener("click", () => { activeTab = "admin"; markMode = false; closeColPopover(); render(); });
@@ -2569,6 +2747,7 @@ setInterval(syncShared, 15000); // Team-Abgleich im Hintergrund (liest die Datei
 window.addEventListener("focus", () => syncShared());
 document.addEventListener("visibilitychange", () => { if (!document.hidden) syncShared(); });
 restoreSources();
+dailyBackup();
 updateVerInfo();
 updateChips();
 renderUserChip();
