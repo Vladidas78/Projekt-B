@@ -18,11 +18,11 @@ Wir möchten nur diesen einen manuellen Schritt einsparen: Statt die Excel-Liste
 
 ## Was dafür benötigt wird
 
-1. **Lesender Zugriff (SELECT)** auf die vorhandene Auswertungs-/Schattendatenbank – idealerweise über ein Dienstkonto mit reinen Leserechten.
-2. **Freigabe zur Ausführung** des Skripts über die Windows-Aufgabenplanung auf einem Arbeitsplatz oder einem geeigneten Server.
-3. Ablage der Ergebnisdatei in unserem **bereits vorhandenen** Team-Verzeichnis.
+**Freigabe, ein PowerShell-Skript über die Windows-Aufgabenplanung auf meinem Arbeitsplatz ausführen zu dürfen.**
 
-Die Abfrage entspricht inhaltlich der Excel-Abfrage, die wir heute schon verwenden – es kommen keine neuen Datenfelder hinzu, die wir nicht ohnehin schon sehen.
+Zusätzliche Datenbankrechte sind nicht erforderlich: Das Skript nutzt dieselbe Abfrage und dieselben Zugriffsrechte, mit denen unsere Excel-Liste heute schon arbeitet (Windows-Authentifizierung, nur lesend). Die Aufgabe läuft ausschließlich, während ich angemeldet bin – es wird kein Kennwort hinterlegt.
+
+Die Ergebnisdatei landet in unserem bereits vorhandenen Team-Verzeichnis. Die Abfrage entspricht inhaltlich der Excel-Abfrage von heute – es kommen keine neuen Datenfelder hinzu, die wir nicht ohnehin schon sehen.
 
 ## Rahmenbedingungen
 
@@ -39,6 +39,6 @@ Die Abfrage entspricht inhaltlich der Excel-Abfrage, die wir heute schon verwend
 
 ## Bitte um Rückmeldung
 
-Falls für Punkt 1 oder 2 etwas Bestimmtes benötigt wird (Formular, Freigabe einer Führungskraft, bevorzugter Ausführungsort für die Aufgabe), gebt mir gerne kurz Bescheid – ich richte mich nach eurem Standardvorgehen.
+Falls dafür etwas Bestimmtes benötigt wird (Formular, Freigabe einer Führungskraft, bevorzugter Ausführungsort für die Aufgabe), gebt mir gerne kurz Bescheid – ich richte mich nach eurem Standardvorgehen.
 
 Für Rückfragen stehe ich jederzeit zur Verfügung; das Skript und die Abfrage kann ich vorab zur Prüfung zur Verfügung stellen.
