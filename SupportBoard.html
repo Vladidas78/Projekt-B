@@ -418,7 +418,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.15";
+const VERSION = "1.16";
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -2426,25 +2426,33 @@ function renderSuche(view) {
    Beispieldaten bleibt alles sitzungslokal (protoTemp), damit der Team-Speicher
    sauber bleibt. */
 const protoTemp = {}; // Blöcke aus Beispieldaten – nur für diese Sitzung
+let protoAlleKunden = false; // Kundenliste: nur Lücken (Standard) oder alle Kunden > 5 Calls
 function protoMeetingDate() { const d = todayStart(); return new Date(d.getTime() + ((8 - d.getDay()) % 7) * DAY); }
 function isoDateOf(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 function fmtIsoD(iso) { const m = String(iso).split("-"); return m.length === 3 ? `${m[2]}.${m[1]}.${m[0]}` : iso; }
+/* Interne Calls (Kunde MPDV) und der Pseudo-Bearbeiter gehören nicht ins Protokoll. */
+function protoRelevant(r) { return !isInternKunde(r) && !bearbeiterExcluded(r); }
 function protoCallCandidates() {
-  return allRows().filter(r => r.Quelle === "2nd" && !String(r.SupMan ?? "").trim() && (Number(r.Dauer) || 0) > 10);
+  return allRows().filter(r => protoRelevant(r) && r.Quelle === "2nd" && !String(r.SupMan ?? "").trim() && (Number(r.Dauer) || 0) > 10);
 }
 function kundenRowsMap() {
   const by = new Map();
   for (const r of allRows()) {
     const k = String(r.Kunde ?? "").trim();
-    if (!k) continue;
+    if (!k || !protoRelevant(r)) continue;
     if (!by.has(k)) by.set(k, []);
     by.get(k).push(r);
   }
   return by;
 }
-function protoKundenCandidates() { // Kunden mit mehr als 5 offenen Calls
+function protoKundenAlle() { // alle Kunden mit mehr als 5 offenen Calls
   return [...kundenRowsMap().entries()].filter(([, rows]) => rows.length > 5)
-    .map(([kunde, rows]) => ({ kunde, rows })).sort((a, b) => b.rows.length - a.rows.length);
+    .map(([kunde, rows]) => ({ kunde, rows, sm: supmanInfo(rows) })).sort((a, b) => b.rows.length - a.rows.length);
+}
+/* Fürs Protokoll zählen die Kunden, bei denen der Supportmanager NICHT in allen
+   Calls hinterlegt ist – vollständig betreute Kunden nur auf Wunsch (protoAlleKunden). */
+function protoKundenCandidates() {
+  return protoKundenAlle().filter(k => !k.sm.voll);
 }
 function supmanInfo(rows) {
   const cnt = {};
@@ -2480,6 +2488,21 @@ function protoEnsure() {
     mk("c" + r.Call, { kind: "call", call: String(r.Call), kunde: String(r.Kunde ?? ""), owner: supmanVorschlag(r.Kunde), chk: false, status: "Offen", rows: [], created: Date.now() });
   for (const { kunde } of protoKundenCandidates())
     mk("k" + kunde, { kind: "kunde", kunde, owner: supmanVorschlag(kunde), chk: false, status: "Offen", rows: [], created: Date.now() });
+  // Leere Blöcke entfernen, deren Auslöser weggefallen ist (z. B. interner Kunde,
+  // Supportmanager inzwischen überall eingetragen). Blöcke mit Notizen bleiben stehen.
+  if (allRows().length) {
+    const callOk = new Set(protoCallCandidates().map(r => "c" + r.Call));
+    const kundeOk = new Set(protoKundenCandidates().map(k => "k" + k.kunde));
+    for (const [key, b] of [...Object.entries(state.protokoll), ...Object.entries(protoTemp)]) {
+      const gebraucht = b.kind === "call" ? callOk.has(key) : kundeOk.has(key);
+      const leer = !b.rows.some(x => String(x.t ?? "").trim()) && !b.chk;
+      if (!gebraucht && leer && b.status === "Offen") {
+        delete state.protokoll[key]; delete protoTemp[key];
+        if (!demo) touch("protokoll|" + key);
+        added = true;
+      }
+    }
+  }
   // je offenem Block eine Zeile für den anstehenden Meeting-Montag (nur Datum, ohne Inhalt)
   if (allRows().length) {
     const md = isoDateOf(protoMeetingDate());
@@ -2562,26 +2585,29 @@ function protoBlockHtml(key, b) {
 }
 function renderProto(view) {
   protoEnsure();
-  const kandidaten = protoKundenCandidates();
+  const alle = protoKundenAlle();
+  const luecken = alle.filter(k => !k.sm.voll);
+  const betreut = alle.length - luecken.length;
+  const kandidaten = protoAlleKunden ? alle : luecken;
   const { calls, kunden } = protoBlocksSorted();
   const kTable = kandidaten.length ? `<div class="tscroll"><table class="list"><thead><tr>
       <th>Kunde</th><th>Offene Calls</th><th>Supportmanager</th><th>Abdeckung</th></tr></thead><tbody>
-    ${kandidaten.map(({ kunde, rows }) => {
-      const si = supmanInfo(rows);
-      const abd = si.voll ? "in allen Calls eingetragen"
-        : si.namen.length ? `<span class="veraltet">nur in ${si.belegt} von ${rows.length} Calls</span> · Vorschlag: <b>${esc(si.namen[0])}</b>`
+    ${kandidaten.map(({ kunde, rows, sm }) => {
+      const abd = sm.voll ? "in allen Calls eingetragen"
+        : sm.namen.length ? `<span class="veraltet">nur in ${sm.belegt} von ${rows.length} Calls</span> · Vorschlag: <b>${esc(sm.namen[0])}</b>`
         : `<span class="veraltet">kein Supportmanager eingetragen</span>`;
       return `<tr><td class="nowrap">${esc(kunde)}</td><td class="num">${rows.length}</td>
-        <td class="nowrap">${si.namen.length ? si.namen.map(esc).join(", ") : "–"}</td><td>${abd}</td></tr>`;
+        <td class="nowrap">${sm.namen.length ? sm.namen.map(esc).join(", ") : "–"}</td><td>${abd}</td></tr>`;
     }).join("")}
-    </tbody></table></div>` : `<p class="empty">Kein Kunde hat mehr als 5 offene Calls${allRows().length ? "" : " – keine Daten geladen"}.</p>`;
+    </tbody></table></div>` : `<p class="empty"><b>Nichts offen.</b> ${alle.length ? "Bei allen Kunden mit mehr als 5 offenen Calls ist der Supportmanager durchgängig eingetragen." : "Kein Kunde hat mehr als 5 offene Calls" + (allRows().length ? "." : " – keine Daten geladen.")}</p>`;
   view.innerHTML = `<div class="card">
       <h2>Supportmanager Protokoll <span class="pill s-ok" style="margin-left:6px">Meeting ${fmtD.format(protoMeetingDate())}</span></h2>
       <p class="sub">Für das Montagsmeeting. Neue Wochenzeilen enthalten nur das Datum – Inhalte werden im Meeting ergänzt und teamweit geteilt.
-      Automatisch aufgenommen: 2nd-Level-Calls ohne Supportmanager mit Dauer über 10 h sowie Kunden mit mehr als 5 offenen Calls.</p>
+      Automatisch aufgenommen: 2nd-Level-Calls ohne Supportmanager mit Dauer über 10 h sowie Kunden mit mehr als 5 offenen Calls, bei denen der Supportmanager nicht durchgängig eingetragen ist. Interne Calls (${esc(state.internKunde || "MPDV")}) bleiben außen vor.</p>
       <div class="btnrow"><button class="primary" id="btnProtoCopy">Protokoll kopieren (für OneNote)</button></div>
-      <h2 style="margin-top:14px">Kunden mit mehr als 5 offenen Calls</h2>
-      <p class="sub">Rot markiert: Kunden ohne Supportmanager in allen zugehörigen Calls – mit Vorschlag, falls in einzelnen Calls schon jemand eingetragen ist.</p>
+      <h2 style="margin-top:14px">Kunden mit mehr als 5 offenen Calls <span class="pill ${luecken.length ? "s-warn" : "s-ok"}" style="margin-left:6px">${luecken.length} ohne durchgängigen SupMan</span></h2>
+      <p class="sub">Rot markiert: Kunden ohne Supportmanager in allen zugehörigen Calls – mit Vorschlag, falls in einzelnen Calls schon jemand eingetragen ist.
+        ${betreut ? `<button class="small" id="btnProtoAlle" style="margin-left:6px">${protoAlleKunden ? "Nur Lücken zeigen" : `Auch ${betreut} vollständig betreute anzeigen`}</button>` : ""}</p>
       ${kTable}
     </div>
     <div class="card">
@@ -2592,6 +2618,7 @@ function renderProto(view) {
     </div>`;
   view.querySelector("#btnProtoCopy").addEventListener("click", e =>
     copyHtml(buildProtoHtml(), "(Protokoll: bitte HTML-Einfügen verwenden)", e.target));
+  view.querySelector("#btnProtoAlle")?.addEventListener("click", () => { protoAlleKunden = !protoAlleKunden; render(); });
   view.querySelectorAll("[data-prow]").forEach(inp => inp.addEventListener("change", () => {
     const [key, i] = inp.dataset.prow.split("|");
     const b = protoGet(key); if (!b || !b.rows[+i]) return;
