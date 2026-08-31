@@ -226,6 +226,11 @@
   table.list { border-collapse: collapse; width: 100%; font-size: 13px; }
   table.list thead th { position: sticky; top: 0; background: var(--surface); text-align: left; font-weight: 650; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); padding: 8px 8px; border-bottom: 1px solid var(--baseline); white-space: nowrap; }
   table.list tbody td { padding: 6px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  /* Ausrichtung: Mengenwerte rechts, alles andere links – Kopfzeile folgt immer
+     der Spalte darunter. Ziffern laufen tabellarisch, damit sie untereinander stehen. */
+  table.list th.ta-r, table.list td.ta-r { text-align: right; }
+  table.list th.ta-c, table.list td.ta-c { text-align: center; }
+  table.list td.tnum, table.list td.num { font-variant-numeric: tabular-nums; }
   table.list tbody tr:nth-child(even) td { background: var(--surface-2); }
   table.list td.num, table.list td.nowrap { white-space: nowrap; }
   table.list tbody tr:hover td { background: var(--accent-soft) !important; }
@@ -419,7 +424,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.18";
+const VERSION = "1.19";
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -431,6 +436,7 @@ function todayStart() { const d = new Date(); d.setHours(0,0,0,0); return d; }
 const fmtD = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
 const fmtDT = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const fmtN = new Intl.NumberFormat("de-DE");
+const fmtDauer = new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function daysSince(d) { return d ? Math.floor((now() - d) / DAY) : null; }
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function isoWeek(d) {
@@ -1958,11 +1964,11 @@ function tUI(id) { return tableUI[id] ??= { sortKey: null, sortDir: 1, quick: {}
    Sichtbare Spalten je Liste stehen in state.cols (Team-weit geteilt), Standard unten. */
 const smBadge = r => r.SupMan ? ` <span class="sm-badge" title="Für diesen Kunden ist ein Supportmanager zuständig: ${esc(r.SupMan)}">${esc(r.SupMan)}</span>` : "";
 const COLS = {
-  score:  { label: "Score", sort: r => r.Score ?? 0,
-            cell: r => `<td class="num"><span class="pill ${SEVCLS[severity(r.Score)]}">${fmtN.format(r.Score ?? 0)}</span></td>` },
+  score:  { label: "Score", align: "r", sort: r => r.Score ?? 0,
+            cell: r => `<td class="ta-r tnum"><span class="pill ${SEVCLS[severity(r.Score)]}">${fmtN.format(r.Score ?? 0)}</span></td>` },
   prio:   { label: "Prio", sort: r => parseInt(String(r.Prio ?? "9").charAt(0), 10) || 9, quick: r => prioName(r.Prio),
             cell: r => { const n = prioName(r.Prio); return `<td class="nowrap"><span class="pd-dot" style="background:${prioColor(r.Prio)};margin-right:6px"></span>${esc(n ? n[0].toUpperCase() + n.slice(1) : (r.Prio ?? "–"))}</td>`; } },
-  call:   { label: "Call", sort: r => Number(r.Call) || 0, quick: r => r.Call, cell: r => `<td class="num">${esc(r.Call)}</td>` },
+  call:   { label: "Call", sort: r => Number(r.Call) || 0, quick: r => r.Call, cell: r => `<td class="tnum nowrap">${esc(r.Call)}</td>` },
   quelle: { label: "Bereich", sort: r => String(r.Quelle ?? ""), quick: r => r.Quelle, cell: r => `<td class="nowrap">${esc(r.Quelle || "–")}</td>` },
   gruppe: { label: "Gruppe", sort: r => String(r.Gruppe ?? ""), quick: r => r.Gruppe, cell: r => `<td class="nowrap">${esc(gruppeKurz(r.Gruppe) || "–")}</td>` },
   bearbeiter: { label: "Bearbeiter", sort: r => String(r.Bearbeiter ?? ""), quick: r => r.Bearbeiter,
@@ -1972,19 +1978,19 @@ const COLS = {
   supman: { label: "SupMan", sort: r => String(r.SupMan ?? ""), quick: r => r.SupMan, cell: r => `<td class="nowrap">${esc(r.SupMan ?? "–")}</td>` },
   titel:  { label: "Titel", sort: r => String(r.Titel ?? ""), quick: r => r.Titel, cell: r => `<td class="titlecell">${esc(r.Titel ?? "–")}</td>` },
   status: { label: "Status", sort: r => String(r.Status ?? ""), quick: r => r.Status, cell: r => `<td class="nowrap">${esc(r.Status ?? "–")}</td>` },
-  eroeffnet: { label: "Eröffnet", sort: r => r["Eröffnet"]?.getTime() ?? 0, cell: r => `<td class="num">${r["Eröffnet"] ? fmtD.format(r["Eröffnet"]) : "–"}</td>` },
+  eroeffnet: { label: "Eröffnet", sort: r => r["Eröffnet"]?.getTime() ?? 0, cell: r => `<td class="tnum nowrap">${r["Eröffnet"] ? fmtD.format(r["Eröffnet"]) : "–"}</td>` },
   lt:     { label: "LT", sort: r => r["Lösung_bis"]?.getTime() ?? Infinity,
             cell: r => { const cls = r["Lösung_bis"] ? (r["Lösung_bis"] < todayStart() ? "c-crit" : "") : (statusNorm(r) === "wartend" ? "" : "c-warn");
               const nofr = ltNichtFreitag(r) ? " lt-nofr" : "";
-              return `<td class="num ${cls}${nofr}"${nofr ? ' title="LT liegt nicht auf einem Freitag (PD)"' : ""}>${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "fehlt"}</td>`; } },
+              return `<td class="tnum nowrap ${cls}${nofr}"${nofr ? ' title="LT liegt nicht auf einem Freitag (PD)"' : ""}>${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "fehlt"}</td>`; } },
   wartbis: { label: "Wartend bis", sort: r => r.Wartend_bis?.getTime() ?? 0,
             cell: r => { const bad = !r.Wartend_bis || r.Wartend_bis < todayStart();
-              return `<td class="num ${bad ? "c-crit" : ""}">${r.Wartend_bis ? fmtD.format(r.Wartend_bis) : "fehlt"}</td>`; } },
+              return `<td class="tnum nowrap ${bad ? "c-crit" : ""}">${r.Wartend_bis ? fmtD.format(r.Wartend_bis) : "fehlt"}</td>`; } },
   aend:   { label: "Letzte Änd.", sort: r => r["Letzte_Änderung"]?.getTime() ?? 0,
-            cell: r => { const d = daysSince(r["Letzte_Änderung"]); return `<td class="num ${d >= 30 ? "c-crit" : d >= 14 ? "c-warn" : ""}">${r["Letzte_Änderung"] ? fmtD.format(r["Letzte_Änderung"]) : "–"}</td>`; } },
-  info:   { label: "o. Info", sort: r => tageOhneInfo(r) ?? -1, cell: r => `<td class="num">${tageOhneInfo(r) ?? "–"}</td>` },
-  termaend: { label: "Term.-Änd.", sort: r => Number(r["Terminänderungen"]) || 0, cell: r => `<td class="num">${esc(r["Terminänderungen"] ?? "–")}</td>` },
-  dauer:  { label: "Dauer", sort: r => Number(r.Dauer) || 0, cell: r => `<td class="num">${fmtN.format(r.Dauer ?? 0)}</td>` }
+            cell: r => { const d = daysSince(r["Letzte_Änderung"]); return `<td class="tnum nowrap ${d >= 30 ? "c-crit" : d >= 14 ? "c-warn" : ""}">${r["Letzte_Änderung"] ? fmtD.format(r["Letzte_Änderung"]) : "–"}</td>`; } },
+  info:   { label: "o. Info", align: "r", sort: r => tageOhneInfo(r) ?? -1, cell: r => `<td class="ta-r tnum">${tageOhneInfo(r) ?? "–"}</td>` },
+  termaend: { label: "Term.-Änd.", align: "r", sort: r => Number(r["Terminänderungen"]) || 0, cell: r => `<td class="ta-r tnum">${esc(r["Terminänderungen"] ?? "–")}</td>` },
+  dauer:  { label: "Dauer", align: "r", sort: r => Number(r.Dauer) || 0, cell: r => `<td class="ta-r tnum">${fmtDauer.format(r.Dauer ?? 0)}</td>` }
 };
 const COL_ORDER = ["score", "prio", "call", "quelle", "gruppe", "bearbeiter", "kunde", "supman", "titel", "status", "eroeffnet", "lt", "wartbis", "aend", "info", "termaend", "dauer"];
 const WF_DEFAULT_COLS = ["score", "prio", "call", "gruppe", "bearbeiter", "kunde", "titel", "status", "lt", "aend", "info", "dauer"];
@@ -2053,7 +2059,7 @@ function callTable(rows, wf) {
     const c = COLS[k];
     const arrow = u.sortKey === k ? `<span class="arrow">${u.sortDir > 0 ? " ▲" : " ▼"}</span>` : "";
     const funnel = c.quick ? `<button class="fbtn${String(u.quick[k] ?? "").trim() ? " f-on" : ""}" data-fbtn="${k}" title="Spalte filtern">${FUNNEL}</button>` : "";
-    return `<th class="sortable" data-sort="${k}" title="Klick sortiert">${esc(c.label)}${arrow}${funnel}</th>`;
+    return `<th class="sortable${c.align === "r" ? " ta-r" : ""}" data-sort="${k}" title="Klick sortiert">${esc(c.label)}${arrow}${funnel}</th>`;
   };
   return `<div class="tscroll"><table class="list"><thead>
     <tr><th>ACK</th>${wfCols(wf.id).map(th).join("")}<th>Nachricht</th></tr>
@@ -2192,13 +2198,16 @@ function renderHeute(view) {
   kpis += "</div>";
   const top = [...rows].sort((a, b) => (b.Score ?? 0) - (a.Score ?? 0)).slice(0, 12);
   let list = `<div class="card"><h2>Kritische Calls</h2><p class="sub">Die 12 Calls mit dem höchsten Score im aktuellen Datenstand</p>
-    <div class="tscroll"><table class="list"><thead><tr><th>Score</th><th>Quelle</th><th>Call</th><th>Prio</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th><th>LT</th><th>Tage o. Kd.-Info</th></tr></thead><tbody>`;
+    <div class="tscroll"><table class="list"><thead><tr><th class="ta-r">Score</th><th>Bereich</th><th>Call</th><th>Prio</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th><th>LT</th><th class="ta-r">Tage o. Kd.-Info</th></tr></thead><tbody>`;
   for (const r of top) {
-    list += `<tr><td class="num"><span class="pill ${SEVCLS[severity(r.Score)]}">${fmtN.format(r.Score ?? 0)}</span></td>
-      <td><span class="src-badge">${esc(r.Quelle)}</span></td><td class="num">${esc(r.Call)}</td><td>${esc(r.Prio ?? "–")}</td>
-      <td title="${esc(resolveName(r.Bearbeiter) ?? "")}">${esc(r.Bearbeiter ?? "–")}</td><td>${esc(r.Kunde ?? "–")}</td>
-      <td class="titlecell" title="${esc(r.Titel ?? "")}">${esc(r.Titel ?? "–")}</td><td>${esc(r.Status ?? "–")}</td>
-      <td class="num${ltNichtFreitag(r) ? " lt-nofr" : ""}"${ltNichtFreitag(r) ? ' title="LT liegt nicht auf einem Freitag (PD)"' : ""}>${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "–"}</td><td class="num">${tageOhneInfo(r) ?? "–"}</td></tr>`;
+    const p = prioName(r.Prio);
+    list += `<tr><td class="ta-r tnum"><span class="pill ${SEVCLS[severity(r.Score)]}">${fmtN.format(r.Score ?? 0)}</span></td>
+      <td class="nowrap"><span class="src-badge">${esc(r.Quelle || "–")}</span></td><td class="tnum nowrap">${esc(r.Call)}</td>
+      <td class="nowrap"><span class="pd-dot" style="background:${prioColor(r.Prio)};margin-right:6px"></span>${esc(p ? p[0].toUpperCase() + p.slice(1) : (r.Prio ?? "–"))}</td>
+      <td class="nowrap" title="${esc(resolveName(r.Bearbeiter) ?? "")}">${esc(r.Bearbeiter ?? "–")}</td>
+      <td class="nowrap">${esc(r.Kunde ?? "–")}${smBadge(r)}</td>
+      <td class="titlecell" title="${esc(r.Titel ?? "")}">${esc(r.Titel ?? "–")}</td><td class="nowrap">${esc(r.Status ?? "–")}</td>
+      <td class="tnum nowrap${ltNichtFreitag(r) ? " lt-nofr" : ""}"${ltNichtFreitag(r) ? ' title="LT liegt nicht auf einem Freitag (PD)"' : ""}>${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "–"}</td><td class="ta-r tnum">${tageOhneInfo(r) ?? "–"}</td></tr>`;
   }
   list += "</tbody></table></div></div>";
   view.innerHTML = kpis + (rows.length ? list : `<div class="card"><p class="empty">Keine Daten. Dashboard-Datei in der Verwaltung verknüpfen, Datei hierher ziehen — oder <button class="small" id="btnDemo">Beispieldaten anzeigen</button>.</p></div>`);
@@ -2273,7 +2282,7 @@ function renderMi(view) {
     <p class="sub">${markMode
       ? "Markier-Modus aktiv: Termin- oder Kommentar-Zelle anklicken färbt sie (Auto → Gelb → Rot → Keine)."
       : "Flag „aus KW …“ = Kommentar der Vorwoche; beim Bearbeiten gilt er als aktuell. Die Spalte „Verbleib“ hängt die OneNote-Tabelle leer an – ausgefüllt wird sie direkt in OneNote."}</p>
-    <div class="tscroll"><table class="list ${markMode ? "marking" : ""}"><thead><tr><th>Call</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Dauer</th><th>Termin</th><th>Kommentar SupMan</th></tr></thead><tbody>
+    <div class="tscroll"><table class="list ${markMode ? "marking" : ""}"><thead><tr><th>Call</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th class="ta-r">Dauer</th><th>Termin</th><th>Kommentar SupMan</th></tr></thead><tbody>
     ${m.rows.map(r => {
       const pw = prevWeekInfo(r.Call);
       const mk = state.miMark[r.Call] || {};
@@ -2282,10 +2291,10 @@ function renderMi(view) {
       const metaTxt = meta ? `bearb. ${fmtDT.format(new Date(meta.ts))}${meta.by ? " · " + esc(meta.by) : ""}` : "";
       const txt = state.comments[r.Call] ?? "";
       const lang = txt.length > 90 || txt.includes("\n"); // lange Kommentare starten zugeklappt
-      return `<tr><td class="num">${esc(r.Call)}${pw ? ` <span class="pw-badge" title="War bereits in KW ${esc(pw.week)} in der Mittwochsmail">KW ${esc(pw.week)}</span>` : ""}</td>
+      return `<tr><td class="tnum nowrap">${esc(r.Call)}${pw ? ` <span class="pw-badge" title="War bereits in KW ${esc(pw.week)} in der Mittwochsmail">KW ${esc(pw.week)}</span>` : ""}</td>
       <td class="nowrap">${esc(r.Bearbeiter ?? "–")}</td><td class="nowrap">${esc(r.Kunde ?? "–")}${smBadge(r)}</td>
-      <td class="titlecell">${esc(r.Titel ?? "–")}</td><td class="num">${fmtN.format(r.Dauer ?? 0)}</td>
-      <td class="num markcell mk-${mk.termin ?? "auto"}${ltNichtFreitag(r) ? " lt-nofr" : ""}" data-markcell="${esc(r.Call)}|termin" title="${markMode ? "Klicken zum Umfärben" : ltNichtFreitag(r) ? "LT liegt nicht auf einem Freitag (PD)" : ""}">${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "fehlt"}</td>
+      <td class="titlecell">${esc(r.Titel ?? "–")}</td><td class="ta-r tnum">${fmtDauer.format(r.Dauer ?? 0)}</td>
+      <td class="tnum nowrap markcell mk-${mk.termin ?? "auto"}${ltNichtFreitag(r) ? " lt-nofr" : ""}" data-markcell="${esc(r.Call)}|termin" title="${markMode ? "Klicken zum Umfärben" : ltNichtFreitag(r) ? "LT liegt nicht auf einem Freitag (PD)" : ""}">${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "fehlt"}</td>
       <td class="markcell cmtcell ${lang ? "collapsed" : ""} mk-${mk.kommentar ?? "auto"}" data-markcell="${esc(r.Call)}|kommentar" title="${markMode ? "Klicken zum Umfärben" : ""}">
         <div class="cmt-head">
           ${src ? `<span class="kw-flag" title="Kommentar aus KW ${esc(src)}">aus KW ${esc(src)}</span>` : ""}
@@ -2394,18 +2403,18 @@ function renderExtReakt(view) {
     <p class="sub">${regeln}</p>
     ${filterPanel("extreakt", cands)}
     ${rows.length ? `<div class="tscroll"><table class="list"><thead><tr>
-      <th>Call</th><th>Prio</th><th>Gruppe</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th><th>Letzte ext. Reaktion</th><th>Überfällig (Limit)</th>
+      <th>Call</th><th>Prio</th><th>Gruppe</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th><th>Letzte ext. Reaktion</th><th class="ta-r">Überfällig (Limit)</th>
     </tr></thead><tbody>
     ${rows.map(r => { const p = prioName(r.Prio); return `<tr>
-      <td class="num">${esc(r.Call)}</td>
+      <td class="tnum nowrap">${esc(r.Call)}</td>
       <td class="nowrap"><span class="pd-dot" style="background:${prioColor(r.Prio)};margin-right:6px"></span>${esc(p ? p[0].toUpperCase() + p.slice(1) : (r.Prio ?? "–"))}</td>
       <td class="nowrap">${esc(gruppeKurz(r.Gruppe) || "–")}</td>
       <td class="nowrap" title="${esc(resolveName(r.Bearbeiter) ?? "")}">${esc(r.Bearbeiter ?? "–")}</td>
       <td class="nowrap">${esc(r.Kunde ?? "–")}${smBadge(r)}</td>
       <td class="titlecell">${esc(r.Titel ?? "–")}</td>
       <td class="nowrap">${esc(r.Status ?? "–")}</td>
-      <td class="num c-crit">${fmtDT.format(r.LetzteExtReaktion)}</td>
-      <td class="num">seit ${fmtAgo(now() - r.LetzteExtReaktion)} (Limit ${extLimitLabel(p)})</td>
+      <td class="tnum nowrap c-crit">${fmtDT.format(r.LetzteExtReaktion)}</td>
+      <td class="ta-r tnum nowrap">seit ${fmtAgo(now() - r.LetzteExtReaktion)} (Limit ${extLimitLabel(p)})</td>
     </tr>`; }).join("")}
     </tbody></table></div>` : `<p class="empty"><b>Nichts offen.</b> Alle Calls liegen innerhalb der Reaktionszeiten.</p>`}
   </div>`;
@@ -2444,11 +2453,11 @@ function renderSuche(view) {
     ${hits.length ? `<div class="tscroll"><table class="list"><thead><tr>
       <th>Call</th><th>Bereich</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th><th>LT</th><th>Im Controlling</th></tr></thead><tbody>
     ${hits.slice(0, 80).map(r => `<tr>
-      <td class="num">${esc(r.Call)}</td><td class="nowrap">${esc(r.Quelle || "–")}</td>
+      <td class="tnum nowrap">${esc(r.Call)}</td><td class="nowrap">${esc(r.Quelle || "–")}</td>
       <td class="nowrap" title="${esc(resolveName(r.Bearbeiter) ?? "")}">${esc(r.Bearbeiter ?? "–")}</td>
       <td class="nowrap">${esc(r.Kunde ?? "–")}${smBadge(r)}</td>
       <td class="titlecell">${esc(r.Titel ?? "–")}</td><td class="nowrap">${esc(r.Status ?? "–")}</td>
-      <td class="num">${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "–"}</td>
+      <td class="tnum nowrap">${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "–"}</td>
       <td>${badges(r)}</td></tr>`).join("")}
     </tbody></table></div>${hits.length > 80 ? '<p class="hint">Nur die ersten 80 Treffer angezeigt – Suchbegriff verfeinern.</p>' : ""}`
     : `<p class="empty">${q ? "Keine Treffer im aktuellen Datenstand." : "Suchbegriff oben links eingeben."}</p>`}
@@ -2642,12 +2651,12 @@ function renderProto(view) {
   const kandidaten = protoAlleKunden ? alle : luecken;
   const { calls, kunden } = protoBlocksSorted();
   const kTable = kandidaten.length ? `<div class="tscroll"><table class="list"><thead><tr>
-      <th>Kunde</th><th>Offene Calls</th><th>Supportmanager</th><th>Abdeckung</th></tr></thead><tbody>
+      <th>Kunde</th><th class="ta-r">Offene Calls</th><th>Supportmanager</th><th>Abdeckung</th></tr></thead><tbody>
     ${kandidaten.map(({ kunde, rows, sm }) => {
       const abd = sm.voll ? "in allen Calls eingetragen"
         : sm.namen.length ? `<span class="veraltet">nur in ${sm.belegt} von ${rows.length} Calls</span> · Vorschlag: <b>${esc(sm.namen[0])}</b>`
         : `<span class="veraltet">kein Supportmanager eingetragen</span>`;
-      return `<tr><td class="nowrap">${esc(kunde)}</td><td class="num">${rows.length}</td>
+      return `<tr><td class="nowrap">${esc(kunde)}</td><td class="ta-r tnum">${rows.length}</td>
         <td class="nowrap">${sm.namen.length ? sm.namen.map(esc).join(", ") : "–"}</td><td>${abd}</td></tr>`;
     }).join("")}
     </tbody></table></div>` : `<p class="empty"><b>Nichts offen.</b> ${alle.length ? `Bei allen ${alle.length} Kunden ab ${min} offenen Calls ist der Supportmanager durchgängig eingetragen.` : `Kein Kunde hat ${min} oder mehr offene Calls` + (allRows().length ? "." : " – keine Daten geladen.")}</p>`;
