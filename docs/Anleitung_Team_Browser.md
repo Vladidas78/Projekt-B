@@ -1,42 +1,45 @@
-# Support-Board: Browser richtig einstellen (für alle Supportmanager)
+# Support-Board: Einrichtung für alle Supportmanager
 
-Diese Anleitung sorgt dafür, dass das Board mit dem gemeinsamen Team-Speicher sauber läuft. Dauer: einmalig ca. 5 Minuten pro Person.
+Einmalig ca. 5 Minuten pro Person.
+
+## Vorab: Warum der eine Klick pro Sitzung bleibt
+
+Solange das Board als **Datei** geöffnet wird (Doppelklick auf die HTML), gibt der Browser die Datei-Freigabe grundsätzlich nur für die laufende Sitzung. Sind alle Board-Tabs geschlossen, ist sie weg – **das ist eine feste Regel von Chrome und Edge und lässt sich durch keine Einstellung ändern.** Auch „immer zulassen“ hilft hier nicht.
+
+Das ist kein Fehler bei euch und nichts, was ihr falsch macht. Es bedeutet: **ein Klick pro Sitzung, mehr nicht.**
+
+Dauerhaft weg ist der Klick nur, wenn die IT das Board unter einer festen internen **HTTPS-Adresse** bereitstellt (siehe separate IT-Anleitung). Bis dahin gilt: der Klick ist seit Version 1.14 **ungefährlich** – ohne bestätigte Verbindung kann niemand mehr Team-Daten überschreiben.
 
 ## 1. Einmalig: Auf die aktuelle Version wechseln
 
-- Die aktuelle `SupportBoard.html` (v1.14 oder neuer, steht unten links in der Seitenleiste) an **einen festen Ort** legen – am besten für alle derselbe Pfad auf dem Share.
+- Die aktuelle `SupportBoard.html` (Version steht unten links in der Seitenleiste) an **einen festen Ort** legen – am besten für alle derselbe Pfad.
 - **Alle alten Kopien löschen** (Desktop, Downloads, lokale Ordner). Ältere Versionen haben die Schutzmechanismen nicht und können Team-Daten beschädigen.
-- Eine **Verknüpfung** auf die Datei anlegen (Rechtsklick → Senden an → Desktop) und das Board **immer nur darüber öffnen**. Der Browser merkt sich die Freigaben pro Pfad – wer mal so, mal so öffnet, fängt jedes Mal von vorn an.
+- Eine **Verknüpfung** anlegen (Rechtsklick → Senden an → Desktop) und das Board immer nur darüber öffnen.
 
-## 2. Einmalig: Browser-Einstellungen prüfen (Chrome oder Edge)
-
-- Einstellungen → Datenschutz → **„Browserdaten beim Schließen löschen“ / „Cookies und Websitedaten beim Beenden löschen“ muss AUS sein.**
-  Ist das an (oder von der IT vorgegeben), vergisst der Browser die Datei-Verknüpfungen komplett – dann müssen Dashboard und Team-Datei jedes Mal neu ausgewählt werden. Falls ihr das nicht selbst ändern könnt: bei der IT melden.
-- Es gibt sonst **nichts zu installieren** und keine weiteren Einstellungen.
-
-## 3. Einmalig: Quellen verbinden
+## 2. Einmalig: Quellen verbinden
 
 1. Board öffnen, Kürzel wählen.
 2. Verwaltung → **„Dashboard überwachen …“** → die Abfrage-Excel auf dem Share auswählen.
-3. Verwaltung → **„Team-Speicher …“** → **„OK = vorhandene Datei auswählen“** → die bestehende `SupportBoard-Team.json` auf dem Share wählen.
-   ⚠ Niemals „neue Datei anlegen“ wählen, wenn es die Team-Datei schon gibt!
-4. Falls der Browser einen Freigabe-Dialog mit der Option **„Bei jedem Besuch zulassen“** zeigt: diese wählen. (Zeigt er nur „Zulassen“, ist das okay – dann bleibt es bei einem Klick pro Sitzung.)
+3. Verwaltung → **„Team-Speicher …“** → im Dialog **„Vorhandene Team-Datei auswählen“** → `SupportBoard-Team.json` auf dem Share wählen.
+   - „Neue Team-Datei erstellen“ ist **nur** für die allererste Einrichtung im Team gedacht und fragt zusätzlich nach.
+   - „Abbrechen“, Escape oder ein Klick daneben tun garantiert nichts.
 
-## 4. Jeden Tag: So sieht richtig aus
+## 3. Jeden Tag: So läuft es richtig
 
-- Board öffnen → **einmal irgendwo klicken** (z. B. beim Kürzel-Login) → der Browser fragt ggf. einmal nach der Freigabe → **„Zulassen“**. Fertig.
-- Unten links müssen **beide Punkte grün** sein: „Dashboard“ und „Team-Speicher“. Dort steht auch „Stand von \<Kürzel\> \<Uhrzeit\>“ – so seht ihr, dass der Abgleich lebt.
+- Board öffnen → **einmal irgendwo klicken** (z. B. beim Kürzel-Login) → Freigabe-Dialog → **„Zulassen“**. Fertig.
+- Unten links müssen **beide Punkte grün** sein: „Dashboard“ und „Team-Speicher“. Daneben steht „Stand von \<Kürzel\> \<Uhrzeit\>“ – so seht ihr, dass der Abgleich lebt.
+- **Tipp:** Den Board-Tab einfach über den Tag offen lassen – dann fragt der Browser gar nicht erst erneut.
 
-## 5. Warnungen ernst nehmen (neu ab v1.14)
+## 4. Warnungen ernst nehmen
 
-- **Rotes Banner „Team-Speicher NICHT verbunden“** oben: Eure Änderungen bleiben nur lokal! → auf **„Jetzt verbinden“** klicken und die Freigabe bestätigen. Das Banner zählt mit, wie viele Änderungen warten – nach dem Verbinden werden sie automatisch sauber mit dem Team-Stand zusammengeführt (es geht nichts verloren, es wird nichts überschrieben).
-- **„Team-Abgleich gestört“**: Das Board pausiert absichtlich und überschreibt nichts – einfach stehen lassen, es versucht es alle 15 Sekunden erneut. Bleibt es lange rot: an VKU melden.
-- Tipp: Den Board-Tab einfach **offen lassen** – solange er offen ist, fragt der Browser gar nicht erst neu.
+- **Rotes Banner „Team-Speicher NICHT verbunden“**: Eure Änderungen bleiben nur lokal. → **„Jetzt verbinden“** klicken und die Freigabe bestätigen. Das Banner zählt mit, wie viele Änderungen warten; nach dem Verbinden werden sie sauber mit dem Team-Stand zusammengeführt – es geht nichts verloren und nichts wird überschrieben.
+- **„Team-Abgleich gestört“**: Das Board pausiert absichtlich und überschreibt nichts. Einfach stehen lassen, es versucht es alle 15 Sekunden erneut. Bleibt es lange rot: an VKU melden.
 
-## 6. Wenn etwas fehlt: Notfall-Sicherung
+## 5. Wenn etwas fehlt: Notfall-Sicherung
 
 Das Board sichert euren Stand **jeden Tag automatisch lokal** (7 Tage rollierend).
-Verwaltung → „Notfall-Sicherung“ → **„Fehlendes ergänzen“** holt verschwundene ACKs, Gründe und Kommentare zurück und teilt sie wieder mit dem Team – ohne aktuelle Arbeit zu überschreiben. Das kann jeder selbst, ohne IT.
+Verwaltung → „Notfall-Sicherung“ → **„Fehlendes ergänzen“** holt verschwundene ACKs, Gründe und Kommentare zurück und teilt sie wieder mit dem Team, ohne aktuelle Arbeit zu überschreiben. Das kann jeder selbst, ohne IT.
 
----
-*Hintergrund: Der eine Freigabe-Klick pro Sitzung ist eine Sicherheitsregel des Browsers, solange das Board als Datei (Doppelklick) geöffnet wird – keine Einstellung kann ihn wegkonfigurieren. Er ist seit v1.14 aber ungefährlich: Ohne bestätigte Verbindung wird garantiert nichts am Team-Stand verändert.*
+## Was ihr NICHT einstellen müsst
+
+Es gibt nichts zu installieren und keine Browser-Einstellung, die den Freigabe-Klick abschaltet. Nur falls euer Browser so eingestellt ist, dass er **Websitedaten beim Beenden löscht**, geht zusätzlich die Datei-*Auswahl* verloren (ihr müsstet die Dateien dann jedes Mal neu heraussuchen statt nur zu bestätigen) – in dem Fall bei der IT melden.

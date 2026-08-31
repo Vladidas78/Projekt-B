@@ -293,6 +293,11 @@
   .modal-back { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 70; display: flex; align-items: center; justify-content: center; padding: 20px; }
   .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px 26px; max-width: 460px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
   .modal h2 { margin: 0 0 4px; font-size: 18px; }
+  .tm-opts { display: grid; gap: 8px; margin: 14px 0; }
+  .tm-opt { display: grid; gap: 2px; text-align: left; padding: 11px 14px; }
+  .tm-opt b { font-size: 13.5px; }
+  .tm-opt span { font-size: 12px; color: var(--ink-2); line-height: 1.35; }
+  .tm-opt.primary span { color: rgba(255,255,255,0.85); }
   .loginlist { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
   .loginlist button { display: flex; align-items: baseline; gap: 8px; padding: 9px 12px; text-align: left; }
   .loginlist button b { font-variant-numeric: tabular-nums; }
@@ -358,6 +363,24 @@
 </div>
 <div class="statusline" id="statusline"></div>
 
+<div class="modal-back hidden" id="teamModal">
+  <div class="modal">
+    <h2>Team-Speicher verbinden</h2>
+    <p class="hint">Die gemeinsame Datei auf dem Share gleicht ACKs, Kommentare und Stammdaten im Team ab.</p>
+    <div class="tm-opts">
+      <button class="tm-opt primary" id="tmPick">
+        <b>Vorhandene Team-Datei auswählen</b>
+        <span>Der Normalfall: Die Datei liegt bereits auf dem Share (z. B. SupportBoard-Team.json).</span>
+      </button>
+      <button class="tm-opt" id="tmNew">
+        <b>Neue Team-Datei erstellen</b>
+        <span>Nur beim allerersten Einrichten im Team. Gibt es die Datei schon, bitte oben auswählen.</span>
+      </button>
+    </div>
+    <div class="btnrow" style="margin-bottom:0"><button id="tmCancel">Abbrechen</button></div>
+  </div>
+</div>
+
 <div class="modal-back hidden" id="loginModal">
   <div class="modal">
     <h2>Wer arbeitet gerade?</h2>
@@ -395,7 +418,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.14";
+const VERSION = "1.15";
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -1017,15 +1040,37 @@ function updateSyncBanner() {
   b.querySelector("#bnMute")?.addEventListener("click", () => { bannerMuted = true; updateSyncBanner(); });
   b.querySelector("#bnAdmin")?.addEventListener("click", () => { activeTab = "admin"; render(); });
 }
-async function connectShared() {
+/* Verbinden-Dialog mit drei klar getrennten Wegen. Abbrechen (auch per Escape oder
+   Klick daneben) tut garantiert nichts – früher legte „Abbrechen“ eine neue Datei an. */
+function connectShared() {
   if (!window.showOpenFilePicker) { alert("Der Team-Speicher benötigt Chrome oder Edge."); return; }
-  const existing = confirm("Gibt es die Team-Datei schon?\n\nOK = vorhandene Datei auswählen\nAbbrechen = neue Datei anlegen (z. B. auf dem Share neben den Dashboards)");
+  const modal = document.getElementById("teamModal");
+  const close = () => { modal.classList.add("hidden"); document.removeEventListener("keydown", esc, true); };
+  const esc = e => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+  modal.classList.remove("hidden");
+  document.addEventListener("keydown", esc, true);
+  modal.onclick = e => { if (e.target === modal) close(); }; // Klick auf den Hintergrund = abbrechen
+  document.getElementById("tmCancel").onclick = close;
+  document.getElementById("tmPick").onclick = () => { close(); pickSharedFile(false); };
+  document.getElementById("tmNew").onclick = () => {
+    if (!confirm("Neue, leere Team-Datei anlegen?\n\nNur beim allerersten Einrichten im Team nötig. Existiert die Team-Datei bereits, bitte abbrechen und „Vorhandene Team-Datei auswählen“ nehmen – sonst arbeitet dieser PC an einer eigenen Datei vorbei am Team.")) return;
+    close(); pickSharedFile(true);
+  };
+}
+async function pickSharedFile(neu) {
   try {
     let h;
-    if (existing) {
-      [h] = await window.showOpenFilePicker({ types: [{ description: "Team-Speicher", accept: { "application/json": [".json"] } }] });
-    } else {
+    if (neu) {
       h = await window.showSaveFilePicker({ suggestedName: "SupportBoard-Team.json", types: [{ description: "Team-Speicher", accept: { "application/json": [".json"] } }] });
+    } else {
+      [h] = await window.showOpenFilePicker({ types: [{ description: "Team-Speicher", accept: { "application/json": [".json"] } }] });
+      // Sicherheitsnetz: leere Datei ausgewählt, obwohl lokal Team-Daten vorliegen?
+      try {
+        const f = await h.getFile();
+        const leer = !(await f.text()).trim();
+        const lokal = Object.keys(state.acks).length + Object.keys(state.comments).length;
+        if (leer && lokal > 0 && !confirm(`Die gewählte Datei „${h.name}“ ist leer.\n\nIst das wirklich die Team-Datei? Wenn ja, wird sie mit dem Stand dieses PCs befüllt. Wenn nein: abbrechen und die richtige Datei wählen.`)) return;
+      } catch (e) { /* Prüfung optional */ }
     }
     const perm = await h.requestPermission({ mode: "readwrite" });
     if (perm !== "granted") return;
@@ -1035,7 +1080,7 @@ async function connectShared() {
     sharedDirty = true;
     await syncShared();
     toast("Team-Speicher verbunden – Haken, Kommentare und Stammdaten werden jetzt geteilt");
-  } catch (e) { /* Abbruch */ }
+  } catch (e) { /* Datei-Auswahl abgebrochen – es passiert nichts */ }
 }
 function allRows() {
   const seen = new Map();
