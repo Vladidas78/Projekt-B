@@ -183,6 +183,7 @@
   .ack-sum .nowrap { white-space: nowrap; }
   .ack-note { font-size: 11.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px; }
   td.lt-nofr { box-shadow: inset 0 0 0 2px rgba(240, 195, 0, 0.55); border-radius: 6px; } /* PD-LT nicht auf Freitag */
+  td.lt-we { box-shadow: inset 0 0 0 2px var(--crit); border-radius: 6px; } /* Termin am Wochenende */
   body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.5 "Segoe UI Variable Text", system-ui, -apple-system, "Segoe UI", sans-serif; }
   .wrap { width: 100%; margin: 0 auto; padding: 14px 22px 64px; } /* volle Breite – skaliert mit dem Bildschirm */
 
@@ -254,8 +255,30 @@
   .markcell.mk-gelb { background: var(--warn-wash) !important; box-shadow: inset 0 0 0 1px var(--warn); }
   .markcell.mk-rot { background: var(--crit-wash) !important; box-shadow: inset 0 0 0 1px var(--crit); }
   .markcell.mk-none { box-shadow: inset 0 0 0 1px var(--baseline); }
-  table.marking .markcell { cursor: pointer; outline: 1px dashed var(--accent); outline-offset: -2px; }
-  table.marking textarea, table.marking .cmt + div button { pointer-events: none; opacity: 0.7; }
+  /* Markier-Punkte liegen direkt in der Zelle – kein Moduswechsel, kein Scrollen */
+  /* Ruhezustand: klein und grau, damit nur echte Markierungen farbig auffallen.
+     Beim Überfahren der Zeile werden die Punkte farbig und gut treffbar. */
+  .mkbar { display: inline-flex; gap: 3px; vertical-align: middle; margin-left: 6px; opacity: 0.35; transition: opacity 0.12s; }
+  .mkbar .mkdot { filter: grayscale(1); transition: filter 0.12s; }
+  tr:hover .mkbar, .mkbar:hover, .mkbar:focus-within, .mkbar:has(.on) { opacity: 1; }
+  tr:hover .mkbar .mkdot, .mkbar:hover .mkdot, .mkbar .mkdot.on, .mkbar .mkdot:focus-visible { filter: none; }
+  .mkbar .mkdot { width: 14px; height: 14px; padding: 0; border-radius: 50%; border: 1px solid var(--baseline);
+    background: var(--surface); cursor: pointer; line-height: 1; font-size: 9px; color: var(--muted); }
+  .mkbar .mkdot.d-gelb { background: var(--warn); border-color: var(--warn); }
+  .mkbar .mkdot.d-rot { background: var(--crit); border-color: var(--crit); }
+  .mkbar .mkdot.on { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .cmt-head .mkbar { margin-left: auto; }
+  /* Vorbereitungs-Leiste der Mittwochsmail */
+  .mifocus { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0 10px; }
+  .mi-prog { font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .mifchip { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--baseline);
+    background: var(--surface); color: var(--ink-2); cursor: pointer; }
+  .mifchip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 650; }
+  td.miack { width: 1%; }
+  td.miack input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+  td.miack .miack-meta { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+  tr.mi-done > td:not(.miack) { opacity: 0.5; }
+  tr.mi-done > td:first-child { box-shadow: inset 3px 0 0 var(--good); }
   .pw-badge { font-size: 10.5px; font-weight: 650; border-radius: 5px; padding: 1px 5px; background: var(--accent-soft); color: var(--accent); }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
   td.titlecell { min-width: 180px; max-width: 340px; }
@@ -430,7 +453,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.22";
+const VERSION = "1.23";
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -1507,7 +1530,7 @@ function histBtn(call) {
 }
 function openHistPopover(btn, call) {
   closeColPopover();
-  const wfTitle = wf => WF.find(x => x.id === wf)?.title ?? wf ?? "";
+  const wfTitle = wf => wf === "mi" ? "Mittwochsmail – geprüft" : (WF.find(x => x.id === wf)?.title ?? wf ?? "");
   const rowsHtml = () => {
     const arr = histOf(call);
     return [...arr].reverse().map(e => {
@@ -1663,6 +1686,7 @@ function terminStyle(r, mode) {
   const lt = r["Lösung_bis"];
   if (!lt) return statusNorm(r) === "wartend" ? "" : `background:${MAILCLR.yellow};`;
   if (lt < todayStart()) return `background:${MAILCLR.red};color:${MAILCLR.redText};`;
+  if (ltWochenende(r)) return `background:${MAILCLR.red};color:${MAILCLR.redText};`; // Fußtext: "auf ein Wochenende gelegt"
   if (lt.getTime() === todayStart().getTime()) return `background:${MAILCLR.yellow};`;
   return "";
 }
@@ -1905,7 +1929,8 @@ const TABS = [
 let activeTab = "heute";
 let miStep = "PD";
 let tplWf = "lt";
-let markMode = false;
+let miFocus = "alle"; // Vorbereitungs-Fokus der Mittwochsmail: alle | offen | leer
+let miPrevOpen = true; // Mail-Vorschau der Mittwochsmail aufgeklappt?
 function touch(k) { state.touch[k] = Date.now(); }
 
 function wfCandidates(w) { return allRows().filter(w.filter); }
@@ -2006,7 +2031,7 @@ function renderTabs() {
       cnt = `<span class="cnt${open ? " hot" : ""}">${open}</span>`;
     }
     b.innerHTML = navIcon(t.id) + `<span class="lbl">${esc(t.label)}</span>` + cnt;
-    b.addEventListener("click", () => { activeTab = t.id; markMode = false; closeColPopover(); render(); });
+    b.addEventListener("click", () => { activeTab = t.id; closeColPopover(); render(); });
     nav.appendChild(b);
   }
 }
@@ -2035,8 +2060,8 @@ const COLS = {
   eroeffnet: { label: "Eröffnet", sort: r => r["Eröffnet"]?.getTime() ?? 0, cell: r => `<td class="tnum nowrap">${r["Eröffnet"] ? fmtD.format(r["Eröffnet"]) : "–"}</td>` },
   lt:     { label: "LT", sort: r => r["Lösung_bis"]?.getTime() ?? Infinity,
             cell: r => { const cls = r["Lösung_bis"] ? (r["Lösung_bis"] < todayStart() ? "c-crit" : "") : (statusNorm(r) === "wartend" ? "" : "c-warn");
-              const nofr = ltNichtFreitag(r) ? " lt-nofr" : "";
-              return `<td class="tnum nowrap ${cls}${nofr}"${nofr ? ' title="LT liegt nicht auf einem Freitag (PD)"' : ""}>${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "fehlt"}</td>`; } },
+              const flag = ltFlagCls(r), tip = ltFlagTitle(r);
+              return `<td class="tnum nowrap ${cls}${flag}"${tip ? ` title="${esc(tip)}"` : ""}>${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "fehlt"}</td>`; } },
   wartbis: { label: "Wartend bis", sort: r => r.Wartend_bis?.getTime() ?? 0,
             cell: r => { const bad = !r.Wartend_bis || r.Wartend_bis < todayStart();
               return `<td class="tnum nowrap ${bad ? "c-crit" : ""}">${r.Wartend_bis ? fmtD.format(r.Wartend_bis) : "fehlt"}</td>`; } },
@@ -2058,6 +2083,15 @@ function wfCols(wfId) {
 }
 /* PD-Regel: Lösungstermine sollen auf einem Freitag liegen (für SD irrelevant) */
 function ltNichtFreitag(r) { return r.Quelle === "PD" && r["Lösung_bis"] && r["Lösung_bis"].getDay() !== 5; }
+/* Termine am Wochenende sind ein Planungsfehler – ausgenommen die internen Tasks
+   des eigenen Hauses (MPDV), die hierfür keine Relevanz haben. */
+function istWochenende(d) { return !!d && (d.getDay() === 0 || d.getDay() === 6); }
+function ltWochenende(r) { return istWochenende(r["Lösung_bis"]) && !isInternKunde(r); }
+function ltFlagCls(r) { return ltWochenende(r) ? " lt-we" : ltNichtFreitag(r) ? " lt-nofr" : ""; }
+function ltFlagTitle(r) {
+  return ltWochenende(r) ? "Lösungstermin liegt auf einem Wochenende – bitte anpassen"
+       : ltNichtFreitag(r) ? "LT liegt nicht auf einem Freitag (PD)" : "";
+}
 function applyTableUI(rows, wfId) {
   const u = tUI(wfId);
   let out = rows.filter(r => Object.entries(u.quick).every(([key, qv]) => {
@@ -2261,7 +2295,7 @@ function renderHeute(view) {
       <td class="nowrap" title="${esc(resolveName(r.Bearbeiter) ?? "")}">${esc(r.Bearbeiter ?? "–")}</td>
       <td class="nowrap">${esc(r.Kunde ?? "–")}${smBadge(r)}</td>
       <td class="titlecell" title="${esc(r.Titel ?? "")}">${esc(r.Titel ?? "–")}</td><td class="nowrap">${esc(r.Status ?? "–")}</td>
-      <td class="tnum nowrap${ltNichtFreitag(r) ? " lt-nofr" : ""}"${ltNichtFreitag(r) ? ' title="LT liegt nicht auf einem Freitag (PD)"' : ""}>${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "–"}</td><td class="ta-r tnum">${tageOhneInfo(r) ?? "–"}</td></tr>`;
+      <td class="tnum nowrap${ltFlagCls(r)}"${ltFlagTitle(r) ? ` title="${esc(ltFlagTitle(r))}"` : ""}>${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "–"}</td><td class="ta-r tnum">${tageOhneInfo(r) ?? "–"}</td></tr>`;
   }
   list += "</tbody></table></div></div>";
   view.innerHTML = kpis + (rows.length ? list : `<div class="card"><p class="empty">Keine Daten. Dashboard-Datei in der Verwaltung verknüpfen, Datei hierher ziehen — oder <button class="small" id="btnDemo">Beispieldaten anzeigen</button>.</p></div>`);
@@ -2315,9 +2349,22 @@ function bindMailButtons(view, build, mailsOf) {
   view.querySelector("#btnCopyCc").addEventListener("click", e => copyText(build().cc.join("; "), e.target));
 }
 
+/* Markier-Punkte einer Zelle: gelb / rot / bewusst ohne Farbe.
+   Erneuter Klick auf den aktiven Punkt schaltet zurück auf "automatisch". */
+function mkBar(call, feld, cur) {
+  const opt = [["gelb", "Gelb hervorheben"], ["rot", "Rot hervorheben"], ["none", "Ohne Farbe – auch keine automatische"]];
+  return `<span class="mkbar" data-mkbar="${esc(call)}|${feld}">${opt.map(([v, t]) =>
+    `<button type="button" class="mkdot d-${v}${cur === v ? " on" : ""}" data-mkset="${v}" title="${t}${cur === v ? " (aktiv – nochmal klicken = automatisch)" : ""}">${v === "none" ? "∅" : ""}</button>`).join("")}</span>`;
+}
 function renderMi(view) {
   const q = miStep;
   const m = buildMittwochMail(q);
+  const istGeprueft = r => ackInfo(r, "mi").done;
+  const miGeprueft = m.rows.filter(istGeprueft).length;
+  const miOhneKommentar = m.rows.filter(r => !(state.comments[r.Call] ?? "").trim()).length;
+  const zeigeRows = miFocus === "offen" ? m.rows.filter(r => !istGeprueft(r))
+                  : miFocus === "leer" ? m.rows.filter(r => !(state.comments[r.Call] ?? "").trim())
+                  : m.rows;
   view.innerHTML = `<div class="card">
     <div class="mailflow">
       <span class="step ${q === "PD" ? "on" : ""}">Mail 1 von 2 · PD/ProdM</span>
@@ -2330,14 +2377,19 @@ function renderMi(view) {
     ${mailMetaBlock(m)}${mailButtons(m, [...m.an])}
     <div class="btnrow">
       <button id="btnOneNote" title="Gleiche Tabelle plus leere Spalte „Verbleib nach Sichtung der Langläufercalls“ – zum Einfügen ins OneNote-Besprechungsprotokoll, ausgefüllt wird dort">OneNote-Tabelle kopieren (mit Verbleib-Spalte)</button>
-      <button id="btnMarkMode" class="${markMode ? "primary" : ""}">${markMode ? "Markieren: AN – Felder anklicken" : "Markieren …"}</button>
     </div>
-    <h2 style="margin-top:16px">Kommentare je Call</h2>
-    <p class="sub">${markMode
-      ? "Markier-Modus aktiv: Termin- oder Kommentar-Zelle anklicken färbt sie (Auto → Gelb → Rot → Keine)."
-      : "Flag „aus KW …“ = Kommentar der Vorwoche; beim Bearbeiten gilt er als aktuell. Die Spalte „Verbleib“ hängt die OneNote-Tabelle leer an – ausgefüllt wird sie direkt in OneNote."}</p>
-    <div class="tscroll"><table class="list ${markMode ? "marking" : ""}"><thead><tr><th>Call</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th class="ta-r">Dauer</th><th>Termin</th><th>Kommentar SupMan</th></tr></thead><tbody>
-    ${m.rows.map(r => {
+    <h2 style="margin-top:16px">Vorbereitung: Kommentare je Call</h2>
+    <p class="sub">Farbpunkte in der Termin- und Kommentarspalte färben die Zelle sofort (gelb, rot, ohne Farbe) – erneuter Klick auf denselben Punkt schaltet zurück auf automatisch. Die Spalte „ACK“ ganz rechts hakt geprüfte Calls ab; sie ist rein intern und steht in keiner Mail.</p>
+    <div class="mifocus">
+      <span class="mi-prog" id="miProg" title="Geprüfte Calls (ACK) dieser Mail">${miGeprueft} von ${m.rows.length} geprüft</span>
+      <button class="mifchip ${miFocus === "alle" ? "on" : ""}" data-mifocus="alle">Alle (${m.rows.length})</button>
+      <button class="mifchip ${miFocus === "offen" ? "on" : ""}" data-mifocus="offen" title="Nur Calls ohne ACK – zum Abarbeiten">Noch zu prüfen (${m.rows.length - miGeprueft})</button>
+      <button class="mifchip ${miFocus === "leer" ? "on" : ""}" data-mifocus="leer" title="Calls, für die noch kein Kommentar in der Mail steht">Ohne Kommentar (${miOhneKommentar})</button>
+    </div>
+    <p class="sub">Flag „aus KW …“ = Kommentar der Vorwoche; beim Bearbeiten gilt er als aktuell. Die Spalte „Verbleib“ hängt die OneNote-Tabelle leer an – ausgefüllt wird sie direkt in OneNote.</p>
+    <div class="tscroll"><table class="list"><thead><tr><th>Call</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th class="ta-r">Dauer</th><th>Termin</th><th>Kommentar SupMan</th><th class="ta-c">ACK</th></tr></thead><tbody>
+    ${zeigeRows.length ? "" : `<tr><td colspan="8" class="sub" style="padding:14px">${miFocus === "offen" ? "Alles geprüft – für diese Mail steht nichts mehr offen." : "Kein Call ohne Kommentar."}</td></tr>`}
+    ${zeigeRows.map(r => {
       const pw = prevWeekInfo(r.Call);
       const mk = state.miMark[r.Call] || {};
       const src = state.commentSrc[r.Call];
@@ -2345,25 +2397,36 @@ function renderMi(view) {
       const metaTxt = meta ? `bearb. ${fmtDT.format(new Date(meta.ts))}${meta.by ? " · " + esc(meta.by) : ""}` : "";
       const txt = state.comments[r.Call] ?? "";
       const lang = txt.length > 90 || txt.includes("\n"); // lange Kommentare starten zugeklappt
-      return `<tr><td class="tnum nowrap">${esc(r.Call)}${pw ? ` <span class="pw-badge" title="War bereits in KW ${esc(pw.week)} in der Mittwochsmail">KW ${esc(pw.week)}</span>` : ""}</td>
+      const ai = ackInfo(r, "mi");
+      return `<tr class="${ai.done ? "mi-done" : ""}"><td class="tnum nowrap">${esc(r.Call)}${pw ? ` <span class="pw-badge" title="War bereits in KW ${esc(pw.week)} in der Mittwochsmail">KW ${esc(pw.week)}</span>` : ""}</td>
       <td class="nowrap">${esc(r.Bearbeiter ?? "–")}</td><td class="nowrap">${esc(r.Kunde ?? "–")}${smBadge(r)}</td>
       <td class="titlecell">${esc(r.Titel ?? "–")}</td><td class="ta-r tnum">${fmtDauer.format(r.Dauer ?? 0)}</td>
-      <td class="tnum nowrap markcell mk-${mk.termin ?? "auto"}${ltNichtFreitag(r) ? " lt-nofr" : ""}" data-markcell="${esc(r.Call)}|termin" title="${markMode ? "Klicken zum Umfärben" : ltNichtFreitag(r) ? "LT liegt nicht auf einem Freitag (PD)" : ""}">${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "fehlt"}</td>
-      <td class="markcell cmtcell ${lang ? "collapsed" : ""} mk-${mk.kommentar ?? "auto"}" data-markcell="${esc(r.Call)}|kommentar" title="${markMode ? "Klicken zum Umfärben" : ""}">
+      <td class="tnum nowrap markcell mk-${mk.termin ?? "auto"}${ltFlagCls(r)}"${ltFlagTitle(r) ? ` title="${esc(ltFlagTitle(r))}"` : ""}>${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "fehlt"}${mkBar(r.Call, "termin", mk.termin)}</td>
+      <td class="markcell cmtcell ${lang ? "collapsed" : ""} mk-${mk.kommentar ?? "auto"}">
         <div class="cmt-head">
           ${src ? `<span class="kw-flag" title="Kommentar aus KW ${esc(src)}">aus KW ${esc(src)}</span>` : ""}
           ${histBtn(r.Call)}
           <span class="cmt-meta">${metaTxt}</span>
           ${lang ? `<button class="cmt-tgl" data-ctgl="${esc(r.Call)}" title="Kommentar auf-/zuklappen">▸</button>` : ""}
+          ${mkBar(r.Call, "kommentar", mk.kommentar)}
         </div>
         <textarea class="cmt" data-cmt="${esc(r.Call)}" placeholder="Stand aus dem Ticketsystem …">${esc(txt)}</textarea>
+      </td>
+      <td class="ta-c nowrap miack">
+        <input type="checkbox" data-miack="${esc(r.Call)}" ${ai.done ? "checked" : ""} title="Geprüft – der Call steht berechtigt in der Liste und kann beim nächsten Durchgang übersprungen werden. Rein intern, steht in keiner Mail.">
+        <div class="miack-meta">${ai.done && ai.a ? esc([ai.a.by, ai.a.ts ? fmtD.format(new Date(ai.a.ts)) : ""].filter(Boolean).join(" · ")) : ""}</div>
       </td></tr>`;
     }).join("")}
     </tbody></table></div>
-    <h2 style="margin-top:16px">Vorschau</h2>
-    <div class="mailpreview">${m.html}</div>
+    <h2 style="margin-top:16px">Vorschau <button class="small" id="btnMiPrev">${miPrevOpen ? "einklappen" : "ausklappen"}</button></h2>
+    <div class="mailpreview${miPrevOpen ? "" : " hidden"}">${m.html}</div>
   </div>`;
   view.querySelector("#btnMiSwitch").addEventListener("click", () => { miStep = q === "PD" ? "SD" : "PD"; render(); });
+  view.querySelector("#btnMiPrev").addEventListener("click", e => {
+    miPrevOpen = !miPrevOpen;
+    view.querySelector(".mailpreview").classList.toggle("hidden", !miPrevOpen);
+    e.target.textContent = miPrevOpen ? "einklappen" : "ausklappen";
+  });
   bindMailButtons(view, () => buildMittwochMail(miStep), mm => [...mm.an]);
   const refreshPreview = () => {
     const pv = view.querySelector(".mailpreview");
@@ -2374,7 +2437,40 @@ function renderMi(view) {
     copyHtml(mm.html, "(Tabelle: bitte HTML-Einfügen verwenden)", e.target);
     archiveMiWeek();
   });
-  view.querySelector("#btnMarkMode").addEventListener("click", () => { markMode = !markMode; render(); });
+  view.querySelectorAll("[data-mifocus]").forEach(b => b.addEventListener("click", () => {
+    miFocus = b.dataset.mifocus; render();
+  }));
+  // ACK: geprüfte Calls abhaken – ohne Kommentarfeld, rein intern, nicht in der Mail
+  view.querySelectorAll("[data-miack]").forEach(cb => cb.addEventListener("change", () => {
+    const r = m.rows.find(x => String(x.Call) === cb.dataset.miack);
+    if (!r) return;
+    setAck(r, "mi", cb.checked);
+    const tr = cb.closest("tr");
+    tr.classList.toggle("mi-done", cb.checked); // Zeile bleibt stehen – kein Springen beim Abhaken
+    const ai = ackInfo(r, "mi"), meta = tr.querySelector(".miack-meta");
+    if (meta) meta.textContent = ai.done && ai.a ? [ai.a.by, ai.a.ts ? fmtD.format(new Date(ai.a.ts)) : ""].filter(Boolean).join(" · ") : "";
+    const prog = view.querySelector("#miProg");
+    if (prog) prog.textContent = `${m.rows.filter(x => ackInfo(x, "mi").done).length} von ${m.rows.length} geprüft`;
+  }));
+  // Markieren: färbt nur diese eine Zelle neu ein, damit die Scrollposition erhalten bleibt
+  view.querySelectorAll("[data-mkbar]").forEach(bar => bar.addEventListener("click", e => {
+    const btn = e.target.closest("[data-mkset]");
+    if (!btn) return;
+    e.preventDefault(); e.stopPropagation();
+    const [call, feld] = bar.dataset.mkbar.split("|");
+    const cur = state.miMark[call]?.[feld];
+    const next = cur === btn.dataset.mkset ? undefined : btn.dataset.mkset;
+    if (!state.miMark[call]) state.miMark[call] = {};
+    if (next === undefined) delete state.miMark[call][feld]; else state.miMark[call][feld] = next;
+    if (!Object.keys(state.miMark[call]).length) delete state.miMark[call];
+    touch("miMark|" + call);
+    saveState();
+    const cell = bar.closest("td");
+    cell.classList.remove("mk-auto", "mk-gelb", "mk-rot", "mk-none");
+    cell.classList.add("mk-" + (next ?? "auto"));
+    bar.querySelectorAll(".mkdot").forEach(d => d.classList.toggle("on", d.dataset.mkset === next));
+    refreshPreview();
+  }));
   view.querySelectorAll("[data-hist]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); openHistPopover(b, b.dataset.hist); }));
   bindFilterPanel(view);
   view.querySelectorAll("[data-cmt]").forEach(ta => ta.addEventListener("change", () => {
@@ -2407,19 +2503,6 @@ function renderMi(view) {
     }
   }));
   autoGrowAll(view);
-  view.querySelectorAll("[data-markcell]").forEach(cell => cell.addEventListener("click", e => {
-    if (!markMode) return;
-    if (e.target.closest("textarea, button")) return; // im Markier-Modus sind die deaktiviert, sicher ist sicher
-    const [call, feld] = cell.dataset.markcell.split("|");
-    const cycle = { undefined: "gelb", gelb: "rot", rot: "none", none: undefined };
-    const cur = state.miMark[call]?.[feld];
-    const next = cycle[String(cur)];
-    if (!state.miMark[call]) state.miMark[call] = {};
-    if (next === undefined) delete state.miMark[call][feld]; else state.miMark[call][feld] = next;
-    if (!Object.keys(state.miMark[call]).length) delete state.miMark[call];
-    touch("miMark|" + call);
-    saveState(); render();
-  }));
 }
 
 /* „Keine externe Reaktion" – Logik steht, wartet aber auf das Feld „Letzte externe
@@ -3121,7 +3204,7 @@ searchEl.addEventListener("input", () => {
 });
 document.getElementById("btnResume").addEventListener("click", resumeWatch);
 document.getElementById("btnResumeMini").addEventListener("click", resumeWatch);
-document.getElementById("srcMini").addEventListener("click", () => { activeTab = "admin"; markMode = false; closeColPopover(); render(); });
+document.getElementById("srcMini").addEventListener("click", () => { activeTab = "admin"; closeColPopover(); render(); });
 document.getElementById("btnTeamFile").addEventListener("click", connectShared);
 document.getElementById("btnForceShared").addEventListener("click", async () => {
   if (!confirm("NOTFALL: Die Team-Datei wird komplett mit dem lokalen Stand dieses PCs neu geschrieben.\n\nNur verwenden, wenn die Datei dauerhaft defekt ist. Sicher fortfahren?")) return;
