@@ -339,6 +339,7 @@
         <span class="row"><span class="dot" id="miniAllDot"></span><span id="miniAllText">Dashboard · –</span></span>
         <span class="row"><span class="dot" id="miniTeamDot"></span><span id="miniTeamText">Team-Speicher · –</span></span>
       </button>
+      <button id="btnSyncNow" class="small" title="Dashboard-Datei und Team-Speicher sofort neu einlesen – ohne auf das Prüfintervall zu warten. Praktisch direkt nach einem frischen Daten-Export.">Jetzt synchronisieren</button>
       <button id="btnResumeMini" class="small primary hidden" title="Die zuletzt überwachten Dateien wieder aktivieren (der Browser fragt einmal nach Erlaubnis)">Überwachung fortsetzen</button>
       <button class="userchip" id="chipUser" title="Angemeldetes Kürzel (klicken zum Wechseln)"><span class="dot"></span><span id="chipUserText">Kürzel wählen …</span></button>
       <div class="ver" id="verInfo"></div>
@@ -429,7 +430,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.21";
+const VERSION = "1.22";
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -1255,6 +1256,37 @@ function armWatch() {
   watchTimer = setInterval(() => readWatched("ALL"), min * 60000);
 }
 document.getElementById("watchInterval").addEventListener("change", armWatch);
+
+/* "Jetzt synchronisieren": beide Quellen sofort neu einlesen, ohne auf die
+   Intervalle zu warten – z. B. direkt nachdem der Daten-Export gelaufen ist. */
+let syncNowBusy = false;
+async function syncNow() {
+  if (syncNowBusy) return;
+  const btn = document.getElementById("btnSyncNow");
+  syncNowBusy = true; btn.disabled = true;
+  const normal = "Jetzt synchronisieren";
+  btn.textContent = "Synchronisiere …";
+  try {
+    const jobs = [];
+    if (sources.ALL.handle) jobs.push(readWatched("ALL"));
+    if (sharedHandle) {
+      // Läuft der Hintergrund-Abgleich gerade, kurz warten statt still zu überspringen.
+      jobs.push((async () => {
+        for (let i = 0; i < 20 && sharedBusy; i++) await new Promise(r => setTimeout(r, 100));
+        await syncShared();
+      })());
+    }
+    if (!jobs.length) btn.textContent = "Keine Quelle verbunden";
+    else { await Promise.all(jobs); btn.textContent = "✓ Stand " + fmtT.format(new Date()); }
+  } catch (e) {
+    btn.textContent = "Fehler – bitte erneut";
+    console.warn("Jetzt synchronisieren:", e);
+  } finally {
+    syncNowBusy = false; btn.disabled = false;
+    setTimeout(() => { if (!syncNowBusy) btn.textContent = normal; }, 4000);
+  }
+}
+document.getElementById("btnSyncNow").addEventListener("click", syncNow);
 async function pickWatch() {
   if (!window.showOpenFilePicker) { alert("Die automatische Überwachung benötigt Chrome oder Edge. Alternativ: Datei manuell laden."); return; }
   try {

@@ -79,6 +79,22 @@ Grundlage ist dieselbe Logik wie bei „Letzte Info an Kd.“ – die letzte Akt
 
 **Bitte beim ersten Blick prüfen:** Wenn dort sehr viele Calls stehen, liegt das meist an Calls mit Status *Wartend* oder *Customer Care* – da wartet nicht der Kunde auf uns, sondern wir auf ihn. Diese Status lassen sich in der Ansicht direkt über die Filter-Chips ausblenden; die Einstellung bleibt gespeichert.
 
+## Nicht warten wollen: „Jetzt synchronisieren“
+
+Der Zeitplan (z. B. alle 15 Minuten) reicht für den Alltag. Wer einen frischen Stand **sofort** braucht:
+
+1. **Skript von Hand starten** – am einfachsten über eine Desktop-Verknüpfung mit dem Ziel:
+
+   ```
+   powershell.exe -ExecutionPolicy Bypass -File "PFAD\SupportBoard-Export.ps1" -Jetzt
+   ```
+
+   Der Schalter `-Jetzt` überspringt die „Datei ist noch frisch“-Prüfung, damit der Ad-hoc-Lauf nicht wegen einer wenige Minuten alten Datei aussteigt. Alle Schutzmechanismen (nur lesen, Rollback, alte Datei bleibt bei Fehlern stehen) gelten unverändert.
+
+2. Danach im Board unten links auf **„Jetzt synchronisieren“** klicken (ab v1.22) – das Board liest die Dashboard-Datei und den Team-Speicher sofort neu ein, ohne auf das Prüfintervall zu warten.
+
+Der Knopf im Board kann das Skript nicht selbst starten – eine im Browser geöffnete Datei darf keine Programme auf dem PC ausführen. Deshalb dieser Zweischritt; im Alltag genügt meist Schritt 2, weil der Zeitplan die CSV ohnehin frisch hält.
+
 ## Wenn niemand da ist: auf mehreren Rechnern einrichten
 
 Das Skript läuft nur, während der PC an und der Benutzer angemeldet ist. Ist niemand da, bleibt die CSV liegen – das Board arbeitet mit dem letzten Stand weiter und zeigt unten links an, dass die Daten alt sind. Es geht nichts kaputt.

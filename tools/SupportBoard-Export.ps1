@@ -19,14 +19,22 @@
 
     Aufruf:
       .\SupportBoard-Export.ps1                 (normaler Lauf)
+      .\SupportBoard-Export.ps1 -Jetzt          (Ad-hoc-Lauf: ueberspringt die
+                                                 "Datei ist noch frisch"-Pruefung)
       .\SupportBoard-Export.ps1 -Preview        (Testlauf, schreibt keine Datei)
       .\SupportBoard-Export.ps1 -SetPassword    (Passwort einmalig hinterlegen)
+
+    Tipp fuer "Jetzt synchronisieren": eine Verknuepfung auf dem Desktop mit
+      powershell.exe -ExecutionPolicy Bypass -File "PFAD\SupportBoard-Export.ps1" -Jetzt
+    anlegen. Danach im Board unten links "Jetzt synchronisieren" klicken –
+    das Board liest die frische CSV sofort ein.
 #>
 
 [CmdletBinding()]
 param(
     [switch]$Preview,
-    [switch]$SetPassword
+    [switch]$SetPassword,
+    [switch]$Jetzt
 )
 
 $ErrorActionPreference = 'Stop'
@@ -136,7 +144,8 @@ function Format-CsvFeld([string]$Text) {
 
 # --- Laeuft schon jemand anderes? -------------------------------------------
 # Wenn ein Kollege die Datei gerade aktualisiert hat, ist hier nichts zu tun.
-if (-not $Preview -and $NurWennAelterAlsMin -gt 0 -and (Test-Path $Zielpfad)) {
+# Mit -Jetzt (Ad-hoc-Lauf per Hand) wird immer abgefragt.
+if (-not $Preview -and -not $Jetzt -and $NurWennAelterAlsMin -gt 0 -and (Test-Path $Zielpfad)) {
     $AlterMin = ((Get-Date) - (Get-Item $Zielpfad).LastWriteTime).TotalMinutes
     if ($AlterMin -lt $NurWennAelterAlsMin) {
         Schreibe-Log ("Uebersprungen: Datei ist erst {0:N0} Minuten alt (Schwelle {1}). Ein anderer Rechner war schneller." -f $AlterMin, $NurWennAelterAlsMin)
