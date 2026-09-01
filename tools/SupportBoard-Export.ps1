@@ -45,6 +45,11 @@ $AbfrageDatei  = Join-Path $Basis 'SupportBoard-Abfrage.sql'
 $PasswortDatei = Join-Path $Basis 'SupportBoard-Export.pwd'   # verschluesselt, s. -SetPassword
 $LogDatei      = Join-Path $Basis 'SupportBoard-Export.log'
 $TimeoutSek    = 300
+# Mehrere Kollegen koennen dieselbe Aufgabe einrichten (Ausfallsicherheit, wenn
+# jemand nicht da ist). Ist die Zieldatei juenger als dieser Wert in Minuten,
+# beendet sich das Skript sofort - die Datenbank wird dann gar nicht erst gefragt.
+# 0 = Pruefung aus (immer abfragen).
+$NurWennAelterAlsMin = 12
 # ============================================================================
 
 function Schreibe-Log([string]$Text, [string]$Stufe = 'INFO') {
@@ -129,10 +134,20 @@ function Format-CsvFeld([string]$Text) {
     return $t
 }
 
+# --- Laeuft schon jemand anderes? -------------------------------------------
+# Wenn ein Kollege die Datei gerade aktualisiert hat, ist hier nichts zu tun.
+if (-not $Preview -and $NurWennAelterAlsMin -gt 0 -and (Test-Path $Zielpfad)) {
+    $AlterMin = ((Get-Date) - (Get-Item $Zielpfad).LastWriteTime).TotalMinutes
+    if ($AlterMin -lt $NurWennAelterAlsMin) {
+        Schreibe-Log ("Uebersprungen: Datei ist erst {0:N0} Minuten alt (Schwelle {1}). Ein anderer Rechner war schneller." -f $AlterMin, $NurWennAelterAlsMin)
+        exit 0
+    }
+}
+
 # --- Abfrage ausfuehren -----------------------------------------------------
 $conn = $null; $tx = $null; $TempDatei = $null; $Zeilen = 0
 try {
-    Schreibe-Log "Start – Server '$Server', Datenbank '$Datenbank'$(if($Preview){' (Testlauf)'})"
+    Schreibe-Log "Start – $env:COMPUTERNAME – Server '$Server', Datenbank '$Datenbank'$(if($Preview){' (Testlauf)'})"
 
     $conn = New-Object System.Data.SqlClient.SqlConnection $b.ConnectionString
     $conn.Open()
@@ -183,7 +198,7 @@ try {
 
         Move-Item -Path $TempDatei -Destination $Zielpfad -Force
         $TempDatei = $null
-        Schreibe-Log "Fertig: $Zeilen Zeilen nach '$Zielpfad' geschrieben."
+        Schreibe-Log "Fertig: $Zeilen Zeilen nach '$Zielpfad' geschrieben (von $env:COMPUTERNAME)."
     }
 }
 catch {

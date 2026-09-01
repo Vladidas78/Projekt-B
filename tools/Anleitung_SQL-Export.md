@@ -79,6 +79,22 @@ Grundlage ist dieselbe Logik wie bei „Letzte Info an Kd.“ – die letzte Akt
 
 **Bitte beim ersten Blick prüfen:** Wenn dort sehr viele Calls stehen, liegt das meist an Calls mit Status *Wartend* oder *Customer Care* – da wartet nicht der Kunde auf uns, sondern wir auf ihn. Diese Status lassen sich in der Ansicht direkt über die Filter-Chips ausblenden; die Einstellung bleibt gespeichert.
 
+## Wenn niemand da ist: auf mehreren Rechnern einrichten
+
+Das Skript läuft nur, während der PC an und der Benutzer angemeldet ist. Ist niemand da, bleibt die CSV liegen – das Board arbeitet mit dem letzten Stand weiter und zeigt unten links an, dass die Daten alt sind. Es geht nichts kaputt.
+
+Damit die Daten trotzdem aktuell bleiben, richten am besten **zwei bis drei Kolleginnen und Kollegen dieselbe Aufgabe ein**. Wer gerade am Rechner sitzt, hält die Datei frisch – ganz ohne Absprache.
+
+Damit sich die Instanzen nicht in die Quere kommen, prüft jede vor der Abfrage das Alter der vorhandenen Datei:
+
+```powershell
+$NurWennAelterAlsMin = 12    # 0 = Prüfung aus
+```
+
+Ist die Datei jünger, beendet sich das Skript sofort und fragt die Datenbank gar nicht erst. Es arbeitet also immer nur diejenige Instanz, bei der tatsächlich etwas zu tun ist – die Last auf der Datenbank bleibt dieselbe wie bei einer Einzelinstallation. Im Log steht jeweils, welcher Rechner geschrieben hat.
+
+**Wichtig bei der Einrichtung auf weiteren Rechnern:** Das hinterlegte Passwort ist an das jeweilige Windows-Konto und den jeweiligen PC gebunden – jeder führt `-SetPassword` einmal selbst aus. Bei Windows-Authentifizierung (`$WindowsAuth = $true`) entfällt das ganz.
+
 ## Wenn etwas nicht läuft
 
 Erste Anlaufstelle ist `SupportBoard-Export.log` im selben Ordner – dort steht jeder Lauf mit Zeitstempel und im Fehlerfall die Ursache im Klartext.
