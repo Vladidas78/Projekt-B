@@ -429,7 +429,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.20";
+const VERSION = "1.21";
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -1410,8 +1410,8 @@ function prioColor(prio) {
   return n === 1 ? "var(--crit)" : n === 2 ? "var(--accent)" : "var(--good)";
 }
 
-/* ACK: gilt standardmäßig für heute; mit „bis“-Datum bleibt er bis einschließlich
-   dieses Tages bestehen und fällt danach automatisch wieder in die Liste.
+/* ACK: gilt ohne „bis“-Datum dauerhaft, bis es manuell entfernt wird; mit „bis“-Datum
+   bis einschließlich dieses Tages, danach fällt der Call automatisch wieder in die Liste.
    Je Liste wird genau der Teil überwacht, um den es dort geht – ändert er sich
    nach dem ACK, bleibt der Haken bestehen, aber ein Verweis erscheint. */
 const WF_WATCH = {
@@ -1424,11 +1424,13 @@ const WF_WATCH = {
 function ackKey(r, wf) { return `${r.Call}|${wf}`; }
 function watchVal(r, wf) { return String(WF_WATCH[wf] ? WF_WATCH[wf].val(r) : ""); }
 function todayKey() { return new Date().toISOString().slice(0, 10); }
+/* Ohne "bis"-Datum gilt ein ACK dauerhaft (bis es manuell entfernt wird),
+   mit Datum bis einschließlich diesem Tag. */
+function ackValid(a) { return !a.until || todayKey() <= a.until; }
 function ackInfo(r, wf) {
   const a = state.acks[ackKey(r, wf)];
   if (!a) return { done: false };
-  const valid = a.until ? todayKey() <= a.until : a.d === todayKey();
-  if (!valid) return { done: false, expired: !!a.until };
+  if (!ackValid(a)) return { done: false, expired: true };
   return { done: true, a, changed: a.w != null && a.w !== watchVal(r, wf) };
 }
 function setAck(r, wf, on) {
@@ -1900,8 +1902,7 @@ function otherAcks(r, curWf) {
     if (w.id === curWf) continue;
     const a = state.acks[`${r.Call}|${w.id}`];
     if (!a) continue;
-    const valid = a.until ? todayKey() <= a.until : a.d === todayKey();
-    if (valid) out.push({ w, a });
+    if (ackValid(a)) out.push({ w, a });
   }
   return out;
 }
@@ -2054,18 +2055,18 @@ function wfRowHtml(r, wf) {
       ${a.a?.note ? `<span class="ack-note" title="${esc(a.a.note)}${noteMeta ? "\n" + noteMeta : ""}">„${esc(a.a.note)}“</span>` : ""}
     </div>${isOpen ? `<div class="ackx">
       <input type="text" data-acknote="${esc(r.Call)}" placeholder="Grund (optional)" value="${esc(a.a?.note ?? "")}">
-      <label>bis <input type="date" data-ackuntil="${esc(r.Call)}" value="${esc(a.a?.until ?? "")}" title="Leer = nur heute; danach fällt der Call zurück in die Liste."></label>
+      <label>bis <input type="date" data-ackuntil="${esc(r.Call)}" value="${esc(a.a?.until ?? "")}" title="Leer = ACK bleibt dauerhaft bestehen (bis es manuell entfernt wird). Mit Datum gilt es bis einschließlich, danach fällt der Call zurück in die Liste."></label>
       ${noteMeta ? `<span class="hint">${noteMeta}</span>` : ""}
     </div>` : ""}` : "";
   const changed = a.done && a.changed ? ` <span class="veraltet" title="${esc(WF_WATCH[wf.id]?.label ?? "Der überwachte Teil")} hat sich seit dem ACK geändert – das ACK bleibt bestehen.">geändert!</span>` : "";
   // Abgelaufenes ACK: die Vorarbeit (Datum, Kürzel, Grund) bleibt sichtbar
   const alt = !a.done ? state.acks[akey] : null;
-  const altHtml = alt ? `<div class="ack-x" title="Das ACK ist abgelaufen (galt ${alt.until ? "bis " + esc(fmtD.format(new Date(alt.until))) : "nur am Tag des Setzens"}). Beim erneuten Abhaken bleibt der Grund erhalten.">zuletzt ACK ${alt.ts ? esc(fmtD.format(new Date(alt.ts))) : esc(alt.d ?? "")}${alt.by ? " · " + esc(alt.by) : ""}${alt.note ? `<br><b>„${esc(alt.note)}“</b>` : ""}</div>` : "";
+  const altHtml = alt ? `<div class="ack-x" title="Das ACK ist abgelaufen (galt bis ${esc(alt.until ? fmtD.format(new Date(alt.until)) : "")}). Beim erneuten Abhaken bleibt der Grund erhalten.">zuletzt ACK ${alt.ts ? esc(fmtD.format(new Date(alt.ts))) : esc(alt.d ?? "")}${alt.by ? " · " + esc(alt.by) : ""}${alt.note ? `<br><b>„${esc(alt.note)}“</b>` : ""}</div>` : "";
   // Gültige ACKs aus anderen Tageslisten: Grund callübergreifend zeigen
   const xHtml = otherAcks(r, wf.id).map(({ w, a: xa }) =>
     `<div class="ack-x" title="In der Liste „${esc(w.title)}“ per ACK bestätigt${xa.by ? " von " + esc(xa.by) : ""}${xa.until ? ", gilt bis " + esc(fmtD.format(new Date(xa.until))) : ""}">ACK in „${esc(w.title)}“${xa.note ? `: <b>„${esc(xa.note)}“</b>` : ""}</div>`).join("");
   return `<tr data-call="${esc(r.Call)}" class="${a.done ? "acked" : ""}">
-    <td class="nowrap"><input type="checkbox" data-ack="${esc(r.Call)}" ${a.done ? "checked" : ""} title="ACK (acknowledged) – ohne Datum nur für heute">${histBtn(r.Call)}${multiWarn(r.Call, wf.id)}${changed}${ackDetails}${altHtml}${xHtml}</td>
+    <td class="nowrap"><input type="checkbox" data-ack="${esc(r.Call)}" ${a.done ? "checked" : ""} title="ACK (acknowledged) – ohne Datum dauerhaft, mit „bis“-Datum bis einschließlich">${histBtn(r.Call)}${multiWarn(r.Call, wf.id)}${changed}${ackDetails}${altHtml}${xHtml}</td>
     ${wfCols(wf.id).map(k => COLS[k].cell(r)).join("")}
     <td class="nowrap"><button class="small" data-teams="${esc(r.Call)}" title="Teams-Nachricht kopieren">Teams</button>
         <button class="small" data-wvl="${esc(r.Call)}" title="Wiedervorlage-Text kopieren">WVL</button></td>
@@ -2241,7 +2242,7 @@ function renderWf(view, w) {
   const open = rows.filter(r => !ackInfo(r, w.id).done).length;
   view.innerHTML = `<div class="card"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">${esc(w.title)} <span class="pill ${open ? "s-warn" : "s-ok"}">${open} offen</span>
       <button class="small" id="btnCols" style="margin-left:auto" title="Spalten dieser Tabelle ein-/ausblenden">Spalten …</button></h2>
-    <p class="sub">${esc(w.desc)} ACK (acknowledged) gilt für heute, mit „bis“-Datum bis einschließlich.</p>
+    <p class="sub">${esc(w.desc)} ACK (acknowledged) gilt ohne Datum dauerhaft (bis es entfernt wird), mit „bis“-Datum bis einschließlich.</p>
     ${filterPanel(w.id, wfCandidates(w), w.id === "kdkomm" ? { tage: "tage", tageLabel: "ab Tagen ohne Kundeninfo" } : w.id === "aender" ? { tage: "tage", tageLabel: "ab Tagen ohne Änderung" } : {})}
     ${callTable(rows, w)}</div>`;
   bindWfEvents(view, rows, w);
