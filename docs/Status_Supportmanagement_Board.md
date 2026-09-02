@@ -39,6 +39,7 @@ Eine eigenständige Single-File-HTML-Anwendung (`SupportBoard.html`) für das Su
 | v1.23 | Mittwochsmail-Vorbereitung: Markier-Punkte in der Zelle (kein Modus, kein Scrollsprung), ACK-Spalte, Fokus-Filter; Wochenendtermine rot umrahmt |
 | v1.24 | Team-Datei verbinden: Fehler werden gemeldet statt verschluckt, Schreibrecht sofort nach Auswahl, Lesemodus ohne Schreibrecht |
 | v1.25 | Ausweg bei „Not allowed to request permissions in this context“: Schreibrecht über den Speichern-Dialog (Inhalt bleibt erhalten) |
+| v1.26 | Team-Datei verbinden (Teamprüfung): Speichern-Modus je Gerät mit Selbstheilung, Board-Dialog „Freigabe erteilen“ statt Alert, Identitätsprüfung der Datei (isSameEntry + Fingerabdruck), „Diese Datei vergessen“, Excel nach Speichern-Dialog nicht in derselben Geste, Köderdatei löschbar |
 | v1.24 | Team-Datei verbinden: Fehler werden gemeldet statt verschluckt; Schreibrecht wird sofort angefragt; ohne Schreibrecht Lesemodus mit Nachfrage beim nächsten Klick |
 
 ## Feste Regeln
@@ -48,6 +49,7 @@ Eine eigenständige Single-File-HTML-Anwendung (`SupportBoard.html`) für das Su
 - ACK entfernt sich nicht automatisch bei Ticket-Änderungen — nur Verweis „geändert!“; ohne „bis“-Datum dauerhaft, mit Datum bis einschließlich
 - Lösungstermine auf Samstag/Sonntag werden rot umrahmt und in den Mails rot hinterlegt; interne MPDV-Tasks sind ausgenommen
 - Die ACK-Spalte der Mittwochsmail-Vorbereitung ist rein intern und erscheint weder in der Mail noch in der OneNote-Tabelle
+- Team-Datei: Ein Handle wird nur übernommen, wenn es nachweislich dieselbe Datei ist; geschrieben wird ausschließlich nach erfolgreichem Lesen (readOk-Gate). Lässt der Browser keine Berechtigungsanfrage zu, kommt das Schreibrecht über den Speichern-Dialog (Modus „save“, pro Gerät gemerkt, heilt sich selbst)
 - Productmanagement wird in Mails als „ProdM“ abgekürzt
 
 ## Bedienungsroutine (Quell-Dateien)

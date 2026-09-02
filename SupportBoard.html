@@ -93,6 +93,7 @@
   .srcmini .dot.live { background: var(--good); }
   .srcmini .dot.demo { background: var(--warn); }
   .srcmini .dot.stale { background: var(--crit); }
+  .srcmini .dot.warn { background: var(--warn); }
   .srcmini:hover { background: var(--side-bg2); border-radius: 10px; }
   .srcmini:hover .row { color: var(--side-ink); }
   .main { min-width: 0; display: flex; flex-direction: column; }
@@ -330,6 +331,11 @@
   .tm-opt { display: grid; gap: 2px; text-align: left; padding: 11px 14px; }
   .tm-opt b { font-size: 13.5px; }
   .tm-opt span { font-size: 12px; color: var(--ink-2); line-height: 1.35; }
+  .tm-foot { font-size: 12px; color: var(--muted); margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+  .tm-foot button.link { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; font-size: 12px; text-decoration: underline; }
+  .tm-hint { font-size: 12.5px; background: var(--warn-wash); border: 1px solid var(--warn); border-radius: 8px; padding: 8px 10px; margin: 10px 0; line-height: 1.4; }
+  .tm-tech { margin-top: 10px; font-size: 11.5px; color: var(--muted); }
+  .tm-tech pre { white-space: pre-wrap; font-size: 11px; background: var(--surface-2); padding: 6px 8px; border-radius: 6px; margin: 4px 0 0; }
   .tm-opt.primary span { color: rgba(255,255,255,0.85); }
   .loginlist { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
   .loginlist button { display: flex; align-items: baseline; gap: 8px; padding: 9px 12px; text-align: left; }
@@ -402,17 +408,15 @@
   <div class="modal">
     <h2>Team-Speicher verbinden</h2>
     <p class="hint">Die gemeinsame Datei auf dem Share gleicht ACKs, Kommentare und Stammdaten im Team ab.</p>
+    <div class="tm-hint hidden" id="tmPendingHint"></div>
     <div class="tm-opts">
       <button class="tm-opt primary" id="tmPick">
         <b>Vorhandene Team-Datei auswählen</b>
         <span>Der Normalfall: Die Datei liegt bereits auf dem Share (z. B. SupportBoard-Team.json).</span>
       </button>
-      <button class="tm-opt" id="tmNew">
-        <b>Neue Team-Datei erstellen</b>
-        <span>Nur beim allerersten Einrichten im Team. Gibt es die Datei schon, bitte oben auswählen.</span>
-      </button>
     </div>
     <div class="btnrow" style="margin-bottom:0"><button id="tmCancel">Abbrechen</button></div>
+    <div class="tm-foot" id="tmFoot">Erste Einrichtung im Team, noch keine Team-Datei vorhanden? <button class="link" id="tmNew">Neue Team-Datei anlegen</button></div>
   </div>
 </div>
 
@@ -453,7 +457,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.25";
+const VERSION = "1.26";
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -881,6 +885,16 @@ async function saveHandle(q, h) {
     });
   } catch (e) { /* optional */ }
 }
+async function deleteHandle(q) {
+  try {
+    const db = await idb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction("h", "readwrite");
+      tx.objectStore("h").delete(q);
+      tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    });
+  } catch (e) { /* optional */ }
+}
 async function loadHandles() {
   try {
     const db = await idb();
@@ -895,76 +909,115 @@ async function loadHandles() {
     return out;
   } catch (e) { return { ALL: null, TEAM: null }; }
 }
+/* Berechtigungs-Weg je Gerät: "auto" = normale Browser-Nachfrage; "save" = dieser Browser lässt
+   auf dieser Seite keine Nachfrage zu, das Schreibrecht kommt über den Speichern-Dialog. Wird
+   gesetzt, sobald der Fehler einmal auftrat, und heilt sich, sobald die Nachfrage wieder klappt. */
+let teamPermMode = (() => { try { return localStorage.getItem("smbTeamPermMode") === "save" ? "save" : "auto"; } catch (e) { return "auto"; } })();
+function setTeamPermMode(m) { teamPermMode = m; try { localStorage.setItem("smbTeamPermMode", m); } catch (e) {} }
+let allPending = false;      // Excel/CSV-Überwachung wartet noch auf die Freigabe
+let teamAktionBusy = false;  // ein Datei-Dialog des Team-Speichers ist gerade offen
 async function tryRestoreWatch() {
   if (!window.showOpenFilePicker) return;
   const hs = await loadHandles();
   let needGesture = false, restored = false;
+  const qp = async (h, mode) => { try { return await h.queryPermission({ mode }); } catch (e) { console.warn("queryPermission", e); return "prompt"; } };
   const h = hs.ALL;
   if (h) {
     sources.ALL.handle = h; sources.ALL.stamp = null;
-    const perm = await h.queryPermission({ mode: "read" });
-    if (perm === "granted") {
+    if (await qp(h, "read") === "granted") {
       await readWatched("ALL");
       document.getElementById("btnWatchAll").textContent = `${h.name} ✓`;
       restored = true;
-    } else needGesture = true;
+    } else { needGesture = true; allPending = true; }
   }
   const ht = hs.TEAM;
   if (ht) {
     teamKnown = true;
-    const perm = await ht.queryPermission({ mode: "readwrite" });
-    if (perm === "granted") { sharedHandle = ht; firstMergeDone = false; syncShared(); }
+    if (await qp(ht, "readwrite") === "granted") { sharedHandle = ht; firstMergeDone = false; syncShared(); }
     else { pendingSharedHandle = ht; needGesture = true; }
     updateTeamInfo();
   }
   if (restored) armWatch();
-  document.getElementById("btnResume").classList.toggle("hidden", !needGesture);
-  document.getElementById("btnResumeMini").classList.toggle("hidden", !needGesture);
-  if (needGesture) armAutoResume();
+  updateResumeButtons();
+  if (needGesture && teamPermMode === "auto") armAutoResume();
+}
+/* Knöpfe "Überwachung fortsetzen" (Verwaltung + Seitenleiste): sichtbar, solange etwas wartet;
+   im Speichern-Modus heißen sie "Freigabe erteilen". */
+function updateResumeButtons() {
+  const offen = !!pendingSharedHandle || allPending;
+  const label = pendingSharedHandle && teamPermMode === "save" ? "Freigabe erteilen" : "Überwachung fortsetzen";
+  for (const id of ["btnResume", "btnResumeMini"]) {
+    const b = document.getElementById(id); if (!b) continue;
+    b.classList.toggle("hidden", !offen);
+    b.textContent = label;
+    b.title = label === "Freigabe erteilen"
+      ? "Öffnet den Speichern-Dialog: dort die Team-Datei anklicken und „Ersetzen“ bestätigen – es wird nichts gelöscht"
+      : "Die zuletzt überwachten Dateien wieder aktivieren (der Browser fragt einmal nach Erlaubnis)";
+  }
 }
 /* Browser verlangen für den erneuten Dateizugriff eine Nutzergeste – der erste
    Klick irgendwo im Board (z. B. auf das Anmelde-Kürzel) übernimmt das automatisch.
-   Wer im Browser-Dialog „Bei jedem Besuch zulassen“ wählt, sieht gar keine Nachfrage mehr. */
+   Wer im Browser-Dialog „Bei jedem Besuch zulassen“ wählt, sieht gar keine Nachfrage mehr.
+   Nicht im Speichern-Modus: ein unerwartet aufspringender Speichern-Dialog wäre verwirrend. */
 function armAutoResume() {
-  const h = () => {
+  const h = e => {
+    if (e.target.closest("#btnResume, #btnResumeMini, #syncBanner, #teamModal, #teamDlg, .modal-back")) return; // eigene Knöpfe lösen selbst aus
     document.removeEventListener("click", h, true);
+    if (teamPermMode === "save" && pendingSharedHandle) return; // inzwischen Speichern-Modus: nur noch per Knopf
     if (!document.getElementById("btnResume").classList.contains("hidden")) resumeWatch();
   };
   document.addEventListener("click", h, true);
 }
+let resumeBusy = false;
 async function resumeWatch() {
-  const h = sources.ALL.handle;
-  if (h) {
-    try {
-      const perm = await h.requestPermission({ mode: "read" });
-      if (perm === "granted") {
-        await readWatched("ALL");
-        document.getElementById("btnWatchAll").textContent = `${h.name} ✓`;
+  if (resumeBusy || teamAktionBusy) return;
+  resumeBusy = true;
+  let teamOffen = false, allOffen = false, pickerGeoeffnet = false;
+  try {
+    // Team zuerst: die Excel-Nachfrage kann Sekunden dauern und die Klick-Geste verbrauchen.
+    if (pendingSharedHandle) {
+      const pend = pendingSharedHandle;
+      try {
+        const perm = await pend.requestPermission({ mode: "readwrite" });
+        if (perm === "granted") { setTeamPermMode("auto"); sharedHandle = pend; pendingSharedHandle = null; firstMergeDone = false; await syncShared(); }
+        else teamOffen = true;
+      } catch (e) {
+        console.warn("Team-Speicher: Schreibrecht", e);
+        if (permKontextFehler(e)) {
+          setTeamPermMode("save"); pickerGeoeffnet = true;
+          const res = await verbindeTeamViaSave(pend); // noch in derselben Klick-Geste
+          if (res.status !== "ok") teamOffen = true;
+          behandleSaveErgebnis(res, pend);
+        } else teamOffen = true;
       }
-    } catch (e) { /* abgelehnt */ }
-  }
-  let teamOffen = false;
-  if (pendingSharedHandle) {
-    const name = pendingSharedHandle.name;
-    try {
-      const perm = await pendingSharedHandle.requestPermission({ mode: "readwrite" });
-      if (perm === "granted") { sharedHandle = pendingSharedHandle; pendingSharedHandle = null; firstMergeDone = false; await syncShared(); }
-      else teamOffen = true;
-    } catch (e) {
-      console.warn("Team-Speicher: Schreibrecht", e);
-      if (permKontextFehler(e)) {
-        // Zweiter Weg, solange die Klick-Geste noch gilt
-        try { await pickSharedViaSave(name); }
-        catch (e2) { teamOffen = true; if (e2?.name !== "AbortError") teamFehler(permHinweis(name, "prompt", e), e2); }
-      } else teamOffen = true;
+      updateTeamInfo();
     }
-    updateTeamInfo();
-  }
+    const h = sources.ALL.handle;
+    if (allPending && h && !pickerGeoeffnet) {
+      try {
+        const perm = await h.requestPermission({ mode: "read" });
+        if (perm === "granted") {
+          allPending = false;
+          await readWatched("ALL");
+          document.getElementById("btnWatchAll").textContent = `${h.name} ✓`;
+        } else allOffen = true;
+      } catch (e) {
+        allOffen = true;
+        console.warn("Überwachung: Leserecht", e);
+        if (permKontextFehler(e)) zeigeTeamDialog({
+          titel: "Dashboard-Datei erneut wählen",
+          text: `Der Browser lässt auf diesem PC die Freigabe der überwachten Datei „${h.name}“ nicht zu. Bitte die Datei einmal neu auswählen – danach läuft die Überwachung wie gewohnt.`,
+          aktionLabel: "Datei auswählen …", aktion: pickWatch, technisch: `${e.name}: ${e.message}`
+        });
+      }
+    } else if (allPending) allOffen = true; // nach einem Speichern-Dialog: nächster Klick
+  } finally { resumeBusy = false; }
   armWatch();
-  document.getElementById("btnResume").classList.toggle("hidden", !teamOffen);
-  document.getElementById("btnResumeMini").classList.toggle("hidden", !teamOffen);
-  if (teamOffen) { armAutoResume(); toast("Team-Speicher: Schreibrecht weiterhin nicht erteilt – Änderungen dieses PCs werden nicht geteilt"); }
-  else toast("Überwachung wiederhergestellt – Tipp: im Browser-Dialog „Bei jedem Besuch zulassen“ wählen, dann entfällt die Nachfrage künftig ganz");
+  updateResumeButtons();
+  const offen = teamOffen || allOffen;
+  if (offen && teamPermMode === "auto") armAutoResume();
+  if (!offen) toast("Überwachung wiederhergestellt – Tipp: im Browser-Dialog „Bei jedem Besuch zulassen“ wählen, dann entfällt die Nachfrage künftig ganz");
+  else if (!teamOffen && allOffen && pickerGeoeffnet) toast("Team-Datei verbunden. Für die Dashboard-Überwachung bitte noch einmal „Überwachung fortsetzen“ klicken");
 }
 
 /* ================= Team-Speicher: gemeinsame Datei auf dem Share =================
@@ -1113,7 +1166,9 @@ function updateTeamInfo() {
   if (sharedHandle && sharedCorrupt) el.innerHTML = `${esc(sharedHandle.name)} · <span class="veraltet">Datei nicht lesbar (defekt?)</span> – Abgleich pausiert, unten „Notfall“ nutzen`;
   else if (sharedHandle && sharedReadFail >= 2) el.innerHTML = `${esc(sharedHandle.name)} · <span class="veraltet">Lesen fehlgeschlagen (${sharedReadFail}×)</span> – es wird NICHT geschrieben, nächster Versuch läuft`;
   else if (sharedHandle) el.textContent = `${sharedHandle.name} ✓${sharedLastSync ? " · Abgleich " + fmtT.format(sharedLastSync) : ""}${gi ? " · " + gi : ""}`;
-  else if (pendingSharedHandle) el.textContent = "Freigabe fehlt – „Überwachung fortsetzen“ klicken";
+  else if (pendingSharedHandle) el.textContent = teamPermMode === "save"
+    ? `${pendingSharedHandle.name} · gelesen, Speichern noch nicht freigegeben – „Freigabe erteilen“ klicken`
+    : "Freigabe fehlt – „Überwachung fortsetzen“ klicken";
   else el.textContent = "";
   const nf = document.getElementById("btnForceShared");
   if (nf) nf.classList.toggle("hidden", !(sharedHandle && (sharedCorrupt || sharedReadFail >= 3)));
@@ -1128,6 +1183,8 @@ function updateSyncBanner() {
     html = `⚠ Team-Datei nicht lesbar – Abgleich pausiert, es wird nichts überschrieben.${wart} <button id="bnAdmin">Zur Verwaltung</button>`;
   } else if (sharedHandle && sharedReadFail >= 2) {
     html = `⚠ Team-Abgleich gestört (Lesen fehlgeschlagen) – Änderungen bleiben vorerst lokal.${wart}`;
+  } else if (pendingSharedHandle && teamPermMode === "save") {
+    html = `Team-Datei gelesen, Speichern noch nicht freigegeben – Änderungen bleiben bis dahin lokal${wart}. <button id="bnConnect">Freigabe erteilen</button>`; cls = "warn";
   } else if (pendingSharedHandle) {
     if (bannerMuted) { html = `Offline – Änderungen bleiben lokal${wart}. <button id="bnConnect">Jetzt verbinden</button>`; cls = "warn slim"; }
     else html = `⚠ Team-Speicher NICHT verbunden – Änderungen bleiben nur lokal${wart}. <button id="bnConnect">Jetzt verbinden</button> <button class="bx" id="bnMute" title="Bewusst offline arbeiten – Banner verkleinern">×</button>`;
@@ -1140,51 +1197,77 @@ function updateSyncBanner() {
   b.querySelector("#bnMute")?.addEventListener("click", () => { bannerMuted = true; updateSyncBanner(); });
   b.querySelector("#bnAdmin")?.addEventListener("click", () => { activeTab = "admin"; render(); });
 }
-/* Verbinden-Dialog mit drei klar getrennten Wegen. Abbrechen (auch per Escape oder
-   Klick daneben) tut garantiert nichts – früher legte „Abbrechen“ eine neue Datei an. */
+/* Verbinden-Dialog. Abbrechen (auch per Escape oder Klick daneben) tut garantiert nichts.
+   Wartet bereits eine gefundene Team-Datei auf ihre Freigabe, führt der Dialog dorthin –
+   "Neue Team-Datei anlegen" ist dann verborgen, damit niemand am Team vorbei arbeitet. */
 function connectShared() {
   if (!window.showOpenFilePicker) { alert("Der Team-Speicher benötigt Chrome oder Edge."); return; }
   const modal = document.getElementById("teamModal");
-  const close = () => { modal.classList.add("hidden"); document.removeEventListener("keydown", esc, true); };
-  const esc = e => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+  const close = () => { modal.classList.add("hidden"); document.removeEventListener("keydown", onKey, true); };
+  const onKey = e => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+  const pend = pendingSharedHandle;
+  const hint = document.getElementById("tmPendingHint"), pick = document.getElementById("tmPick"), foot = document.getElementById("tmFoot");
+  if (pend) {
+    hint.innerHTML = `Die Team-Datei „${esc(pend.name)}“ wurde bereits gefunden und gelesen. Es fehlt nur noch die Freigabe zum Speichern.
+      <div class="tm-foot" style="margin-top:6px">Ist das nicht mehr die richtige Datei? <button class="link" id="tmForget">Diese Datei vergessen</button></div>`;
+    hint.classList.remove("hidden");
+    pick.innerHTML = `<b>Freigabe für „${esc(pend.name)}“ erteilen</b><span>${teamPermMode === "save"
+      ? "Öffnet den Speichern-Dialog: dort die Datei anklicken und „Ersetzen“ bestätigen – es wird nichts gelöscht."
+      : "Der Browser fragt einmal nach – dort „Änderungen speichern“ zulassen."}</span>`;
+    pick.onclick = () => { close(); resumeWatch(); };
+    foot.classList.add("hidden");
+    hint.querySelector("#tmForget").onclick = async () => { close(); await forgetTeamFile(); };
+  } else {
+    hint.classList.add("hidden");
+    pick.innerHTML = `<b>Vorhandene Team-Datei auswählen</b><span>Der Normalfall: Die Datei liegt bereits auf dem Share (z. B. SupportBoard-Team.json).</span>`;
+    pick.onclick = () => { close(); pickSharedFile(false); };
+    foot.classList.remove("hidden");
+  }
   modal.classList.remove("hidden");
-  document.addEventListener("keydown", esc, true);
+  document.addEventListener("keydown", onKey, true);
   modal.onclick = e => { if (e.target === modal) close(); }; // Klick auf den Hintergrund = abbrechen
   document.getElementById("tmCancel").onclick = close;
-  document.getElementById("tmPick").onclick = () => { close(); pickSharedFile(false); };
   document.getElementById("tmNew").onclick = () => {
     if (!confirm("Neue, leere Team-Datei anlegen?\n\nNur beim allerersten Einrichten im Team nötig. Existiert die Team-Datei bereits, bitte abbrechen und „Vorhandene Team-Datei auswählen“ nehmen – sonst arbeitet dieser PC an einer eigenen Datei vorbei am Team.")) return;
     close(); pickSharedFile(true);
   };
 }
+/* Gemerkte, aber nicht freigegebene Team-Datei loslassen (z. B. umbenannt/verschoben) */
+async function forgetTeamFile() {
+  pendingSharedHandle = null; teamKnown = !!sharedHandle;
+  await deleteHandle("TEAM");
+  updateTeamInfo(); updateResumeButtons();
+  toast("Team-Datei vergessen – über „Team-Speicher …“ kann eine Datei neu gewählt werden");
+}
 async function pickSharedFile(neu) {
+  if (teamAktionBusy) return;
   // 1) Datei wählen. Nur ein bewusst geschlossener Dialog (AbortError) bleibt stumm –
   //    jeder andere Fehler wird gemeldet, statt im Nichts zu verschwinden.
   let h;
   try {
-    if (neu) h = await window.showSaveFilePicker({ suggestedName: "SupportBoard-Team.json", types: [{ description: "Team-Speicher", accept: { "application/json": [".json"] } }] });
-    else [h] = await window.showOpenFilePicker({ types: [{ description: "Team-Speicher", accept: { "application/json": [".json"] } }] });
+    if (neu) h = await window.showSaveFilePicker({ suggestedName: "SupportBoard-Team.json", id: "smbTeam", types: [{ description: "Team-Speicher", accept: { "application/json": [".json"] } }] });
+    else [h] = await window.showOpenFilePicker({ id: "smbTeam", types: [{ description: "Team-Speicher", accept: { "application/json": [".json"] } }] });
   } catch (e) {
     if (e?.name === "AbortError") return; // Dialog geschlossen – gewollt nichts
     teamFehler("Der Datei-Dialog konnte nicht geöffnet werden.", e);
     return;
   }
-  // 2) Schreibrecht SOFORT anfragen – solange die Klick-Geste noch gilt. Früher lagen hier
-  //    erst Dateiprüfung und Rückfrage dazwischen; lief die Geste ab, brach alles stumm ab.
+  // 2) Schreibrecht SOFORT anfragen – solange die Klick-Geste noch gilt.
   let perm = "prompt", permErr = null;
   try { perm = await h.requestPermission({ mode: "readwrite" }); } catch (e) { permErr = e; }
   if (perm !== "granted") {
     // Lesen geht trotzdem (die Auswahl im Dialog erlaubt es): Team-Stand einmal einlesen,
-    // Datei merken und das Schreibrecht beim nächsten Klick erneut anfragen.
+    // Datei merken – die Freigabe holt ein weiterer Klick.
     teamKnown = true; pendingSharedHandle = h; saveHandle("TEAM", h);
+    const kontext = permKontextFehler(permErr);
+    if (kontext) setTeamPermMode("save"); // dieser Browser lässt hier keine Nachfrage zu: Weg über den Speichern-Dialog
     await mergeSharedReadOnly(h);
-    updateTeamInfo();
-    document.getElementById("btnResume").classList.remove("hidden");
-    document.getElementById("btnResumeMini").classList.remove("hidden");
-    armAutoResume();
-    teamFehler(permHinweis(h.name, perm, permErr), permErr);
+    updateTeamInfo(); updateResumeButtons();
+    if (kontext) zeigeFreigabeDialog(h, permErr);
+    else { armAutoResume(); teamFehler(permHinweis(h.name, perm, permErr), permErr); }
     return;
   }
+  setTeamPermMode("auto");
   // 3) Sicherheitsnetz: leere Datei ausgewählt, obwohl lokal Team-Daten vorliegen?
   if (!neu) {
     try {
@@ -1199,28 +1282,130 @@ async function pickSharedFile(neu) {
   saveHandle("TEAM", h);
   sharedDirty = true;
   await syncShared();
-  updateTeamInfo();
+  updateTeamInfo(); updateResumeButtons();
   if (sharedReadFail || sharedCorrupt) teamFehler(`„${h.name}“ wurde verbunden, konnte aber nicht gelesen werden${sharedCorrupt ? " (Inhalt ist kein gültiges JSON)" : ""}. Es wird nichts geschrieben, bis das Lesen klappt – Details in der Verwaltung.`);
   else toast("Team-Speicher verbunden – Haken, Kommentare und Stammdaten werden jetzt geteilt");
 }
-/* Passender Hinweistext zum fehlenden Schreibrecht */
+/* Der Speichern-Dialog vergibt das Schreibrecht als Teil der Dateiauswahl – ein anderer Weg im
+   Browser als die (hier blockierte) Nachfrage. Die Datei wird dabei NICHT geleert: das Board
+   liest erst, mischt, und schreibt dann. Übernommen wird nur, wenn es nachweislich dieselbe
+   Datei ist – sonst könnte der Team-Stand in einer fremden Datei landen. */
+async function verbindeTeamViaSave(pending) {
+  if (teamAktionBusy) return { status: "busy" };
+  teamAktionBusy = true;
+  try {
+    const opts = { suggestedName: pending?.name || "SupportBoard-Team.json", id: "smbTeam", types: [{ description: "Team-Speicher", accept: { "application/json": [".json"] } }] };
+    let h;
+    try {
+      try { h = await window.showSaveFilePicker(pending ? { ...opts, startIn: pending } : opts); }
+      catch (e) { if (pending && e?.name === "TypeError") h = await window.showSaveFilePicker(opts); else throw e; } // startIn nicht unterstützt
+    } catch (e) {
+      if (e?.name === "AbortError") return { status: "abbruch" };
+      if (e?.name === "SecurityError") return { status: "geste", e };
+      return { status: "fehler", e };
+    }
+    if (pending) {
+      let identisch = false;
+      try { identisch = (await pending.isSameEntry(h)) === true; } catch (e) { identisch = false; }
+      if (!identisch) {
+        // Ersatzprüfung, falls der Browser isSameEntry nicht auswerten kann: Fingerabdruck der Datei
+        try {
+          const a = await pending.getFile(), b = await h.getFile();
+          identisch = a.name === b.name && a.size === b.size && a.lastModified === b.lastModified && b.size > 0;
+        } catch (e) { identisch = false; }
+      }
+      if (!identisch) return { status: "andereDatei", h };
+    } else {
+      // Ohne Vergleichsdatei: eine leere Datei ist verdächtig, wenn dieser PC das Team schon kennt
+      try {
+        const leer = !(await (await h.getFile()).text()).trim();
+        if (leer && (sharedGenInfo || Object.keys(state.acks).length + Object.keys(state.comments).length > 0)) return { status: "leer", h };
+      } catch (e) { return { status: "leseFehler", h, e }; }
+    }
+    sharedHandle = h; pendingSharedHandle = null;
+    teamKnown = true; firstMergeDone = false; sharedDirty = true;
+    saveHandle("TEAM", h);
+    await syncShared();
+    updateTeamInfo(); updateResumeButtons();
+    if (sharedReadFail || sharedCorrupt) return { status: "leseFehler", h };
+    return { status: "ok", h };
+  } finally { teamAktionBusy = false; }
+}
+function behandleSaveErgebnis(res, pending) {
+  const name = pending?.name || "Team-Datei";
+  const nochmal = () => verbindeTeamViaSave(pending).then(r => behandleSaveErgebnis(r, pending));
+  switch (res.status) {
+    case "ok": {
+      const n = Array.isArray(state.personen) ? state.personen.length : 0, a = Object.keys(state.acks).length;
+      toast(`Team-Datei verbunden. ${n} Personen und ${a} Haken des Teams sind da – Änderungen dieses PCs werden ab jetzt geteilt.`);
+      break;
+    }
+    case "abbruch": case "busy": break;
+    case "geste":
+      zeigeTeamDialog({ titel: "Noch ein Klick", text: `Der Speichern-Dialog konnte nicht mehr geöffnet werden, weil zu viel Zeit seit dem Klick vergangen ist. Bitte direkt „Freigabe erteilen“ drücken – dann öffnet er sich sofort.`,
+        aktionLabel: "Freigabe erteilen", aktion: nochmal, technisch: res.e ? `${res.e.name}: ${res.e.message}` : "" });
+      break;
+    case "andereDatei": {
+      const other = res.h;
+      const o = { titel: "Das war eine andere Datei", text: `Gewählt wurde „${other?.name ?? "?"}“, erwartet war „${name}“. Es wurde nichts verbunden und nichts geschrieben.\n\nFalls dabei eine neue, leere Datei „${other?.name ?? "?"}“ entstanden ist, bitte löschen – sonst wählt sie später jemand versehentlich als Team-Datei.`,
+        aktionLabel: "Erneut wählen", aktion: nochmal };
+      if (other && typeof other.remove === "function") {
+        o.zweitLabel = `Leere Datei „${other.name}“ löschen`;
+        o.zweitAktion = async () => {
+          try { const f = await other.getFile(); if (f.size > 0) { teamFehler(`„${other.name}“ ist nicht leer und wurde deshalb nicht gelöscht.`); return; } await other.remove(); toast(`„${other.name}“ gelöscht`); }
+          catch (e) { teamFehler(`„${other.name}“ konnte nicht gelöscht werden.`, e); }
+        };
+      }
+      zeigeTeamDialog(o);
+      break;
+    }
+    case "leer":
+      zeigeTeamDialog({ titel: "Datei ist leer", text: `„${res.h?.name ?? name}“ enthält nichts, dieser PC kennt aber bereits Team-Daten. Es wurde nichts übernommen. Bitte die richtige Team-Datei wählen – oder, falls es wirklich ein Neuanfang ist, über „Team-Speicher …“ eine neue Datei anlegen.`,
+        aktionLabel: "Erneut wählen", aktion: nochmal });
+      break;
+    case "leseFehler":
+      zeigeTeamDialog({ titel: "Team-Datei nicht lesbar", text: `„${res.h?.name ?? name}“ konnte nicht gelesen werden${sharedCorrupt ? " (Inhalt ist kein gültiges JSON)" : ""}. Es wird nichts geschrieben, bis das Lesen klappt – Details in der Verwaltung.`,
+        aktionLabel: "Erneut versuchen", aktion: nochmal, technisch: res.e ? `${res.e.name}: ${res.e.message}` : "" });
+      break;
+    default: teamFehler("Der Speichern-Dialog ist fehlgeschlagen.", res.e);
+  }
+}
+/* Meldung im Moment des Scheiterns – mit dem Knopf, der den zweiten Weg startet */
+function zeigeFreigabeDialog(pending, e) {
+  zeigeTeamDialog({
+    titel: "Team-Datei fast verbunden",
+    text: `„${pending.name}“ wurde gefunden und gelesen. Der Browser braucht auf diesem PC noch eine Freigabe zum Speichern – ein Klick genügt.\n\nGleich öffnet sich ein Speichern-Fenster: dort „${pending.name}“ anklicken (ist vorausgewählt) und die Frage „Ersetzen?“ mit Ja beantworten. Es wird nichts gelöscht – alle Personen, Haken und Kommentare bleiben erhalten.\n\nAuf diesem PC ist das nach jedem Browserstart einmal nötig.`,
+    aktionLabel: "Freigabe erteilen",
+    aktion: () => verbindeTeamViaSave(pending).then(r => behandleSaveErgebnis(r, pending)),
+    technisch: e ? `${e.name}: ${e.message}` : ""
+  });
+}
+/* Kleines Board-Modal für Team-Speicher-Meldungen mit Folgeaktion. Der Aktions-Knopf ruft die
+   Aktion direkt im Klick auf, damit ein Datei-Dialog innerhalb der Nutzergeste liegt. */
+function zeigeTeamDialog(o) {
+  document.getElementById("teamDlg")?.remove();
+  const back = document.createElement("div"); back.className = "modal-back"; back.id = "teamDlg";
+  back.innerHTML = `<div class="modal"><h2>${esc(o.titel)}</h2><p class="hint" style="white-space:pre-line">${esc(o.text)}</p>
+    ${o.technisch ? `<details class="tm-tech"><summary>Details für die IT</summary><pre>${esc(o.technisch)}</pre></details>` : ""}
+    <div class="btnrow" style="margin-bottom:0">
+      ${o.aktionLabel ? `<button class="primary" id="tdAkt">${esc(o.aktionLabel)}</button>` : ""}
+      ${o.zweitLabel ? `<button id="tdZweit">${esc(o.zweitLabel)}</button>` : ""}
+      <button id="tdClose">${esc(o.schliessenLabel || "Später")}</button></div></div>`;
+  document.body.appendChild(back);
+  const close = () => { back.remove(); document.removeEventListener("keydown", onKey, true); };
+  const onKey = ev => { if (ev.key === "Escape") { ev.stopPropagation(); close(); } };
+  document.addEventListener("keydown", onKey, true);
+  back.onclick = ev => { if (ev.target === back) close(); };
+  back.querySelector("#tdClose").onclick = close;
+  const bind = (id, fn) => { const b = back.querySelector(id); if (b && fn) b.onclick = () => { b.disabled = true; close(); fn(); }; };
+  bind("#tdAkt", o.aktion); bind("#tdZweit", o.zweitAktion);
+}
+/* Hinweistext zum fehlenden Schreibrecht (Fälle ohne Speichern-Weg) */
 function permKontextFehler(e) { return e?.name === "SecurityError" && /context/i.test(e.message || ""); }
 function permHinweis(name, perm, e) {
   const basis = `Der Team-Stand aus „${name}“ wurde nur GELESEN – Änderungen dieses PCs werden noch nicht geteilt.`;
-  if (permKontextFehler(e)) return `${basis}\n\nDer Browser lässt auf dieser Seite keine Berechtigungsanfrage zu. Das passiert, wenn das Board nicht als normaler, eigener Tab läuft – z. B. in einer Vorschau (Teams, Outlook, SharePoint), in der Edge-Seitenleiste oder eingebettet in eine andere Seite. Auch ein Unternehmens-Browserprofil kann das erzwingen.\n\nSo geht es weiter:\n1. Unten links „Überwachung fortsetzen“ klicken – das Board versucht dann den Weg über den Speichern-Dialog: dort die VORHANDENE Team-Datei anklicken und Ersetzen bestätigen (der Inhalt bleibt erhalten, es wird erst gelesen, dann geschrieben).\n2. Klappt auch das nicht: Board schließen und die Datei direkt per Doppelklick in Chrome oder Edge öffnen (Adresszeile beginnt mit file:///), dann Team-Speicher erneut verbinden.`;
   if (e) return `${basis}\n\nDie Anfrage nach dem Schreibrecht ist fehlgeschlagen. Bitte unten links „Überwachung fortsetzen“ klicken – dann wird sie wiederholt.`;
   return `${basis}\n\nDer Browser hat das Schreibrecht nicht erteilt (Antwort: ${perm}). Bitte unten links „Überwachung fortsetzen“ klicken und im Browser-Dialog „Änderungen speichern“ zulassen. Erscheint gar kein Dialog, blockiert eine Browser- oder Firmenrichtlinie das Schreiben in Dateien – dann bitte die IT ansprechen.`;
-}
-/* Ausweg, wenn der Browser requestPermission() auf dieser Seite verweigert: Der Speichern-Dialog
-   vergibt das Schreibrecht als Teil der Dateiauswahl – ein anderer Weg im Browser. Die Datei wird
-   dabei NICHT geleert: das Board liest erst, mischt, und schreibt dann. */
-async function pickSharedViaSave(name) {
-  const h = await window.showSaveFilePicker({ suggestedName: name || "SupportBoard-Team.json", types: [{ description: "Team-Speicher", accept: { "application/json": [".json"] } }] });
-  sharedHandle = h; pendingSharedHandle = null;
-  teamKnown = true; firstMergeDone = false; sharedDirty = true;
-  saveHandle("TEAM", h);
-  await syncShared();
-  return h;
 }
 /* Fehler beim Verbinden sichtbar machen – mit technischem Grund für die Rückfrage an die IT */
 function teamFehler(text, e) {
@@ -1320,7 +1505,7 @@ function updateMini() {
     const gi = genInfoText();
     tTxt.textContent = "Team-Speicher · " + (sharedLastSync ? "Abgleich " + fmtT.format(sharedLastSync) : "verbunden") + (gi ? " · " + gi : "");
   }
-  else if (pendingSharedHandle) { tDot.className = "dot stale"; tTxt.textContent = "Team-Speicher · Freigabe fehlt – „Überwachung fortsetzen“"; }
+  else if (pendingSharedHandle) { tDot.className = "dot warn"; tTxt.textContent = teamPermMode === "save" ? "Team-Speicher · gelesen, Speichern nicht freigegeben" : "Team-Speicher · Freigabe fehlt – „Überwachung fortsetzen“"; }
   else { tDot.className = "dot"; tTxt.textContent = "Team-Speicher · nicht verbunden"; }
   updateSyncBanner();
 }
@@ -1385,7 +1570,7 @@ async function pickWatch() {
   try {
     const [h] = await window.showOpenFilePicker({ types: [{ description: "Excel/CSV", accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"], "text/csv": [".csv"] } }] });
     sources.ALL.handle = h; sources.ALL.stamp = null; sources.ALL.demo = false;
-    saveHandle("ALL", h);
+    saveHandle("ALL", h); allPending = false; updateResumeButtons();
     await readWatched("ALL"); armWatch();
     document.getElementById("btnWatchAll").textContent = `${h.name} ✓`;
   } catch (e) { /* Abbruch */ }
