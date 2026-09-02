@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Supportmanagement Board</title>
+<title>Supportmanagement Board – Testversion SQL</title>
 </head>
 <body>
 <style>
@@ -466,7 +466,7 @@ const VERSION = "1.27";
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
    auch wenn beide Boards im selben Browser geöffnet sind. */
-const KANAL = "prod"; /*__KANAL__*/
+const KANAL = "sqltest";
 const KANAL_INFO = {
   prod:    { name: "", badge: "", teamDatei: "SupportBoard-Team.json", suffix: "", watchMin: "10",
              staleHint: "wurde sie geöffnet & gespeichert?" },

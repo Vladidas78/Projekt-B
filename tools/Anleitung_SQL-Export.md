@@ -3,6 +3,8 @@
 Ersetzt das manuelle Öffnen, Aktualisieren und Speichern der Excel-Liste.
 Drei Dateien, ein einmaliges Einrichten, danach läuft es von selbst.
 
+Für die Erprobung neben dem laufenden Betrieb (eigener Testordner, Testversion des Boards) siehe `docs/Anleitung_Parallelbetrieb_SQL-Test.md`.
+
 | Datei | Zweck |
 |---|---|
 | `SupportBoard-Export.ps1` | Das Skript. Hier oben die Einstellungen eintragen. |
@@ -32,7 +34,7 @@ $Server      = 'BeispielServer-01'      # aus dem Excel-Verbindungsstring: Data 
 $Datenbank   = 'MPDV-Reporting'         # aus dem Excel-Verbindungsstring: Initial Catalog
 $WindowsAuth = $false                   # $true = eigenes Windows-Konto, $false = Benutzer/Passwort
 $Benutzer    = 'Beispiel-readonly'      # aus dem Excel-Verbindungsstring: User ID
-$Zielpfad    = '\\Server\Freigabe\Supportmanagement\SupportBoard-Daten.csv'
+$Zielpfad    = '\\Server\Freigabe\Supportmanagement\SQL-Test\SupportBoard-Daten.csv'
 ```
 
 **3. Passwort hinterlegen** (entfällt bei `$WindowsAuth = $true`)
@@ -69,7 +71,7 @@ Windows-Aufgabenplanung → *Aufgabe erstellen*:
   - Argumente: `-NoProfile -ExecutionPolicy Bypass -File "C:\Tools\SupportBoard\SupportBoard-Export.ps1"`
 
 **7. Board umstellen**
-Im Board: Verwaltung → **„Dashboard überwachen …“** → die neue `SupportBoard-Daten.csv` auswählen. Fertig – ab jetzt kommen die Daten automatisch.
+Im Board: Verwaltung → **„Dashboard überwachen …“** → die neue `SupportBoard-Daten.csv` auswählen. Fertig – ab jetzt kommen die Daten automatisch. In der Erprobungsphase ist das die Testversion `SupportBoard-SQLTest.html`, die Produktivversion bleibt bei der Excel-Liste.
 
 ## Was neu dazukommt
 

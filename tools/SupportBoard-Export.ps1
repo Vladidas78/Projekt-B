@@ -48,10 +48,10 @@ $Datenbank     = 'MPDV-Reporting'             # Initial Catalog
 $WindowsAuth   = $false                        # $true = eigenes Windows-Konto nutzen,
                                                # $false = Benutzername/Passwort unten
 $Benutzer      = 'Beispiel-readonly'          # nur bei $WindowsAuth = $false
-$Zielpfad      = '\\Server\Freigabe\Supportmanagement\SupportBoard-Daten.csv'
+$Zielpfad      = '\\Server\Freigabe\Supportmanagement\SQL-Test\SupportBoard-Daten.csv'   # Erprobung: Testordner; spaeter Produktivordner
 $AbfrageDatei  = Join-Path $Basis 'SupportBoard-Abfrage.sql'
 $PasswortDatei = Join-Path $Basis 'SupportBoard-Export.pwd'   # verschluesselt, s. -SetPassword
-$LogDatei      = Join-Path $Basis 'SupportBoard-Export.log'
+$LogDatei      = Join-Path $Basis 'SupportBoard-Export.log'   # auf einem Server besser in den Zielordner legen, dann ist es vom Arbeitsplatz aus lesbar
 $TimeoutSek    = 300
 # Mehrere Kollegen koennen dieselbe Aufgabe einrichten (Ausfallsicherheit, wenn
 # jemand nicht da ist). Ist die Zieldatei juenger als dieser Wert in Minuten,
