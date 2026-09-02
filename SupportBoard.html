@@ -133,6 +133,13 @@
   .cpop-chk { display: flex; align-items: center; gap: 8px; padding: 3px 8px; font-size: 13px; border-radius: 7px; cursor: pointer; }
   .cpop-chk:hover { background: var(--accent-soft); }
   .cpop.wide { width: 340px; }
+  .cpop-row { position: relative; }
+  .cpop-row .drag { cursor: grab; color: var(--muted); font-size: 12px; letter-spacing: -2px; user-select: none; }
+  .cpop-row .cl { flex: 1; }
+  .cpop-row .mv { display: flex; gap: 2px; opacity: 0.35; }
+  .cpop-row:hover .mv { opacity: 1; }
+  .cpop-row .mv button { padding: 0 5px; font-size: 10px; line-height: 18px; }
+  .cpop-row.dragging { opacity: 0.4; }
   .hist-list { max-height: 280px; overflow-y: auto; display: grid; gap: 2px; margin-bottom: 6px; }
   .hist-item { display: flex; gap: 7px; align-items: baseline; font-size: 12px; padding: 3px 6px; border-bottom: 1px solid var(--grid); }
   .hist-item .when { color: var(--muted); white-space: nowrap; font-size: 11px; }
@@ -252,6 +259,28 @@
   .trend { font-size: 13px; font-weight: 650; margin-left: 8px; vertical-align: 4px; }
   .trend.t-up { color: var(--crit); }
   .trend.t-down { color: var(--good-text); }
+  .statgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 6px 0 12px; }
+  .statbox { background: var(--surface-2); border-radius: 12px; padding: 10px 14px 8px; }
+  .statbox .k-label { font-size: 12.5px; color: var(--ink-2); }
+  .statbox .k-value { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+  .statbox .k-note { font-size: 11.5px; color: var(--muted); }
+  .barrow { display: flex; align-items: flex-end; gap: 8px; margin: 18px 0 4px; }
+  .barrow:last-child { margin-top: 4px; }
+  .blabel { width: 52px; flex: none; font-size: 11px; color: var(--muted); text-align: right; padding-bottom: 4px; }
+  .bars { display: flex; gap: 4px; flex: 1; height: 46px; align-items: flex-end; }
+  .bars.bkal { height: auto; }
+  .bar { flex: 1; position: relative; height: 100%; display: flex; align-items: flex-end; justify-content: center; background: var(--surface-2); border-radius: 4px; min-width: 0; }
+  .bar.we { background: transparent; box-shadow: inset 0 0 0 1px var(--grid); }
+  .bar .bf { display: block; width: 100%; border-radius: 4px; }
+  .bar.leer .bf { display: none; }
+  .bf.b-neu { background: var(--accent); }
+  .bf.b-geschl { background: var(--good); }
+  .bf.b-offen { background: var(--baseline); }
+  .bar .bv { position: absolute; top: -13px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .bk { flex: 1; text-align: center; font-size: 10px; color: var(--muted); min-width: 0; overflow: hidden; }
+  .bk.we { opacity: 0.55; }
+  .topgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 16px; }
+  .topgrid .card { margin-bottom: 0; }
   .ackx { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
   .ackx input[type="text"] { width: 150px; padding: 2px 6px; font-size: 11.5px; border-radius: 5px; }
   .ackx input[type="date"] { padding: 1px 4px; font-size: 11.5px; border-radius: 5px; }
@@ -461,7 +490,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.27";
+const VERSION = "1.28";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -479,6 +508,7 @@ const LS_BACKUP   = "smbBackup_" + (KANAL_INFO.suffix ? KANAL + "_" : "");
 const LS_PERMMODE = "smbTeamPermMode" + KANAL_INFO.suffix;
 const IDB_NAME    = "smbHandles" + KANAL_INFO.suffix;
 const PICKER_TEAM = "smbTeam" + KANAL_INFO.suffix;
+const LS_UI       = "smbUi_v1" + KANAL_INFO.suffix;   // reine Anzeige-Vorlieben je Gerät (z. B. Filterleiste auf/zu)
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -537,14 +567,16 @@ const DEFAULT_STATE = {
       kdkomm: "Hi {BearbeiterVorname}, Call {Call} ({Kunde} – {Titel}) hat seit {TageOhneInfo} Tagen keine Info an den Kunden. Gibst du dem Kunden kurz einen Zwischenstand? Falls du ihn bereits informiert hast, sag mir einfach kurz Bescheid. Danke!",
       aender: "Hi {BearbeiterVorname}, bei Call {Call} ({Kunde} – {Titel}) ist seit {TageOhneAenderung} Tagen nichts passiert. Passt da alles bzw. gibt es einen neuen Stand? Danke dir!",
       haken: "Hi {BearbeiterVorname}, zu Call {Call} ({Kunde} – {Titel}) ist der Lösungstermin {LT} gesetzt. Wurde der Kunde darüber schon informiert? Falls ja, gib mir kurz Bescheid – falls nein, informiere ihn bitte. Danke dir!",
-      wartend: "Hi {BearbeiterVorname}, Call {Call} ({Kunde} – {Titel}) steht auf „Wartend“, aber das „Wartend bis“-Datum {WartendBis}. Magst du ein Datum in der Zukunft eintragen? Danke dir!"
+      wartend: "Hi {BearbeiterVorname}, Call {Call} ({Kunde} – {Titel}) steht auf „Wartend“, aber das „Wartend bis“-Datum {WartendBis}. Magst du ein Datum in der Zukunft eintragen? Danke dir!",
+      krit: "Hi {BearbeiterVorname}, Call {Call} ({Kunde} – {Titel}) steht bei uns ganz oben auf der Liste (Score {Score}). Gibst du mir kurz einen Stand, wie es da weitergeht? Danke dir!"
     },
     wvl: {
       lt: "{MeinKuerzel} => {Bearbeiter}\n\nDer Lösungstermin ({LT}) zu Call {Call} ({Kunde} – {Titel}) ist überschritten. Bitte Kundenkommunikation aufnehmen und den LT anpassen.\n\nGruß\n{MeinVorname}",
       kdkomm: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) hat seit {TageOhneInfo} Tagen keine Kundenkommunikation. Bitte dem Kunden einen aktuellen Stand mitteilen. Wurde der Kunde bereits informiert, genügt eine kurze Rückmeldung.\n\nGruß\n{MeinVorname}",
       aender: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) wurde seit {TageOhneAenderung} Tagen nicht bearbeitet. Bitte Stand prüfen und den Call aktualisieren.\n\nGruß\n{MeinVorname}",
       haken: "{MeinKuerzel} => {Bearbeiter}\n\nZu Call {Call} ({Kunde} – {Titel}) ist der Lösungstermin {LT} gesetzt. Bitte prüfen, ob der Kunde über den Termin informiert wurde, und ihn andernfalls informieren. Sobald die Info beim Kunden ist, bitte kurze Rückmeldung.\n\nGruß\n{MeinVorname}",
-      wartend: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) steht auf „Wartend“, aber das „Wartend bis“-Datum {WartendBis}. Bitte ein Datum in der Zukunft setzen.\n\nGruß\n{MeinVorname}"
+      wartend: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) steht auf „Wartend“, aber das „Wartend bis“-Datum {WartendBis}. Bitte ein Datum in der Zukunft setzen.\n\nGruß\n{MeinVorname}",
+      krit: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) hat aktuell einen hohen Score ({Score}). Bitte Stand prüfen und den Call aktualisieren.\n\nGruß\n{MeinVorname}"
     }
   },
   user: "",      // Kürzel des angemeldeten Nutzers
@@ -566,6 +598,7 @@ const DEFAULT_STATE = {
   ],
   filters: { // je Ansicht: ausgeblendete Werte (Kleinschreibung) + Schwellen;
              // intern=true blendet MPDV-Calls aus, hxmp=true den Pseudo-Bearbeiter HX-MP-UPDATE
+    krit:   { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     lt:     { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     kdkomm: { status: [], gruppe: [], prio: [], tage: "7", intern: true, hxmp: true },
     aender: { status: [], gruppe: [], prio: [], tage: "14", intern: false, hxmp: true },
@@ -577,7 +610,9 @@ const DEFAULT_STATE = {
     fr:     { status: [], gruppe: [], prio: [], intern: false, hxmp: true }
   },
   cols: {}, // je Tagesliste: sichtbare Spalten (leer = Standard, siehe WF_DEFAULT_COLS)
-  history: {},   // "YYYY-MM-DD" -> Kennzahlen-Schnappschuss
+  history: {},   // "YYYY-MM-DD" -> Kennzahlen-Schnappschuss (nur lokal)
+  tagesstat: {}, // "YYYY-MM-DD" -> {calls:[..], neu:[..], bearb:{k:n}} – Tages-Schnappschuss der offenen Calls (teamweit), Basis für neu/geschlossen
+  sort: {},      // Liste -> {key, dir} – Sortierung der Tabellen, gilt für das ganze Team
   acks: {},      // "call|wf" -> {d, h, by, note, until}
   comments: {},  // call -> text (Kommentar SupMan, Mittwochsmail)
   commentSrc: {}, // call -> KW, aus der der Kommentar uebernommen wurde (leer = aktuell)
@@ -680,6 +715,14 @@ function normalizeState() {
   if (!Array.isArray(state.gruppenFilter)) state.gruppenFilter = structuredClone(DEFAULT_STATE.gruppenFilter);
   state.hist ??= {};
   state.protokoll ??= {};
+  state.sort ??= {};
+  state.tagesstat ??= {};
+  // Neue Listen bringen neue Vorlagen mit – fehlende Schlüssel aus den Standards ergänzen
+  state.templates ??= structuredClone(DEFAULT_STATE.templates);
+  for (const kind of ["teams", "wvl"]) {
+    state.templates[kind] ??= {};
+    for (const [k, v] of Object.entries(DEFAULT_STATE.templates[kind])) state.templates[kind][k] ??= v;
+  }
   migrateTemplates();
 }
 function saveState() {
@@ -820,7 +863,7 @@ function quelleOf(g) {
   if (s.startsWith("3rd_") || s.startsWith("productmanagement") || s === "prodm") return "PD";
   if (s.startsWith("2nd_")) return "2nd";
   if (s === "1st_level" || s === "hotline") return "1st";
-  return "";
+  return "Sonst."; // neue Gruppen aus der Abfrage: sichtbar, filterbar, aber in keiner der festen Mails
 }
 function normalizeRows(raw) {
   return raw.map(src => {
@@ -1057,8 +1100,8 @@ async function resumeWatch() {
    Haken, Kommentare, Markierungen, Personen, Verteiler und Vorlagen werden mit einer
    JSON-Datei abgeglichen, die alle Boards im Team lesen und schreiben. Je Eintrag
    gewinnt die jüngste Änderung (Zeitstempel in state.touch). */
-const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll"];
-const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "protoMinCalls", "rules", "filters", "cols", "gruppenFilter"];
+const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll", "tagesstat"];
+const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "protoMinCalls", "rules", "filters", "cols", "gruppenFilter", "sort"];
 let sharedHandle = null, pendingSharedHandle = null, sharedDirty = false, sharedBusy = false, sharedLastSync = null;
 /* Härtung v1.14: geschrieben wird NUR nach einem erfolgreichen Lese-/Merge-Zyklus.
    Lese- oder Parse-Fehler (Datei gesperrt, halb geschrieben, defekt) führen nie mehr
@@ -1505,6 +1548,7 @@ async function importCallFile(file, live) {
     sources.ALL.label = `${file.name} (${rows.length})`;
     sources.ALL.ts = new Date();
     updateChips(live);
+    recordTagesstat();
     render();
     snapshotKpis(computeKpis());
     cacheSources();
@@ -1692,6 +1736,9 @@ function unionVals(known, candidates, field) {
   }
   return [...seen.values()].sort((a, b) => a.localeCompare(b, "de"));
 }
+/* Anzeige-Vorlieben je Gerät (nicht geteilt): z. B. ob die Filterleiste einer Liste offen ist */
+const uiPref = (() => { try { return JSON.parse(localStorage.getItem(LS_UI) || "{}") || {}; } catch (e) { return {}; } })();
+function saveUiPref() { try { localStorage.setItem(LS_UI, JSON.stringify(uiPref)); } catch (e) {} }
 function filterPanel(fkey, candidates, opts = {}) {
   const f = state.filters[fkey];
   const chip = (kind, v, label) => `<button class="fchip ${fexcl(fkey, kind, v) ? "f-off" : ""}" data-f="${fkey}|${kind}|${esc(v)}">${label ?? esc(v)}</button>`;
@@ -1707,8 +1754,11 @@ function filterPanel(fkey, candidates, opts = {}) {
   const fgChips = defs.map(g => `<button class="fchip ${fgOff(g) ? "f-off" : ""}" data-fgrp="${fkey}|${esc(g.name)}" title="Enthält: ${esc(g.members.join(", "))}">${esc(g.name)}</button>`).join("");
   const gruppeHidden = defs.filter(fgOff).length + singles.filter(v => fexcl(fkey, "gruppe", v)).length;
   const hidden = (f.status?.length || 0) + gruppeHidden + (f.prio?.length || 0) + (f.intern ? 1 : 0) + (f.hxmp ? 1 : 0);
-  const open = (f.status?.length || 0) + gruppeHidden + (f.prio?.length || 0);
-  return `<details class="fpanel"${open ? " open" : ""}><summary>Filter${hidden ? ` <span class="fcount">${hidden} ausgeblendet</span>` : ""}</summary>
+  // Offen, wenn der Nutzer es so gelassen hat; nur ohne eigene Vorgabe: offen, sobald Filter greifen.
+  // Früher wurde bei jedem Neuzeichnen (Datenprüfung, ACK-Klick) der Zustand neu berechnet – das war das „zufällige“ Zuklappen.
+  const pref = uiPref.fpanel?.[fkey];
+  const open = pref != null ? pref : ((f.status?.length || 0) + gruppeHidden + (f.prio?.length || 0)) > 0;
+  return `<details class="fpanel" data-fkey="${esc(fkey)}"${open ? " open" : ""}><summary>Filter${hidden ? ` <span class="fcount">${hidden} ausgeblendet</span>` : ""}</summary>
     ${opts.tage ? `<div class="frow"><span class="flabel">${esc(opts.tageLabel)}</span><input type="number" min="1" data-fnum="${fkey}|${opts.tage}" value="${esc(f[opts.tage])}"></div>` : ""}
     <div class="frow"><span class="flabel">Status</span>${unionVals(STATUS_KNOWN, candidates, "Status").map(v => chip("status", v)).join("")}</div>
     <div class="frow"><span class="flabel">Bearbeitergruppe</span>${fgChips}${singles.map(v => chip("gruppe", v)).join("")}</div>
@@ -1721,6 +1771,9 @@ function filterPanel(fkey, candidates, opts = {}) {
   </details>`;
 }
 function bindFilterPanel(view) {
+  view.querySelectorAll("details.fpanel[data-fkey]").forEach(d => d.addEventListener("toggle", () => {
+    (uiPref.fpanel ??= {})[d.dataset.fkey] = d.open; saveUiPref();
+  }));
   view.querySelectorAll("[data-f]").forEach(b => b.addEventListener("click", () => {
     const [fkey, kind, ...rest] = b.dataset.f.split("|");
     const v = rest.join("|").toLowerCase();
@@ -1757,6 +1810,10 @@ function bindFilterPanel(view) {
   }));
 }
 const WF = [
+  { id: "krit", title: "Kritische Calls", tpl: "krit",
+    desc: "Calls mit Score ab 6 – Alter, Dauer, Stillstand und Terminlage zusammengenommen. Prüfen, ob der Call auf dem richtigen Weg ist; der Grund im ACK ist der Kommentar dazu.",
+    filter: r => severity(r.Score) === 2,
+    sort: (a, b) => (b.Score ?? 0) - (a.Score ?? 0) },
   { id: "lt", title: "Überschrittene LTs", tpl: "lt",
     desc: "Lösungstermin überschritten. Kundenkommunikation aufnehmen und LT anpassen.",
     filter: r => r["Lösung_bis"] && r["Lösung_bis"] < todayStart(),
@@ -1790,6 +1847,7 @@ function prioColor(prio) {
    Je Liste wird genau der Teil überwacht, um den es dort geht – ändert er sich
    nach dem ACK, bleibt der Haken bestehen, aber ein Verweis erscheint. */
 const WF_WATCH = {
+  krit:   { label: "Score", val: r => r.Score ?? "" },
   lt:     { label: "Lösungstermin", val: r => r["Lösung_bis"]?.getTime() ?? "" },
   kdkomm: { label: "Kundenkommunikation", val: r => r.LetzteInfo?.getTime() ?? "" },
   aender: { label: "Letzte Änderung", val: r => r["Letzte_Änderung"]?.getTime() ?? "" },
@@ -1906,6 +1964,7 @@ function fillTemplate(tpl, r) {
     LT: r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "kein LT",
     WartendBis: r.Wartend_bis ? (r.Wartend_bis < todayStart() ? `ist abgelaufen (${fmtD.format(r.Wartend_bis)})` : fmtD.format(r.Wartend_bis)) : "fehlt",
     Status: r.Status ?? "–",
+    Score: r.Score ?? "–",
     TageOhneInfo: tageOhneInfo(r) ?? "–",
     TageOhneAenderung: daysSince(r["Letzte_Änderung"]) ?? "–",
     MeinKuerzel: u.k || "??",
@@ -2260,7 +2319,7 @@ function wfOpenCount(w) { const rows = wfRows(w); return rows.filter(r => !ackIn
 let memberMap = new Map();
 function buildMemberMap() {
   memberMap = new Map();
-  for (const w of WF) for (const r of wfRows(w)) {
+  for (const w of WF) for (const r of (w.id === "krit" ? [] : wfRows(w))) { // „Kritisch“ ist eine Sammelliste – kein Hinweis-Dreieck dafür
     const k = String(r.Call);
     if (!memberMap.has(k)) memberMap.set(k, []);
     memberMap.get(k).push(w.id);
@@ -2305,6 +2364,50 @@ function snapshotKpis(k) {
   while (keys.length > 60) delete state.history[keys.shift()];
   try { localStorage.setItem(LS_STATE, JSON.stringify(state)); } catch (e) { /* ok */ }
 }
+/* Tages-Schnappschuss der offenen Calls – teamweit geteilt. Der Export enthält nur offene Calls;
+   „geschlossen“ ergibt sich daher aus dem Vergleich mit dem Vortag (was gestern drin war und heute fehlt),
+   „neu“ aus dem Eröffnungsdatum – als Menge über den Tag gesammelt, damit ein am selben Tag wieder
+   geschlossener Call nicht verloren geht. Wird bei jedem Einlesen aufgefrischt; der jüngste Stand gewinnt. */
+function recordTagesstat() {
+  const rows = allRows();
+  if (!rows.length || sources.ALL.demo) return;
+  const day = todayKey(), t0 = todayStart();
+  state.tagesstat ??= {};
+  const e = state.tagesstat[day] ?? { neu: [] };
+  const neu = new Set(Array.isArray(e.neu) ? e.neu : []);
+  for (const r of rows) if (r["Eröffnet"] && r["Eröffnet"] >= t0) neu.add(String(r.Call));
+  const bearb = {};
+  for (const r of rows) { const k = String(r.Bearbeiter ?? "").trim().toUpperCase(); if (k) bearb[k] = (bearb[k] || 0) + 1; }
+  const calls = [...new Set(rows.map(r => String(r.Call)))];
+  const alt = state.tagesstat[day];
+  const gleich = alt && alt.calls?.length === calls.length && alt.neu?.length === neu.size && alt.calls.every((c, i) => c === calls[i]);
+  if (gleich) return; // nichts Neues – kein Schreiben in die Team-Datei nötig
+  state.tagesstat[day] = { neu: [...neu], calls, bearb, ts: Date.now() };
+  touch("tagesstat|" + day);
+  const keys = Object.keys(state.tagesstat).sort();
+  while (keys.length > 45) { const k = keys.shift(); delete state.tagesstat[k]; touch("tagesstat|" + k); }
+  saveState();
+}
+/* Reihe der letzten n Tage: neu, geschlossen, offen je Tag (null = kein Schnappschuss) */
+function tagesstatReihe(n) {
+  const out = [];
+  const tage = Object.keys(state.tagesstat || {}).sort();
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(todayStart().getTime() - i * DAY);
+    const key = isoDateOf(d);
+    const e = state.tagesstat?.[key];
+    const prevKey = tage.filter(t => t < key).pop();
+    const prev = prevKey ? state.tagesstat[prevKey] : null;
+    let geschl = null;
+    if (e && prev && Array.isArray(prev.calls) && Array.isArray(e.calls)) {
+      const heute = new Set(e.calls);
+      geschl = prev.calls.filter(c => !heute.has(c)).length;
+    }
+    out.push({ key, d, we: d.getDay() === 0 || d.getDay() === 6, neu: e ? (e.neu?.length ?? 0) : null, geschl, offen: e ? (e.calls?.length ?? null) : null, hatVortag: !!prev });
+  }
+  return out;
+}
+function tagesstatVortag() { const t = Object.keys(state.tagesstat || {}).filter(k => k < todayKey()).sort(); return t.length ? state.tagesstat[t[t.length - 1]] : null; }
 function trendHtml(key, val) {
   const days = Object.keys(state.history).filter(d => d < todayKey()).sort();
   const prevDay = days[days.length - 1];
@@ -2317,6 +2420,7 @@ function trendHtml(key, val) {
 }
 
 const NAV_ICONS = {
+  krit: '<path d="M12 3c.5 3.5 4.5 5 4.5 9.5a4.5 4.5 0 0 1-9 0c0-1.6.6-3 1.6-4 .2 1.3.9 2.3 2 2.9C10.6 9 10.8 6 12 3z"/>',
   heute: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
   lt: '<path d="M12 3.5 21.5 20h-19z"/><line x1="12" y1="10" x2="12" y2="14.5"/><line x1="12" y1="17" x2="12" y2="17.01"/>',
   kdkomm: '<path d="M21 11.7a8 8 0 0 1-8.7 8L7 21l1-3.2A8 8 0 1 1 21 11.7z"/>',
@@ -2394,12 +2498,13 @@ const COLS = {
 const COL_ORDER = ["score", "prio", "call", "quelle", "gruppe", "bearbeiter", "kunde", "supman", "titel", "status", "eroeffnet", "lt", "wartbis", "aend", "info", "termaend", "dauer"];
 const WF_DEFAULT_COLS = ["score", "prio", "call", "gruppe", "bearbeiter", "kunde", "titel", "status", "lt", "aend", "info", "dauer"];
 const WF_DEFAULT_COLS_BY = { // abweichende Standards je Liste
+  krit: ["score", "prio", "call", "quelle", "gruppe", "bearbeiter", "kunde", "titel", "status", "lt", "aend", "info", "dauer"],
   wartend: ["score", "prio", "call", "gruppe", "bearbeiter", "kunde", "titel", "wartbis", "aend", "dauer"]
 };
 function wfCols(wfId) {
   const sel = state.cols?.[wfId];
   const use = Array.isArray(sel) && sel.length ? sel : (WF_DEFAULT_COLS_BY[wfId] ?? WF_DEFAULT_COLS);
-  return COL_ORDER.filter(k => use.includes(k));
+  return use.filter(k => COLS[k]); // Reihenfolge wie gespeichert (Team-weit), unbekannte Schlüssel überspringen
 }
 /* PD-Regel: Lösungstermine sollen auf einem Freitag liegen (für SD irrelevant) */
 function ltNichtFreitag(r) { return r.Quelle === "PD" && r["Lösung_bis"] && r["Lösung_bis"].getDay() !== 5; }
@@ -2412,6 +2517,13 @@ function ltFlagTitle(r) {
   return ltWochenende(r) ? "Lösungstermin liegt auf einem Wochenende – bitte anpassen"
        : ltNichtFreitag(r) ? "LT liegt nicht auf einem Freitag (PD)" : "";
 }
+/* Sortierung je Liste gilt für das ganze Team (state.sort, geteilt). Tipp-Filter bleiben sitzungsweise. */
+function sortOf(id) { const x = state.sort?.[id]; return x && COLS[x.key] ? { key: x.key, dir: x.dir === -1 ? -1 : 1 } : { key: null, dir: 1 }; }
+function setSort(id, key, dir) {
+  state.sort ??= {};
+  if (key) state.sort[id] = { key, dir }; else delete state.sort[id];
+  touch("cfg|sort"); saveState();
+}
 function applyTableUI(rows, wfId) {
   const u = tUI(wfId);
   let out = rows.filter(r => Object.entries(u.quick).every(([key, qv]) => {
@@ -2419,14 +2531,17 @@ function applyTableUI(rows, wfId) {
     const col = COLS[key];
     return !q || !col?.quick || String(col.quick(r) ?? "").toLowerCase().includes(q);
   }));
-  if (u.sortKey && COLS[u.sortKey]) {
-    const g = COLS[u.sortKey].sort;
+  const so = sortOf(wfId);
+  if (so.key) {
+    const g = COLS[so.key].sort;
     out = [...out].sort((a, b) => {
       const va = g(a), vb = g(b);
       const c = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), "de");
-      return c * u.sortDir;
+      return c * so.dir;
     });
   }
+  // Bestätigte (ACK) Zeilen ans Ende – die Reihenfolge innerhalb beider Gruppen bleibt wie sortiert
+  if (WF.some(w => w.id === wfId)) out = [...out.filter(r => !ackInfo(r, wfId).done), ...out.filter(r => ackInfo(r, wfId).done)];
   return out;
 }
 function wfRowHtml(r, wf) {
@@ -2462,41 +2577,70 @@ const FUNNEL = '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentCol
 function callTable(rows, wf) {
   if (!rows.length) return `<p class="empty"><b>Nichts offen.</b> Für diese Liste gibt es aktuell keine Einträge.</p>`;
   const u = tUI(wf.id);
+  const so = sortOf(wf.id);
   const view = applyTableUI(rows, wf.id);
   const th = k => {
     const c = COLS[k];
-    const arrow = u.sortKey === k ? `<span class="arrow">${u.sortDir > 0 ? " ▲" : " ▼"}</span>` : "";
+    const arrow = so.key === k ? `<span class="arrow">${so.dir > 0 ? " ▲" : " ▼"}</span>` : "";
     const funnel = c.quick ? `<button class="fbtn${String(u.quick[k] ?? "").trim() ? " f-on" : ""}" data-fbtn="${k}" title="Spalte filtern">${FUNNEL}</button>` : "";
-    return `<th class="sortable${c.align === "r" ? " ta-r" : ""}" data-sort="${k}" title="Klick sortiert">${esc(c.label)}${arrow}${funnel}</th>`;
+    return `<th class="sortable${c.align === "r" ? " ta-r" : ""}" data-sort="${k}" title="Klick sortiert – die Sortierung gilt für das ganze Team">${esc(c.label)}${arrow}${funnel}</th>`;
   };
   return `<div class="tscroll"><table class="list"><thead>
     <tr><th>ACK</th>${wfCols(wf.id).map(th).join("")}<th>Nachricht</th></tr>
     </thead><tbody data-wfbody="${wf.id}">${view.map(r => wfRowHtml(r, wf)).join("")}</tbody></table></div>`;
 }
 /* Spalten-Auswahl je Tagesliste */
+/* Spalten-Auswahl je Tagesliste: Haken = sichtbar, Ziehen oder ▲▼ = Reihenfolge. Gilt für das ganze Team. */
 function openColsChooser(btn, wfId) {
   closeColPopover();
+  const cur = wfCols(wfId);
+  const order = [...cur, ...COL_ORDER.filter(k => !cur.includes(k))];
   colPopEl = document.createElement("div");
-  colPopEl.className = "cpop";
-  colPopEl.innerHTML = `<div class="cpop-list">${COL_ORDER.map(k =>
-    `<label class="cpop-chk"><input type="checkbox" data-colkey="${k}" ${wfCols(wfId).includes(k) ? "checked" : ""}> ${esc(COLS[k].label)}</label>`).join("")}</div>
+  colPopEl.className = "cpop wide";
+  colPopEl.innerHTML = `<p class="hint" style="margin:0 0 6px">Haken = sichtbar · ziehen oder ▲▼ = Reihenfolge · gilt für das ganze Team</p>
+    <div class="cpop-list">${order.map(k =>
+    `<label class="cpop-chk cpop-row" draggable="true" data-colrow="${k}"><span class="drag" title="Ziehen zum Verschieben">⋮⋮</span><input type="checkbox" data-colkey="${k}" ${cur.includes(k) ? "checked" : ""}> <span class="cl">${esc(COLS[k].label)}</span>
+      <span class="mv"><button class="small" data-mv="-1" title="nach oben">▲</button><button class="small" data-mv="1" title="nach unten">▼</button></span></label>`).join("")}</div>
     <button class="cpop-clear small">Standard wiederherstellen</button>`;
   document.body.appendChild(colPopEl);
   const r = btn.getBoundingClientRect();
-  colPopEl.style.left = Math.min(r.left, innerWidth - 240) + "px";
+  colPopEl.style.left = Math.min(r.left, innerWidth - 350) + "px";
   colPopEl.style.top = (r.bottom + 4) + "px";
-  colPopEl.querySelectorAll("[data-colkey]").forEach(cb => cb.addEventListener("change", () => {
-    const sel = [...colPopEl.querySelectorAll("[data-colkey]:checked")].map(x => x.dataset.colkey);
-    state.cols[wfId] = sel.length ? sel : [...WF_DEFAULT_COLS];
+  const list = colPopEl.querySelector(".cpop-list");
+  const commit = () => {
+    const sel = [...list.querySelectorAll("[data-colrow]")].filter(l => l.querySelector("[data-colkey]").checked).map(l => l.dataset.colrow);
+    state.cols[wfId] = sel.length ? sel : [...(WF_DEFAULT_COLS_BY[wfId] ?? WF_DEFAULT_COLS)];
     touch("cfg|cols"); saveState(); render();
+  };
+  list.querySelectorAll("[data-colkey]").forEach(cb => cb.addEventListener("change", commit));
+  list.querySelectorAll("[data-mv]").forEach(b => b.addEventListener("click", e => {
+    e.preventDefault(); e.stopPropagation(); // kein Haken-Umschalten durch das umgebende Label
+    const row = b.closest("[data-colrow]"), dir = +b.dataset.mv;
+    const ziel = dir < 0 ? row.previousElementSibling : row.nextElementSibling;
+    if (!ziel) return;
+    if (dir < 0) list.insertBefore(row, ziel); else list.insertBefore(ziel, row);
+    commit();
   }));
+  let dragRow = null;
+  list.querySelectorAll("[data-colrow]").forEach(row => {
+    row.addEventListener("dragstart", e => { dragRow = row; row.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", row.dataset.colrow); } catch (x) {} });
+    row.addEventListener("dragend", () => { row.classList.remove("dragging"); dragRow = null; });
+    row.addEventListener("dragover", e => {
+      if (!dragRow || dragRow === row) return;
+      e.preventDefault();
+      const rc = row.getBoundingClientRect();
+      const nachUnten = e.clientY > rc.top + rc.height / 2;
+      list.insertBefore(dragRow, nachUnten ? row.nextElementSibling : row);
+    });
+    row.addEventListener("drop", e => { e.preventDefault(); if (dragRow) commit(); });
+  });
   colPopEl.querySelector(".cpop-clear").addEventListener("click", () => {
     delete state.cols[wfId];
     touch("cfg|cols"); saveState(); closeColPopover(); render();
   });
   setTimeout(() => document.addEventListener("click", function h(e) {
     if (!colPopEl) { document.removeEventListener("click", h); return; }
-    if (!colPopEl.contains(e.target) && e.target !== btn && !btn.contains(e.target)) { closeColPopover(); document.removeEventListener("click", h); }
+    if (!colPopEl.contains(e.target) && !e.target.closest("#btnCols")) { closeColPopover(); document.removeEventListener("click", h); }
   }), 0);
 }
 /* Spaltenfilter-Popover (eines zur Zeit, schließt bei Klick daneben) */
@@ -2577,9 +2721,9 @@ function bindWfRowEvents(container, rows, wf) {
 function bindWfEvents(container, rows, wf) {
   bindWfRowEvents(container, rows, wf);
   container.querySelectorAll("[data-sort]").forEach(h => h.addEventListener("click", () => {
-    const u = tUI(wf.id);
-    if (u.sortKey === h.dataset.sort) { if (u.sortDir === 1) u.sortDir = -1; else { u.sortKey = null; u.sortDir = 1; } }
-    else { u.sortKey = h.dataset.sort; u.sortDir = 1; }
+    const so = sortOf(wf.id), k = h.dataset.sort;
+    if (so.key === k) { if (so.dir === 1) setSort(wf.id, k, -1); else setSort(wf.id, null); }
+    else setSort(wf.id, k, 1);
     render();
   }));
   container.querySelectorAll("[data-fbtn]").forEach(btn => btn.addEventListener("click", e => {
@@ -2594,34 +2738,91 @@ function renderHeute(view) {
   const k = computeKpis();
   snapshotKpis(k);
   let kpis = `<div class="kpis">
-    <button class="kpi hero" data-goto="heute"><div class="k-label">Offene Calls</div><div class="k-value">${fmtN.format(k.open)}${trendHtml("open", k.open)}</div><div class="k-note">PD ${areaRows("PD").length} · SD ${areaRows("SD").length} · 2nd ${areaRows("2nd").length} · 1st/Hotline ${areaRows("1st").length}</div></button>
-    <button class="kpi crit" data-goto="heute"><div class="k-label">Kritisch (Score ≥ 6)</div><div class="k-value">${fmtN.format(k.crit)}${trendHtml("crit", k.crit)}</div></button>
+    <button class="kpi hero" data-goto="heute"><div class="k-label">Offene Calls</div><div class="k-value">${fmtN.format(k.open)}${trendHtml("open", k.open)}</div><div class="k-note">PD ${areaRows("PD").length} · SD ${areaRows("SD").length} · 2nd ${areaRows("2nd").length} · 1st/Hotline ${areaRows("1st").length}${areaRows("Sonst.").length ? ` · Sonstige ${areaRows("Sonst.").length}` : ""}</div></button>
     <button class="kpi" data-goto="mi"><div class="k-label">Dauer über 10 h</div><div class="k-value">${fmtN.format(k.d10)}${trendHtml("d10", k.d10)}</div><div class="k-note">Basis der Mittwochsmail</div></button>
     <button class="kpi" data-goto="fr"><div class="k-label">LT bis ${fmtD.format(nextWeekFriday()).slice(0, 6)}</div><div class="k-value">${fmtN.format(k.ltfr)}${trendHtml("ltfr", k.ltfr)}</div><div class="k-note">Basis der Freitagsmail (inkl. überfälliger)</div></button>
     <button class="kpi" data-goto="heute"><div class="k-label">Kunde MPDV (intern)</div><div class="k-value">${fmtN.format(k.mpdv)}${trendHtml("mpdv", k.mpdv)}</div></button>`;
   for (const w of WF) {
     const total = k[w.id], open = wfOpenCount(w);
-    kpis += `<button class="kpi" data-goto="${w.id}"><div class="k-label">${esc(w.title)}</div><div class="k-value">${fmtN.format(open)}${trendHtml(w.id, total)}</div><div class="k-note">${open === 0 && total > 0 ? `<span class="k-done">alle ${total} erledigt ✓</span>` : `von ${total} offen`}</div></button>`;
+    kpis += `<button class="kpi${w.id === "krit" ? " crit" : ""}" data-goto="${w.id}"><div class="k-label">${esc(w.title)}</div><div class="k-value">${fmtN.format(open)}${trendHtml(w.id, total)}</div><div class="k-note">${open === 0 && total > 0 ? `<span class="k-done">alle ${total} erledigt ✓</span>` : `von ${total} offen`}</div></button>`;
   }
   kpis += "</div>";
-  const top = [...rows].sort((a, b) => (b.Score ?? 0) - (a.Score ?? 0)).slice(0, 12);
-  let list = `<div class="card"><h2>Kritische Calls</h2><p class="sub">Die 12 Calls mit dem höchsten Score im aktuellen Datenstand</p>
-    <div class="tscroll"><table class="list"><thead><tr><th class="ta-r">Score</th><th>Bereich</th><th>Call</th><th>Prio</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th><th>LT</th><th class="ta-r">Tage o. Kd.-Info</th></tr></thead><tbody>`;
-  for (const r of top) {
-    const p = prioName(r.Prio);
-    list += `<tr><td class="ta-r tnum"><span class="pill ${SEVCLS[severity(r.Score)]}">${fmtN.format(r.Score ?? 0)}</span></td>
-      <td class="nowrap"><span class="src-badge">${esc(r.Quelle || "–")}</span></td><td class="tnum nowrap">${esc(r.Call)}</td>
-      <td class="nowrap"><span class="pd-dot" style="background:${prioColor(r.Prio)};margin-right:6px"></span>${esc(p ? p[0].toUpperCase() + p.slice(1) : (r.Prio ?? "–"))}</td>
-      <td class="nowrap" title="${esc(resolveName(r.Bearbeiter) ?? "")}">${esc(r.Bearbeiter ?? "–")}</td>
-      <td class="nowrap">${esc(r.Kunde ?? "–")}${smBadge(r)}</td>
-      <td class="titlecell" title="${esc(r.Titel ?? "")}">${esc(r.Titel ?? "–")}</td><td class="nowrap">${esc(r.Status ?? "–")}</td>
-      <td class="tnum nowrap${ltFlagCls(r)}"${ltFlagTitle(r) ? ` title="${esc(ltFlagTitle(r))}"` : ""}>${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "–"}</td><td class="ta-r tnum">${tageOhneInfo(r) ?? "–"}</td></tr>`;
-  }
-  list += "</tbody></table></div></div>";
+  const list = trendKarten(rows);
   view.innerHTML = kpis + (rows.length ? list : `<div class="card"><p class="empty">Keine Daten. Dashboard-Datei in der Verwaltung verknüpfen, Datei hierher ziehen — oder <button class="small" id="btnDemo">Beispieldaten anzeigen</button>.</p></div>`);
   view.querySelectorAll("[data-goto]").forEach(el => el.addEventListener("click", () => { const id = el.dataset.goto; if (id !== "heute") { activeTab = id; render(); } }));
   const bd = view.querySelector("#btnDemo"); if (bd) bd.addEventListener("click", loadDemo);
 }
+
+/* Startseite: Tagesstatistik, Auslastung 2nd Level, Top-Listen */
+function miniBars(reihe, feld, cls, titel) {
+  const max = Math.max(1, ...reihe.map(x => x[feld] ?? 0));
+  return `<div class="bars" title="${esc(titel)}">${reihe.map(x => {
+    const v = x[feld];
+    const h = v == null ? 0 : Math.max(2, Math.round(v / max * 100));
+    const lab = `${fmtD.format(x.d).slice(0, 6)}: ${v == null ? "kein Stand" : v}`;
+    return `<div class="bar${x.we ? " we" : ""}${v == null ? " leer" : ""}" title="${esc(lab)}"><span class="bf ${cls}" style="height:${h}%"></span><span class="bv">${v == null ? "" : v}</span></div>`;
+  }).join("")}</div>`;
+}
+function zweiteLevelGruppen() {
+  const def = gruppenFilterDefs().find(g => /2nd/i.test(g.name));
+  const m = def ? def.members.map(x => x.toLowerCase()) : [];
+  return r => { const g = String(r.Gruppe ?? "").trim().toLowerCase(); return m.length ? m.includes(g) : g.startsWith("2nd_"); };
+}
+function trendKarten(rows) {
+  const reihe = tagesstatReihe(14);
+  const heute = reihe[reihe.length - 1];
+  const vortag = tagesstatVortag();
+  const kalender = reihe.map(x => `<span class="bk${x.we ? " we" : ""}">${fmtD.format(x.d).slice(0, 5)}</span>`).join("");
+  const stat = `<div class="card"><h2>Tagesstatistik <span class="hint" style="font-weight:400;margin-left:6px">letzte 14 Tage</span></h2>
+    <p class="sub">Neu = an dem Tag eröffnet. Geschlossen = am Vortag im Datenstand, heute nicht mehr (dazu zählen auch Calls, die aus dem Auswertungsbereich gewandert sind). Der Export enthält nur offene Calls, deshalb entsteht die Statistik aus den täglichen Datenständen aller Boards – ab dem zweiten Tag mit Daten.</p>
+    <div class="statgrid">
+      <div class="statbox"><div class="k-label">Heute neu</div><div class="k-value">${heute.neu ?? "–"}</div></div>
+      <div class="statbox"><div class="k-label">Heute geschlossen</div><div class="k-value">${heute.geschl ?? "–"}</div>${heute.hatVortag ? "" : `<div class="k-note">ab morgen, wenn ein Vortag vorliegt</div>`}</div>
+      <div class="statbox"><div class="k-label">Offen gesamt</div><div class="k-value">${fmtN.format(rows.length)}${vortag?.calls ? trendHtml.raw(rows.length - vortag.calls.length, "Vortag: " + vortag.calls.length) : ""}</div></div>
+    </div>
+    <div class="barrow"><span class="blabel">Neu</span>${miniBars(reihe, "neu", "b-neu", "Neu eröffnete Calls je Tag")}</div>
+    <div class="barrow"><span class="blabel">Geschl.</span>${miniBars(reihe, "geschl", "b-geschl", "Geschlossene Calls je Tag")}</div>
+    <div class="barrow"><span class="blabel">Offen</span>${miniBars(reihe, "offen", "b-offen", "Offene Calls je Tag")}</div>
+    <div class="barrow"><span class="blabel"></span><div class="bars bkal">${kalender}</div></div>
+  </div>`;
+  // Auslastung 2nd Level je Mitarbeiter
+  const ist2nd = zweiteLevelGruppen();
+  const by = new Map();
+  for (const r of rows) {
+    if (!ist2nd(r) || bearbeiterExcluded(r)) continue;
+    const k = String(r.Bearbeiter ?? "").trim().toUpperCase(); if (!k) continue;
+    if (!by.has(k)) by.set(k, { k, calls: 0, dauer: 0, krit: 0, gruppen: new Set() });
+    const e = by.get(k); e.calls++; e.dauer += Number(r.Dauer) || 0; if (severity(r.Score) === 2) e.krit++; if (r.Gruppe) e.gruppen.add(gruppeKurz(String(r.Gruppe).trim()));
+  }
+  const ma = [...by.values()].sort((a, b) => b.calls - a.calls || a.k.localeCompare(b.k, "de"));
+  const maxCalls = Math.max(1, ...ma.map(d => d.calls));
+  const gesamt2nd = ma.reduce((a, d) => a + d.calls, 0);
+  const vortag2nd = vortag?.bearb ? ma.reduce((a, d) => a + (vortag.bearb[d.k] || 0), 0) : null;
+  const last = `<div class="card"><h2>Auslastung 2nd Level <span class="pill s-ok" style="margin-left:6px">${fmtN.format(gesamt2nd)} offen${vortag2nd != null ? trendHtml.raw(gesamt2nd - vortag2nd, "Vortag: " + vortag2nd) : ""}</span></h2>
+    <p class="sub">Offene Calls je Bearbeiter in den 2nd-Level-Gruppen (Filtergruppe „2nd Level“ aus der Verwaltung). Pfeil = Veränderung zum Vortag. Auslastung Dispatcher folgt, sobald die Abfrage die Daten dafür liefert.</p>
+    ${ma.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Bearbeiter</th><th>Gruppe</th><th class="ta-r">Offene Calls</th><th class="ta-r">Aufwand (h)</th><th class="ta-r">Kritische</th></tr></thead><tbody>
+    ${ma.map(d => `<tr><td class="nowrap" title="${esc(resolveName(d.k) ?? "")}">${esc(d.k)}</td><td class="nowrap">${esc([...d.gruppen].sort().join(", ") || "–")}</td>
+      <td class="lastcell"><div class="lb"><span class="lb-fill" style="width:${Math.round(d.calls / maxCalls * 100)}%"></span><span class="lb-val">${fmtN.format(d.calls)}${vortag?.bearb ? trendHtml.raw(d.calls - (vortag.bearb[d.k] || 0), "Vortag: " + (vortag.bearb[d.k] || 0)) : ""}</span></div></td>
+      <td class="ta-r tnum">${fmtDauer.format(d.dauer)}</td><td class="ta-r tnum">${d.krit ? `<span class="pill s-crit">${d.krit}</span>` : "0"}</td></tr>`).join("")}
+    </tbody></table></div>` : `<p class="empty">Keine Calls in den 2nd-Level-Gruppen im aktuellen Datenstand.</p>`}
+  </div>`;
+  // Top-Listen
+  const topZeile = (r, wert) => `<tr><td class="ta-r tnum">${wert}</td><td class="tnum nowrap">${esc(r.Call)}</td>
+      <td class="nowrap"><span class="pd-dot" style="background:${prioColor(r.Prio)};margin-right:6px"></span>${esc(gruppeKurz(r.Gruppe) || "–")}</td>
+      <td class="nowrap" title="${esc(resolveName(r.Bearbeiter) ?? "")}">${esc(r.Bearbeiter ?? "–")}</td><td class="nowrap">${esc(r.Kunde ?? "–")}${smBadge(r)}</td>
+      <td class="titlecell" title="${esc(r.Titel ?? "")}">${esc(r.Titel ?? "–")}</td><td class="nowrap">${esc(r.Status ?? "–")}</td></tr>`;
+  const topTab = (titel, sub, kopf, zeilen) => `<div class="card"><h2>${titel}</h2><p class="sub">${sub}</p>
+    <div class="tscroll"><table class="list"><thead><tr><th class="ta-r">${kopf}</th><th>Call</th><th>Gruppe</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th></tr></thead><tbody>${zeilen}</tbody></table></div></div>`;
+  const topDauer = [...rows].sort((a, b) => (Number(b.Dauer) || 0) - (Number(a.Dauer) || 0)).slice(0, 10);
+  const topAlt = rows.filter(r => r["Eröffnet"]).sort((a, b) => a["Eröffnet"] - b["Eröffnet"]).slice(0, 10);
+  const tops = `<div class="topgrid">
+    ${topTab("Top 10 nach Dauer", "Die zehn offenen Calls mit der höchsten Gesamtdauer", "Dauer (h)", topDauer.map(r => topZeile(r, fmtDauer.format(r.Dauer ?? 0))).join(""))}
+    ${topTab("Top 10 am längsten offen", "Die zehn offenen Calls mit dem ältesten Eröffnungsdatum", "Offen seit", topAlt.map(r => topZeile(r, `${fmtD.format(r["Eröffnet"])} <span class="hint">(${fmtN.format(daysSince(r["Eröffnet"]))} T.)</span>`)).join(""))}
+  </div>`;
+  return stat + last + tops;
+}
+/* Pfeil mit Differenz (ohne Tages-Schnappschuss-Logik) – für Trend-Angaben auf der Startseite */
+trendHtml.raw = (diff, tip) => diff === 0 ? "" : `<span class="trend ${diff > 0 ? "t-up" : "t-down"}" title="${esc(tip)}">${diff > 0 ? "▲ +" : "▼ "}${diff}</span>`;
 
 function renderWf(view, w) {
   const rows = wfRows(w);
@@ -3264,7 +3465,7 @@ function renderFr(view) {
 
 /* ================= Vorlagen-Tab (Konzept: Workflow-Umschalter, Teams/WVL nebeneinander,
    Platzhalter-Chips mit Einfügen an Cursorposition, Live-Vorschau mit Beispiel-Call) ================= */
-const PLACEHOLDERS = ["{Call}", "{Kunde}", "{Titel}", "{Bearbeiter}", "{BearbeiterName}", "{BearbeiterVorname}", "{LT}", "{Status}", "{TageOhneInfo}", "{TageOhneAenderung}", "{MeinKuerzel}", "{MeinVorname}"];
+const PLACEHOLDERS = ["{Call}", "{Kunde}", "{Titel}", "{Score}", "{Bearbeiter}", "{BearbeiterName}", "{BearbeiterVorname}", "{LT}", "{Status}", "{TageOhneInfo}", "{TageOhneAenderung}", "{MeinKuerzel}", "{MeinVorname}"];
 function exampleRow() {
   return allRows()[0] ?? {
     Call: 156285, Kunde: "VOSS", Titel: "Werkzeugverwaltung: Standmenge falsch", Bearbeiter: "HCH",
