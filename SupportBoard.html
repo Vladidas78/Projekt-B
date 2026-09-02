@@ -453,7 +453,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.24";
+const VERSION = "1.25";
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -945,11 +945,19 @@ async function resumeWatch() {
   }
   let teamOffen = false;
   if (pendingSharedHandle) {
+    const name = pendingSharedHandle.name;
     try {
       const perm = await pendingSharedHandle.requestPermission({ mode: "readwrite" });
       if (perm === "granted") { sharedHandle = pendingSharedHandle; pendingSharedHandle = null; firstMergeDone = false; await syncShared(); }
       else teamOffen = true;
-    } catch (e) { teamOffen = true; console.warn("Team-Speicher: Schreibrecht", e); }
+    } catch (e) {
+      console.warn("Team-Speicher: Schreibrecht", e);
+      if (permKontextFehler(e)) {
+        // Zweiter Weg, solange die Klick-Geste noch gilt
+        try { await pickSharedViaSave(name); }
+        catch (e2) { teamOffen = true; if (e2?.name !== "AbortError") teamFehler(permHinweis(name, "prompt", e), e2); }
+      } else teamOffen = true;
+    }
     updateTeamInfo();
   }
   armWatch();
@@ -1105,7 +1113,7 @@ function updateTeamInfo() {
   if (sharedHandle && sharedCorrupt) el.innerHTML = `${esc(sharedHandle.name)} · <span class="veraltet">Datei nicht lesbar (defekt?)</span> – Abgleich pausiert, unten „Notfall“ nutzen`;
   else if (sharedHandle && sharedReadFail >= 2) el.innerHTML = `${esc(sharedHandle.name)} · <span class="veraltet">Lesen fehlgeschlagen (${sharedReadFail}×)</span> – es wird NICHT geschrieben, nächster Versuch läuft`;
   else if (sharedHandle) el.textContent = `${sharedHandle.name} ✓${sharedLastSync ? " · Abgleich " + fmtT.format(sharedLastSync) : ""}${gi ? " · " + gi : ""}`;
-  else if (pendingSharedHandle) el.textContent = "verbunden – „Überwachung fortsetzen“ klicken";
+  else if (pendingSharedHandle) el.textContent = "Freigabe fehlt – „Überwachung fortsetzen“ klicken";
   else el.textContent = "";
   const nf = document.getElementById("btnForceShared");
   if (nf) nf.classList.toggle("hidden", !(sharedHandle && (sharedCorrupt || sharedReadFail >= 3)));
@@ -1174,7 +1182,7 @@ async function pickSharedFile(neu) {
     document.getElementById("btnResume").classList.remove("hidden");
     document.getElementById("btnResumeMini").classList.remove("hidden");
     armAutoResume();
-    teamFehler(`Der Browser hat das Schreibrecht für „${h.name}“ nicht erteilt${permErr ? "" : ` (Antwort: ${perm})`}.\n\nDer Team-Stand wurde nur GELESEN – Änderungen dieses PCs werden noch nicht geteilt.\n\nBitte unten links auf „Überwachung fortsetzen“ klicken und im Browser-Dialog „Änderungen speichern“ zulassen. Erscheint gar kein Dialog, blockiert eine Browser- oder Firmenrichtlinie das Schreiben in Dateien – dann bitte die IT ansprechen.`, permErr);
+    teamFehler(permHinweis(h.name, perm, permErr), permErr);
     return;
   }
   // 3) Sicherheitsnetz: leere Datei ausgewählt, obwohl lokal Team-Daten vorliegen?
@@ -1194,6 +1202,25 @@ async function pickSharedFile(neu) {
   updateTeamInfo();
   if (sharedReadFail || sharedCorrupt) teamFehler(`„${h.name}“ wurde verbunden, konnte aber nicht gelesen werden${sharedCorrupt ? " (Inhalt ist kein gültiges JSON)" : ""}. Es wird nichts geschrieben, bis das Lesen klappt – Details in der Verwaltung.`);
   else toast("Team-Speicher verbunden – Haken, Kommentare und Stammdaten werden jetzt geteilt");
+}
+/* Passender Hinweistext zum fehlenden Schreibrecht */
+function permKontextFehler(e) { return e?.name === "SecurityError" && /context/i.test(e.message || ""); }
+function permHinweis(name, perm, e) {
+  const basis = `Der Team-Stand aus „${name}“ wurde nur GELESEN – Änderungen dieses PCs werden noch nicht geteilt.`;
+  if (permKontextFehler(e)) return `${basis}\n\nDer Browser lässt auf dieser Seite keine Berechtigungsanfrage zu. Das passiert, wenn das Board nicht als normaler, eigener Tab läuft – z. B. in einer Vorschau (Teams, Outlook, SharePoint), in der Edge-Seitenleiste oder eingebettet in eine andere Seite. Auch ein Unternehmens-Browserprofil kann das erzwingen.\n\nSo geht es weiter:\n1. Unten links „Überwachung fortsetzen“ klicken – das Board versucht dann den Weg über den Speichern-Dialog: dort die VORHANDENE Team-Datei anklicken und Ersetzen bestätigen (der Inhalt bleibt erhalten, es wird erst gelesen, dann geschrieben).\n2. Klappt auch das nicht: Board schließen und die Datei direkt per Doppelklick in Chrome oder Edge öffnen (Adresszeile beginnt mit file:///), dann Team-Speicher erneut verbinden.`;
+  if (e) return `${basis}\n\nDie Anfrage nach dem Schreibrecht ist fehlgeschlagen. Bitte unten links „Überwachung fortsetzen“ klicken – dann wird sie wiederholt.`;
+  return `${basis}\n\nDer Browser hat das Schreibrecht nicht erteilt (Antwort: ${perm}). Bitte unten links „Überwachung fortsetzen“ klicken und im Browser-Dialog „Änderungen speichern“ zulassen. Erscheint gar kein Dialog, blockiert eine Browser- oder Firmenrichtlinie das Schreiben in Dateien – dann bitte die IT ansprechen.`;
+}
+/* Ausweg, wenn der Browser requestPermission() auf dieser Seite verweigert: Der Speichern-Dialog
+   vergibt das Schreibrecht als Teil der Dateiauswahl – ein anderer Weg im Browser. Die Datei wird
+   dabei NICHT geleert: das Board liest erst, mischt, und schreibt dann. */
+async function pickSharedViaSave(name) {
+  const h = await window.showSaveFilePicker({ suggestedName: name || "SupportBoard-Team.json", types: [{ description: "Team-Speicher", accept: { "application/json": [".json"] } }] });
+  sharedHandle = h; pendingSharedHandle = null;
+  teamKnown = true; firstMergeDone = false; sharedDirty = true;
+  saveHandle("TEAM", h);
+  await syncShared();
+  return h;
 }
 /* Fehler beim Verbinden sichtbar machen – mit technischem Grund für die Rückfrage an die IT */
 function teamFehler(text, e) {

@@ -37,6 +37,8 @@ Eine eigenständige Single-File-HTML-Anwendung (`SupportBoard.html`) für das Su
 | v1.21 | ACK ohne „bis“-Datum bleibt dauerhaft bestehen |
 | v1.22 | Button „Jetzt synchronisieren“; Export-Skript mit Schalter `-Jetzt` |
 | v1.23 | Mittwochsmail-Vorbereitung: Markier-Punkte in der Zelle (kein Modus, kein Scrollsprung), ACK-Spalte, Fokus-Filter; Wochenendtermine rot umrahmt |
+| v1.24 | Team-Datei verbinden: Fehler werden gemeldet statt verschluckt, Schreibrecht sofort nach Auswahl, Lesemodus ohne Schreibrecht |
+| v1.25 | Ausweg bei „Not allowed to request permissions in this context“: Schreibrecht über den Speichern-Dialog (Inhalt bleibt erhalten) |
 | v1.24 | Team-Datei verbinden: Fehler werden gemeldet statt verschluckt; Schreibrecht wird sofort angefragt; ohne Schreibrecht Lesemodus mit Nachfrage beim nächsten Klick |
 
 ## Feste Regeln
