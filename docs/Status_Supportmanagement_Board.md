@@ -1,6 +1,6 @@
 # Status: Supportmanagement Board
 
-**Stand:** v1.23 · funktional komplett · 2026-09-01
+**Stand:** v1.24 · funktional komplett · 2026-09-01
 
 ## Was ist das?
 
@@ -37,6 +37,7 @@ Eine eigenständige Single-File-HTML-Anwendung (`SupportBoard.html`) für das Su
 | v1.21 | ACK ohne „bis“-Datum bleibt dauerhaft bestehen |
 | v1.22 | Button „Jetzt synchronisieren“; Export-Skript mit Schalter `-Jetzt` |
 | v1.23 | Mittwochsmail-Vorbereitung: Markier-Punkte in der Zelle (kein Modus, kein Scrollsprung), ACK-Spalte, Fokus-Filter; Wochenendtermine rot umrahmt |
+| v1.24 | Team-Datei verbinden: Fehler werden gemeldet statt verschluckt; Schreibrecht wird sofort angefragt; ohne Schreibrecht Lesemodus mit Nachfrage beim nächsten Klick |
 
 ## Feste Regeln
 

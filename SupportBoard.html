@@ -453,7 +453,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.23";
+const VERSION = "1.24";
 /* Die Quellen-Leiste lebt dauerhaft im DOM (versteckter Stash) und wird beim
    Rendern der Verwaltung dorthin umgehängt – so bleiben alle Listener erhalten. */
 const srcbarEl = document.getElementById("srcbar");
@@ -943,16 +943,20 @@ async function resumeWatch() {
       }
     } catch (e) { /* abgelehnt */ }
   }
+  let teamOffen = false;
   if (pendingSharedHandle) {
     try {
       const perm = await pendingSharedHandle.requestPermission({ mode: "readwrite" });
-      if (perm === "granted") { sharedHandle = pendingSharedHandle; pendingSharedHandle = null; firstMergeDone = false; await syncShared(); updateTeamInfo(); }
-    } catch (e) { /* abgelehnt */ }
+      if (perm === "granted") { sharedHandle = pendingSharedHandle; pendingSharedHandle = null; firstMergeDone = false; await syncShared(); }
+      else teamOffen = true;
+    } catch (e) { teamOffen = true; console.warn("Team-Speicher: Schreibrecht", e); }
+    updateTeamInfo();
   }
   armWatch();
-  document.getElementById("btnResume").classList.add("hidden");
-  document.getElementById("btnResumeMini").classList.add("hidden");
-  toast("Überwachung wiederhergestellt – Tipp: im Browser-Dialog „Bei jedem Besuch zulassen“ wählen, dann entfällt die Nachfrage künftig ganz");
+  document.getElementById("btnResume").classList.toggle("hidden", !teamOffen);
+  document.getElementById("btnResumeMini").classList.toggle("hidden", !teamOffen);
+  if (teamOffen) { armAutoResume(); toast("Team-Speicher: Schreibrecht weiterhin nicht erteilt – Änderungen dieses PCs werden nicht geteilt"); }
+  else toast("Überwachung wiederhergestellt – Tipp: im Browser-Dialog „Bei jedem Besuch zulassen“ wählen, dann entfällt die Nachfrage künftig ganz");
 }
 
 /* ================= Team-Speicher: gemeinsame Datei auf dem Share =================
@@ -1146,29 +1150,68 @@ function connectShared() {
   };
 }
 async function pickSharedFile(neu) {
+  // 1) Datei wählen. Nur ein bewusst geschlossener Dialog (AbortError) bleibt stumm –
+  //    jeder andere Fehler wird gemeldet, statt im Nichts zu verschwinden.
+  let h;
   try {
-    let h;
-    if (neu) {
-      h = await window.showSaveFilePicker({ suggestedName: "SupportBoard-Team.json", types: [{ description: "Team-Speicher", accept: { "application/json": [".json"] } }] });
-    } else {
-      [h] = await window.showOpenFilePicker({ types: [{ description: "Team-Speicher", accept: { "application/json": [".json"] } }] });
-      // Sicherheitsnetz: leere Datei ausgewählt, obwohl lokal Team-Daten vorliegen?
-      try {
-        const f = await h.getFile();
-        const leer = !(await f.text()).trim();
-        const lokal = Object.keys(state.acks).length + Object.keys(state.comments).length;
-        if (leer && lokal > 0 && !confirm(`Die gewählte Datei „${h.name}“ ist leer.\n\nIst das wirklich die Team-Datei? Wenn ja, wird sie mit dem Stand dieses PCs befüllt. Wenn nein: abbrechen und die richtige Datei wählen.`)) return;
-      } catch (e) { /* Prüfung optional */ }
-    }
-    const perm = await h.requestPermission({ mode: "readwrite" });
-    if (perm !== "granted") return;
-    sharedHandle = h; pendingSharedHandle = null;
-    teamKnown = true; firstMergeDone = false; // Quarantäne: erst lesen/mergen, dann schreiben
-    saveHandle("TEAM", h);
-    sharedDirty = true;
-    await syncShared();
-    toast("Team-Speicher verbunden – Haken, Kommentare und Stammdaten werden jetzt geteilt");
-  } catch (e) { /* Datei-Auswahl abgebrochen – es passiert nichts */ }
+    if (neu) h = await window.showSaveFilePicker({ suggestedName: "SupportBoard-Team.json", types: [{ description: "Team-Speicher", accept: { "application/json": [".json"] } }] });
+    else [h] = await window.showOpenFilePicker({ types: [{ description: "Team-Speicher", accept: { "application/json": [".json"] } }] });
+  } catch (e) {
+    if (e?.name === "AbortError") return; // Dialog geschlossen – gewollt nichts
+    teamFehler("Der Datei-Dialog konnte nicht geöffnet werden.", e);
+    return;
+  }
+  // 2) Schreibrecht SOFORT anfragen – solange die Klick-Geste noch gilt. Früher lagen hier
+  //    erst Dateiprüfung und Rückfrage dazwischen; lief die Geste ab, brach alles stumm ab.
+  let perm = "prompt", permErr = null;
+  try { perm = await h.requestPermission({ mode: "readwrite" }); } catch (e) { permErr = e; }
+  if (perm !== "granted") {
+    // Lesen geht trotzdem (die Auswahl im Dialog erlaubt es): Team-Stand einmal einlesen,
+    // Datei merken und das Schreibrecht beim nächsten Klick erneut anfragen.
+    teamKnown = true; pendingSharedHandle = h; saveHandle("TEAM", h);
+    await mergeSharedReadOnly(h);
+    updateTeamInfo();
+    document.getElementById("btnResume").classList.remove("hidden");
+    document.getElementById("btnResumeMini").classList.remove("hidden");
+    armAutoResume();
+    teamFehler(`Der Browser hat das Schreibrecht für „${h.name}“ nicht erteilt${permErr ? "" : ` (Antwort: ${perm})`}.\n\nDer Team-Stand wurde nur GELESEN – Änderungen dieses PCs werden noch nicht geteilt.\n\nBitte unten links auf „Überwachung fortsetzen“ klicken und im Browser-Dialog „Änderungen speichern“ zulassen. Erscheint gar kein Dialog, blockiert eine Browser- oder Firmenrichtlinie das Schreiben in Dateien – dann bitte die IT ansprechen.`, permErr);
+    return;
+  }
+  // 3) Sicherheitsnetz: leere Datei ausgewählt, obwohl lokal Team-Daten vorliegen?
+  if (!neu) {
+    try {
+      const f = await h.getFile();
+      const leer = !(await f.text()).trim();
+      const lokal = Object.keys(state.acks).length + Object.keys(state.comments).length;
+      if (leer && lokal > 0 && !confirm(`Die gewählte Datei „${h.name}“ ist leer.\n\nIst das wirklich die Team-Datei? Wenn ja, wird sie mit dem Stand dieses PCs befüllt. Wenn nein: abbrechen und die richtige Datei wählen.`)) return;
+    } catch (e) { /* Prüfung optional */ }
+  }
+  sharedHandle = h; pendingSharedHandle = null;
+  teamKnown = true; firstMergeDone = false; // Quarantäne: erst lesen/mergen, dann schreiben
+  saveHandle("TEAM", h);
+  sharedDirty = true;
+  await syncShared();
+  updateTeamInfo();
+  if (sharedReadFail || sharedCorrupt) teamFehler(`„${h.name}“ wurde verbunden, konnte aber nicht gelesen werden${sharedCorrupt ? " (Inhalt ist kein gültiges JSON)" : ""}. Es wird nichts geschrieben, bis das Lesen klappt – Details in der Verwaltung.`);
+  else toast("Team-Speicher verbunden – Haken, Kommentare und Stammdaten werden jetzt geteilt");
+}
+/* Fehler beim Verbinden sichtbar machen – mit technischem Grund für die Rückfrage an die IT */
+function teamFehler(text, e) {
+  console.warn("Team-Speicher:", text, e || "");
+  const tech = e ? `\n\nTechnisch: ${e.name || "Fehler"}${e.message ? " – " + e.message : ""}` : "";
+  alert("Team-Speicher: " + text + tech);
+}
+/* Team-Datei nur lesen und einmischen – ohne zu schreiben (kein Schreibrecht) */
+async function mergeSharedReadOnly(h) {
+  try {
+    const txt = await (await h.getFile()).text();
+    if (!txt.trim()) return false;
+    const remote = JSON.parse(txt);
+    const res = mergeShared(remote);
+    if (remote.gen) sharedGenInfo = { gen: remote.gen, writer: remote.writer, ts: remote.writtenAt };
+    if (res.changed) { try { localStorage.setItem("smbState_v1", JSON.stringify(state)); } catch (e) {} renderUserChip(); render(); }
+    return true;
+  } catch (e) { console.warn("Team-Speicher: Lesen fehlgeschlagen", e); return false; }
 }
 function allRows() {
   const seen = new Map();
@@ -1250,7 +1293,7 @@ function updateMini() {
     const gi = genInfoText();
     tTxt.textContent = "Team-Speicher · " + (sharedLastSync ? "Abgleich " + fmtT.format(sharedLastSync) : "verbunden") + (gi ? " · " + gi : "");
   }
-  else if (pendingSharedHandle) { tDot.className = "dot stale"; tTxt.textContent = "Team-Speicher · NICHT verbunden!"; }
+  else if (pendingSharedHandle) { tDot.className = "dot stale"; tTxt.textContent = "Team-Speicher · Freigabe fehlt – „Überwachung fortsetzen“"; }
   else { tDot.className = "dot"; tTxt.textContent = "Team-Speicher · nicht verbunden"; }
   updateSyncBanner();
 }
