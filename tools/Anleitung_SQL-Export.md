@@ -10,6 +10,7 @@ Für die Erprobung neben dem laufenden Betrieb (eigener Testordner, Testversion 
 | `SupportBoard-Export.ps1` | Das Skript. Hier oben die Einstellungen eintragen. |
 | `SupportBoard-Abfrage.sql` | Deine Abfrage. Änderungen wirken sofort beim nächsten Lauf. |
 | `SupportBoard-Export.log` | Entsteht automatisch, protokolliert jeden Lauf. |
+| `SupportBoard-Export-leise.vbs` | Optionaler Starter für die Aufgabenplanung, damit kein Fenster aufblitzt. |
 
 ## Sicherheit: Es kann nichts kaputtgehen
 
@@ -72,7 +73,14 @@ $optionen = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
 Register-ScheduledTask -TaskName "Supportboard Datenexport" -Action $aktion -Trigger $trigger -Settings $optionen -Force
 ```
 
-Prüfen: `schtasks /Run /TN "Supportboard Datenexport"`, kurz warten, dann muss im Log eine neue Zeile stehen. Entfernen: `Unregister-ScheduledTask -TaskName "Supportboard Datenexport" -Confirm:$false`.
+Prüfen: `schtasks /Run /TN "Supportboard Datenexport"`, kurz warten, dann muss im Log eine neue Zeile stehen.
+
+Blitzt bei jedem Lauf kurz ein schwarzes Fenster auf, hilft der Starter `SupportBoard-Export-leise.vbs` (liegt im selben Ordner wie das Skript; er sucht dort `SupportBoard-Export.ps1`, bei anderem Dateinamen die Zeile im Starter anpassen). Dann nur die Aktion der Aufgabe tauschen:
+
+```powershell
+$aktion = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument '"C:\Tools\SupportBoard\SupportBoard-Export-leise.vbs"'
+Set-ScheduledTask -TaskName "Supportboard Datenexport" -Action $aktion
+``` Entfernen: `Unregister-ScheduledTask -TaskName "Supportboard Datenexport" -Confirm:$false`.
 
 Nicht `schtasks /Create` aus PowerShell heraus mit `\"`-Anführungszeichen verwenden: PowerShell zerlegt die Zeile anders, der Pfad kommt verstümmelt an, und die Aufgabe läuft nie, obwohl „erfolgreich erstellt“ gemeldet wird. Wer die Oberfläche bevorzugt: *Aufgabe erstellen* → Allgemein „Nur ausführen, wenn der Benutzer angemeldet ist“ → Trigger täglich, alle 15 Minuten wiederholen → Aktion `powershell.exe` mit den Argumenten aus der Zeile oben → Bedingungen: beide Haken bei „Energie“ entfernen (Notebook).
 
