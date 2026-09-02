@@ -62,7 +62,7 @@ Kommt stattdessen ein Fehler wie „Invalid column name“ oder „Invalid objec
 
 Danach liegt `SupportBoard-Daten.csv` im Testordner. Kurz im Editor öffnen: Kopfzeile wie oben, Umlaute lesbar, Datumsangaben im Format `2026-09-02T09:30:00`.
 
-**6. Aufgabenplanung** (alle 15 Minuten, nur solange angemeldet) wie in `tools/Anleitung_SQL-Export.md`, Schritt 6.
+**6. Aufgabenplanung** (alle 15 Minuten, nur solange angemeldet, auch im Akkubetrieb) mit dem PowerShell-Block aus `tools/Anleitung_SQL-Export.md`, Schritt 6. Danach mit `schtasks /Run` einmal von Hand auslösen und im Log nachsehen.
 
 **7. Test-Board einrichten**
 `SupportBoard-SQLTest.html` aus dem Testordner per Doppelklick öffnen – im **selben Browser** wie die Produktivversion, dann ist der Stand sofort übernommen (Hinweis unten erscheint kurz).

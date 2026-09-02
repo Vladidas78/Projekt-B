@@ -63,12 +63,18 @@ Zeigt die gefundene Zeilen- und Spaltenzahl an und schreibt nichts. Wenn hier ei
 Danach liegt `SupportBoard-Daten.csv` im Zielordner.
 
 **6. Aufgabenplanung einrichten**
-Windows-Aufgabenplanung → *Aufgabe erstellen*:
-- **Allgemein:** Name „Supportboard Datenexport“, Option **„Nur ausführen, wenn der Benutzer angemeldet ist“** (dann wird kein Kennwort gespeichert).
-- **Trigger:** Täglich, Wiederholung **alle 15 Minuten** für die Dauer von 1 Tag.
-- **Aktion:** Programm starten
-  - Programm: `powershell.exe`
-  - Argumente: `-NoProfile -ExecutionPolicy Bypass -File "C:\Tools\SupportBoard\SupportBoard-Export.ps1"`
+Am zuverlässigsten per PowerShell (alle Zeilen zusammen einfügen, Pfad anpassen). Die Aufgabe läuft alle 15 Minuten unter dem eigenen Konto, nur solange man angemeldet ist, ohne gespeichertes Kennwort, auch im Akkubetrieb:
+
+```powershell
+$aktion   = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\Tools\SupportBoard\SupportBoard-Export.ps1"'
+$trigger  = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 15) -RepetitionDuration (New-TimeSpan -Days 3650)
+$optionen = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
+Register-ScheduledTask -TaskName "Supportboard Datenexport" -Action $aktion -Trigger $trigger -Settings $optionen -Force
+```
+
+Prüfen: `schtasks /Run /TN "Supportboard Datenexport"`, kurz warten, dann muss im Log eine neue Zeile stehen. Entfernen: `Unregister-ScheduledTask -TaskName "Supportboard Datenexport" -Confirm:$false`.
+
+Nicht `schtasks /Create` aus PowerShell heraus mit `\"`-Anführungszeichen verwenden: PowerShell zerlegt die Zeile anders, der Pfad kommt verstümmelt an, und die Aufgabe läuft nie, obwohl „erfolgreich erstellt“ gemeldet wird. Wer die Oberfläche bevorzugt: *Aufgabe erstellen* → Allgemein „Nur ausführen, wenn der Benutzer angemeldet ist“ → Trigger täglich, alle 15 Minuten wiederholen → Aktion `powershell.exe` mit den Argumenten aus der Zeile oben → Bedingungen: beide Haken bei „Energie“ entfernen (Notebook).
 
 **7. Board umstellen**
 Im Board: Verwaltung → **„Dashboard überwachen …“** → die neue `SupportBoard-Daten.csv` auswählen. Fertig – ab jetzt kommen die Daten automatisch. In der Erprobungsphase ist das die Testversion `SupportBoard-SQLTest.html`, die Produktivversion bleibt bei der Excel-Liste.
