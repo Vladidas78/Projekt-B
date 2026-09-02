@@ -123,5 +123,7 @@ Erste Anlaufstelle ist `SupportBoard-Export.log` im selben Ordner – dort steht
 | `Kein Passwort hinterlegt` | Schritt 3 nachholen. |
 | `Zielordner nicht erreichbar` | Netzlaufwerk nicht verbunden. |
 | `Die Abfrage lieferte 0 Zeilen` | Schutzmechanismus – die alte Datei bleibt erhalten. |
+| `Die Eingabezeichenfolge hat das falsche Format` (ConvertTo-SecureString) | Passwortdatei aus einer älteren Skriptversion oder von Hand angelegt. `SupportBoard-Export.pwd` löschen und `-SetPassword` erneut ausführen. |
+| `Möchten Sie diese Datei ausführen? [N] [M] [H]` bei jedem Start | Die Datei trägt die Download-Markierung von Windows. Einmalig `Unblock-File .\SupportBoard-Export.ps1` ausführen, dann fragt PowerShell nicht mehr. |
 
 Die alte Excel-Routine funktioniert unverändert weiter und kann jederzeit als Rückfallebene dienen.

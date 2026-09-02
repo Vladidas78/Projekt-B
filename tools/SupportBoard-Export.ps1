@@ -74,8 +74,14 @@ function Schreibe-Log([string]$Text, [string]$Stufe = 'INFO') {
 # --- Passwort einmalig hinterlegen (verschluesselt, nur fuer dieses Windows-Konto lesbar)
 if ($SetPassword) {
     $sec = Read-Host -Prompt "Passwort fuer '$Benutzer'" -AsSecureString
-    $sec | ConvertFrom-SecureString | Set-Content -Path $PasswortDatei -Encoding UTF8
-    Write-Host "Passwort gespeichert in: $PasswortDatei"
+    $verschluesselt = $sec | ConvertFrom-SecureString
+    # Ohne Zeilenumbruch und ohne BOM schreiben: der verschluesselte Text ist reines Hex,
+    # jedes zusaetzliche Zeichen (auch ein Zeilenende) macht ihn beim Einlesen unbrauchbar.
+    [System.IO.File]::WriteAllText($PasswortDatei, $verschluesselt, [System.Text.Encoding]::ASCII)
+    # Rueckprobe: sofort wieder einlesen, damit ein Fehler hier auffaellt und nicht erst im Nachtlauf
+    try { $null = ([System.IO.File]::ReadAllText($PasswortDatei)).Trim() | ConvertTo-SecureString }
+    catch { throw "Passwort konnte nicht zurueckgelesen werden: $($_.Exception.Message)" }
+    Write-Host "Passwort gespeichert und geprueft: $PasswortDatei"
     Write-Host "Die Datei ist verschluesselt und laesst sich nur mit diesem Windows-Konto auf diesem PC lesen."
     return
 }
@@ -115,7 +121,14 @@ if ($WindowsAuth) {
     if (-not (Test-Path $PasswortDatei)) {
         throw "Kein Passwort hinterlegt. Bitte einmalig ausfuehren:  .\SupportBoard-Export.ps1 -SetPassword"
     }
-    $sec  = Get-Content -Path $PasswortDatei -Raw | ConvertTo-SecureString
+    # Trim: aeltere Versionen haben ein Zeilenende mitgeschrieben – das liess ConvertTo-SecureString
+    # mit "Die Eingabezeichenfolge hat das falsche Format" scheitern.
+    $verschluesselt = ([System.IO.File]::ReadAllText($PasswortDatei)).Trim()
+    if ($verschluesselt -notmatch '^[0-9A-Fa-f]{32,}$') {
+        throw "Die Passwortdatei '$PasswortDatei' hat nicht das erwartete Format. Sie muss mit -SetPassword erzeugt werden, nicht von Hand. Bitte die Datei loeschen und einmalig ausfuehren:  .\SupportBoard-Export.ps1 -SetPassword"
+    }
+    try { $sec = $verschluesselt | ConvertTo-SecureString }
+    catch { throw "Das hinterlegte Passwort laesst sich auf diesem PC mit diesem Windows-Konto nicht entschluesseln (es ist an Konto und Rechner gebunden). Bitte einmalig neu ausfuehren:  .\SupportBoard-Export.ps1 -SetPassword" }
     $cred = New-Object System.Management.Automation.PSCredential ($Benutzer, $sec)
     $b['User ID']  = $Benutzer
     $b['Password'] = $cred.GetNetworkCredential().Password
