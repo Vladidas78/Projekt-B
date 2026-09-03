@@ -283,6 +283,7 @@
   .topgrid .card { margin-bottom: 0; }
   table.slatab tr.sep td { border: none; height: 8px; padding: 0; background: none !important; }
   table.slatab tr.laufend td { background: var(--accent-soft) !important; }
+  table.slatab td.vorgabe { color: var(--muted); font-style: italic; }
   .ackx { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
   .ackx input[type="text"] { width: 150px; padding: 2px 6px; font-size: 11.5px; border-radius: 5px; }
   .ackx input[type="date"] { padding: 1px 4px; font-size: 11.5px; border-radius: 5px; }
@@ -492,7 +493,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.34";
+const VERSION = "1.35";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -623,7 +624,7 @@ const DEFAULT_STATE = {
     wartend: { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     extreakt: { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     udienst: { status: [], gruppe: [], prio: [], intern: false, hxmp: false },
-    sla:     { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
+    sla:     { status: [], gruppe: [], prio: [], intern: true, hxmp: true, kunden: "" }, // kunden: Kürzel/Teile, Semikolon-getrennt – Calls dieser Kunden bleiben außen vor
     last:    { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     mi:     { status: ["cc", "customer care", "update", "pre-update"], gruppe: [], prio: [], minDauer: "10", intern: false, hxmp: true },
     fr:     { status: [], gruppe: [], prio: [], intern: false, hxmp: true }
@@ -737,6 +738,8 @@ function normalizeState() {
   state.reakt ??= {};
   state.reaktAgg ??= {};
   state.slaNote ??= {};
+  if (!state.filters.sla.v35) { state.filters.sla.intern = true; state.filters.sla.v35 = 1; } // v1.35: interner Kunde ab Werk ausgeschlossen
+  slaVorgabenEinspielen();
   state.verteiler.udCc ??= "";
   if (!Array.isArray(state.udienste)) state.udienste = structuredClone(DEFAULT_STATE.udienste);
   else for (const d of state.udienste) { // ältere Stände: fehlende Texte aus den Standards des gleichen Kürzels ergänzen
@@ -1801,6 +1804,7 @@ function filterPanel(fkey, candidates, opts = {}) {
   const open = pref != null ? pref : ((f.status?.length || 0) + gruppeHidden + (f.prio?.length || 0)) > 0;
   return `<details class="fpanel" data-fkey="${esc(fkey)}"${open ? " open" : ""}><summary>Filter${hidden ? ` <span class="fcount">${hidden} ausgeblendet</span>` : ""}</summary>
     ${opts.tage ? `<div class="frow"><span class="flabel">${esc(opts.tageLabel)}</span><input type="number" min="1" data-fnum="${fkey}|${opts.tage}" value="${esc(f[opts.tage])}"></div>` : ""}
+    ${opts.text ? `<div class="frow"><span class="flabel">${esc(opts.textLabel)}</span><input type="text" data-ftext="${fkey}|${opts.text}" value="${esc(f[opts.text] ?? "")}" placeholder="${esc(opts.textHint ?? "")}" style="min-width:320px"></div>` : ""}
     <div class="frow"><span class="flabel">Status</span>${unionVals(STATUS_KNOWN, candidates, "Status").map(v => chip("status", v)).join("")}</div>
     <div class="frow"><span class="flabel">Bearbeitergruppe</span>${fgChips}${singles.map(v => chip("gruppe", v)).join("")}</div>
     <div class="frow"><span class="flabel">Priorität</span>${["Grün", "Blau", "Rot"].map(prioChipHtml).join("")}</div>
@@ -1832,6 +1836,11 @@ function bindFilterPanel(view) {
     const allOff = members.every(m => arr.includes(m));
     if (allOff) { for (const m of members) { const i = arr.indexOf(m); if (i >= 0) arr.splice(i, 1); } }
     else { for (const m of members) if (!arr.includes(m)) arr.push(m); }
+    touch("cfg|filters"); saveState(); render();
+  }));
+  view.querySelectorAll("[data-ftext]").forEach(inp => inp.addEventListener("change", () => {
+    const [fkey, field] = inp.dataset.ftext.split("|");
+    state.filters[fkey][field] = inp.value.trim();
     touch("cfg|filters"); saveState(); render();
   }));
   view.querySelectorAll("[data-fnum]").forEach(inp => inp.addEventListener("change", () => {
@@ -2966,7 +2975,7 @@ function slaKarte() {
   const list = reaktEintraege();
   const wochen = slaPerioden().filter(x => x.art === "woche"), akt = wochen[wochen.length - 1];
   const kw = slaStat(akt, list);
-  const ohne = allRows().filter(r => !r.ErsteExtReaktion && r["Eröffnet"]);
+  const ohne = allRows().filter(r => !r.ErsteExtReaktion && r["Eröffnet"] && slaRowOk(r));
   const ueber = ohne.filter(r => (now() - r["Eröffnet"]) > slaLimit(prioName(r.Prio))).length;
   return `<div class="card"><h2>Erste externe Reaktion <span class="hint" style="font-weight:400;margin-left:6px">Rot 30 Min. · Blau 4 Std. · Grün 48 Std.</span></h2>
     <div class="kpis" style="margin-bottom:0">
@@ -3306,6 +3315,14 @@ function fmtDur(ms) {
 }
 const pct = q => q == null ? "–" : `${Math.round(q * 100)} %`;
 const PRIO_ORD = { rot: 0, blau: 1, "grün": 2 };
+/* Filter des Reiters „Reaktionszeit“ gilt für alles: Aufzeichnung, Statistik, Listen. Teamweit (state.filters.sla).
+   Kunden-Ausschluss: Kürzel oder Namensteile, Semikolon-getrennt (z. B. „MPDV-ASIA; USA“). */
+function slaKundeAus(kunde) {
+  const k = String(kunde ?? "").trim().toLowerCase();
+  return !!k && ruleList(state.filters.sla?.kunden).some(x => k.includes(x));
+}
+function slaRowOk(r) { return applyFilters("sla", [r]).length === 1 && !slaKundeAus(r.Kunde); }
+function slaRecOk(rec) { return slaRowOk({ Gruppe: rec.g ?? "", Kunde: rec.k ?? "", Bearbeiter: rec.b ?? "", Status: "", Prio: rec.p ?? "" }); }
 function recordReakt() {
   if (sources.ALL.demo || !hatSpalte("ErsteExtReaktion")) return;
   state.reakt ??= {};
@@ -3319,9 +3336,10 @@ function recordReakt() {
     // Eröffnungswoche vorbei und Reaktion vorhanden: Der Call ist entweder schon in den Wochensummen (dann darf er
     // nicht erneut aufgenommen werden, sonst zählt er doppelt) oder er ist neu in den Datenstand gekommen (dann
     // zählt er nicht mehr – die Vergangenheit wird nicht nachgetragen). Nur bestehende Einzelfälle werden aktualisiert.
+    if (!slaRowOk(r)) { if (state.reakt[mk]?.[call]) { delete state.reakt[mk][call]; touched.add(mk); } continue; } // ausgefiltert: nicht aufzeichnen, ggf. wieder entfernen
     if (r.ErsteExtReaktion && wocheStart(r["Eröffnet"]).getTime() < heuteWs && !state.reakt[mk]?.[call]) continue;
     const rec = { e: r["Eröffnet"].getTime(), r: r.ErsteExtReaktion ? r.ErsteExtReaktion.getTime() : 0, p: prioName(r.Prio),
-      k: String(r.Kunde ?? ""), g: gruppeKurz(String(r.Gruppe ?? "")), b: String(r.Bearbeiter ?? "") };
+      k: String(r.Kunde ?? ""), g: String(r.Gruppe ?? ""), b: String(r.Bearbeiter ?? "") };
     const m = state.reakt[mk] ??= {};
     const alt = m[call];
     if (!alt || ["e", "r", "p", "k", "g", "b"].some(f => alt[f] !== rec[f])) { m[call] = rec; touched.add(mk); }
@@ -3351,11 +3369,12 @@ function freezeReakt() {
       const ws = wocheStart(new Date(rec.e)).getTime();
       if (ws >= heuteWs) continue;                       // Woche läuft noch
       if (!(rec.r > 0) && offen.has(call)) continue;     // offen ohne Reaktion: bleibt Einzelfall, bis entschieden
+      if (!slaRecOk(rec)) { delete m[call]; touched.add("reakt|" + mk); continue; } // ausgefiltert: verwerfen statt zählen
       const art = rec.r ? ((rec.r - rec.e) <= slaLimit(rec.p) ? "ok" : "spaet") : "unbekannt";
       const x = { p: rec.p || "", art, dauer: rec.r ? rec.r - rec.e : null };
       const wk = "W" + isoDateOf(new Date(ws)), mo = "M" + mk;
       for (const key of [wk, mo]) { const a = state.reaktAgg[key] ??= leerAgg(); aggAdd(a, x); touched.add(key); }
-      if (art === "spaet") (state.reaktAgg[wk].liste ??= []).push({ call, p: rec.p || "", e: rec.e, dauer: x.dauer, k: rec.k ?? "", g: rec.g ?? "", b: rec.b ?? "" });
+      if (art === "spaet") (state.reaktAgg[wk].liste ??= []).push({ call, p: rec.p || "", e: rec.e, dauer: x.dauer, k: rec.k ?? "", g: gruppeKurz(rec.g ?? ""), b: rec.b ?? "" });
       delete m[call]; touched.add("reakt|" + mk);
     }
     if (!Object.keys(m).length) { delete state.reakt[mk]; touched.add("reakt|" + mk); }
@@ -3371,6 +3390,41 @@ function freezeReakt() {
   for (const key of touched) touch(key.startsWith("reakt|") ? key : "reaktAgg|" + key);
   return touched.size > 0;
 }
+/* Vorgabewerte aus der bisherigen Excel-Statistik (Durchschnitte ohne Fallzahlen), einmalig eingespielt.
+   Zeiträume ohne eigene Zählung zeigen diese Werte; sobald das Board selbst zählt, gewinnt die Zählung. */
+const SLA_VORGABEN = (() => {
+  const t = s => { if (!s) return null; const [h, m, sec] = s.split(":").map(Number); return ((h * 60 + m) * 60 + sec) * 1000; };
+  const fix = (rot, blau, gruen, ges) => ({ rot: t(rot), blau: t(blau), "grün": t(gruen), ges: t(ges) });
+  return {
+    "J2023": { fix: fix("02:07:00", "11:10:58", "15:28:52", "11:47:42") },
+    "J2024": { fix: fix("01:17:57", "09:52:09", "13:54:40", "10:19:46") },
+    "J2025": { fix: fix("01:11:11", "05:31:38", "08:21:06", "06:03:52") },
+    "M2026-01": { fix: fix("00:31:49", "05:50:02", "07:56:18", "06:18:00") },
+    "M2026-02": { fix: fix("00:29:11", "04:53:58", "06:47:14", "05:15:51") },
+    "M2026-03": { fix: fix("00:34:32", "05:34:22", "09:27:53", "06:20:02") },
+    "M2026-04": { fix: fix("00:34:31", "04:29:56", "05:56:44", "04:34:35") },
+    "M2026-05": { fix: fix("00:29:46", "03:47:57", "05:24:28", "04:05:35") },
+    "M2026-06": { fix: fix("00:26:32", "03:06:45", "06:32:37", "04:01:01") },
+    "M2026-07": { fix: fix("00:24:25", "02:40:54", "04:20:30", "03:07:24") },
+    "M2026-08": { fix: fix("00:18:10", "02:48:36", "04:50:06", "03:09:06") },
+    "W2026-07-20": { fix: fix(null, "01:40:19", "03:00:29", "02:07:03"), sm: "MLH" },
+    "W2026-07-27": { fix: fix("00:24:44", "02:28:36", "02:16:34", "02:14:17"), sm: "JOS" },
+    "W2026-08-03": { fix: fix("00:14:18", "02:47:33", "05:01:50", "03:14:26"), sm: "VKU" },
+    "W2026-08-10": { fix: fix("00:13:50", "02:03:28", "05:13:22", "03:00:25"), sm: "MRE" },
+    "W2026-08-17": { fix: fix("00:25:21", "03:46:29", "04:36:28", "03:36:12"), sm: "APA/JOS" },
+    "W2026-08-24": { fix: fix("00:11:54", "02:29:55", "04:14:27", "02:43:33"), sm: "VKU" }
+  };
+})();
+function slaVorgabenEinspielen() {
+  state.reaktAgg ??= {};
+  for (const [key, v] of Object.entries(SLA_VORGABEN)) {
+    const a = state.reaktAgg[key];
+    if (a?.fix) continue; // schon da
+    if (!a) state.reaktAgg[key] = { ...leerAgg(), fix: v.fix, ...(v.sm ? { sm: v.sm } : {}) };
+    else { a.fix = v.fix; if (v.sm && !a.sm) a.sm = v.sm; }
+    touch("reaktAgg|" + key);
+  }
+}
 function aggMerge(ziel, a) { for (const p of ["rot", "blau", "grün", "ges"]) for (const f of ["n", "sum", "ok", "brk", "unb"]) ziel[p][f] += a?.[p]?.[f] || 0; }
 /* Alle gemerkten Calls, bewertet: ok · spaet (Reaktion nach Frist) · offenUeber (noch keine Reaktion, Frist vorbei)
    · offenInnen (noch keine Reaktion, Frist läuft) · unbekannt (geschlossen, ohne dass eine Reaktion gesehen wurde) */
@@ -3378,12 +3432,13 @@ function reaktEintraege() {
   const offen = new Map(allRows().map(r => [String(r.Call), r]));
   const out = [];
   for (const m of Object.values(state.reakt || {})) for (const [call, rec] of Object.entries(m)) {
+    if (!slaRecOk(rec)) continue;
     const e = rec.e, r = rec.r || 0, p = rec.p || "", lim = slaLimit(p), row = offen.get(call) || null;
     let art;
     if (r) art = (r - e) <= lim ? "ok" : "spaet";
     else if (row) art = (now() - e) > lim ? "offenUeber" : "offenInnen";
     else art = "unbekannt";
-    out.push({ call, e, r, p, lim, art, dauer: r ? r - e : null, row, k: rec.k ?? row?.Kunde ?? "", g: rec.g ?? gruppeKurz(row?.Gruppe ?? ""), b: rec.b ?? row?.Bearbeiter ?? "" });
+    out.push({ call, e, r, p, lim, art, dauer: r ? r - e : null, row, k: rec.k ?? row?.Kunde ?? "", g: gruppeKurz(rec.g ?? row?.Gruppe ?? ""), b: rec.b ?? row?.Bearbeiter ?? "" });
   }
   return out;
 }
@@ -3408,6 +3463,10 @@ const fmtMonat = new Intl.DateTimeFormat("de-DE", { month: "short" });
 /* Zeiträume wie im Montagsmeeting: Jahr bisher, Monate des Jahres, die letzten 8 Kalenderwochen */
 function slaPerioden() {
   const heute = todayStart(), jahr = heute.getFullYear(), per = [];
+  for (const k of Object.keys(state.reaktAgg || {}).filter(k => /^J\d{4}$/.test(k) && +k.slice(1) < jahr).sort()) {
+    const j = +k.slice(1);
+    per.push({ id: k, label: String(j), von: new Date(j, 0, 1), bis: new Date(j + 1, 0, 1), art: "vorjahr" });
+  }
   per.push({ id: `J${jahr}`, label: `${jahr} (bisher)`, von: new Date(jahr, 0, 1), bis: new Date(jahr + 1, 0, 1), art: "jahr" });
   for (let m = 0; m <= heute.getMonth(); m++) per.push({ id: `M${monatKey(new Date(jahr, m, 1))}`, label: fmtMonat.format(new Date(jahr, m, 1)).replace(/\.$/, ""), von: new Date(jahr, m, 1), bis: new Date(jahr, m + 1, 1), art: "monat", laufend: m === heute.getMonth() });
   const ws = wocheStart(heute);
@@ -3419,9 +3478,33 @@ function slaPerioden() {
 }
 function inPeriode(x, per) { return x.e >= per.von.getTime() && x.e < per.bis.getTime(); }
 function slaStat(per, list) {
-  const agg = slaFrozen(per);
-  for (const x of list) if (inPeriode(x, per)) aggAdd(agg, x);
-  return slaFinish(agg);
+  const ra = state.reaktAgg || {};
+  if (per.art === "jahr") {
+    // Monate des Jahres: Zählung wo vorhanden, sonst Vorgabe. Solange Vorgaben dabei sind, ist der Jahreswert das Mittel der Monatswerte.
+    const jahr = per.von.getFullYear(), monate = [];
+    for (let m = 0; m < 12; m++) {
+      const von = new Date(jahr, m, 1); if (von > todayStart()) break;
+      monate.push(slaStat({ id: `M${monatKey(von)}`, art: "monat", von, bis: new Date(jahr, m + 1, 1) }, list));
+    }
+    if (monate.some(x => x.fixiert)) {
+      const agg = leerAgg();
+      for (const p of ["rot", "blau", "grün", "ges"]) { const w = monate.map(x => x[p].avg).filter(v => v != null); agg[p].avgFix = w.length ? w.reduce((a, b) => a + b, 0) / w.length : null; }
+      const out = slaFinish(agg); out.fixiert = true;
+      for (const p of ["rot", "blau", "grün", "ges"]) { out[p].avg = out[p].avgFix; out[p].fix = true; }
+      return out;
+    }
+    const agg = slaFrozen(per);
+    for (const x of list) if (inPeriode(x, per)) aggAdd(agg, x);
+    return slaFinish(agg);
+  }
+  const agg = per.art === "vorjahr" ? leerAgg() : slaFrozen(per);
+  if (per.art !== "vorjahr") for (const x of list) if (inPeriode(x, per)) aggAdd(agg, x);
+  const out = slaFinish(agg);
+  const fix = ra[per.id]?.fix;
+  // Vorgabe gilt für ihren Zeitraum endgültig (abgeschlossene Wochen/Monate der Excel-Statistik); Zählungen zeigen sich nur in Zeiträumen ohne Vorgabe
+  if (fix) for (const p of ["rot", "blau", "grün", "ges"]) if (fix[p] != null) { out[p].avg = fix[p]; out[p].fix = true; out.fixiert = true; }
+  out.sm = ra[per.id]?.sm || "";
+  return out;
 }
 function slaGebrochen(per, list) {
   const live = list.filter(x => inPeriode(x, per) && (x.art === "spaet" || x.art === "offenUeber"));
@@ -3432,7 +3515,7 @@ function slaGebrochen(per, list) {
 }
 /* Offene Calls ohne erste Reaktion – aus dem aktuellen Datenstand */
 function ohneReaktionRows() {
-  return applyFilters("sla", allRows().filter(r => !r.ErsteExtReaktion && r["Eröffnet"]))
+  return applyFilters("sla", allRows().filter(r => !r.ErsteExtReaktion && r["Eröffnet"] && !slaKundeAus(r.Kunde)))
     .map(r => { const p = prioName(r.Prio), lim = slaLimit(p), alter = now() - r["Eröffnet"]; return { r, p, lim, alter, ueber: alter - lim }; })
     .sort((a, b) => b.ueber - a.ueber);
 }
@@ -3447,9 +3530,10 @@ function slaStatTabelle(list) {
     if (artVor && per.art !== artVor) { html += `<tr><td colspan="${header.length}" style="border:none;padding:2px"></td></tr>`; plain.push(""); }
     artVor = per.art;
     const a = slaStat(per, list);
-    const vals = [per.label, fmtDur(a.rot.avg), fmtDur(a.blau.avg), fmtDur(a["grün"].avg), fmtDur(a.ges.avg), String(a.ges.n), pct(a.ges.quote)];
-    html += "<tr>" + vals.map((v, j) => td(v, j ? "text-align:right;" : "", true)).join("") + td("", "") + "</tr>";
-    plain.push(vals.concat([""]).join("\t"));
+    const vals = [per.label, fmtDur(a.rot.avg), fmtDur(a.blau.avg), fmtDur(a["grün"].avg), fmtDur(a.ges.avg), a.fixiert && !a.ges.n ? "" : String(a.ges.n), pct(a.ges.quote)];
+    const sm = per.laufend ? "" : (a.sm || ""); // laufende Woche: SupMan trägt das Team selbst ein
+    html += "<tr>" + vals.map((v, j) => td(v, j ? "text-align:right;" : "", true)).join("") + td(sm, "") + "</tr>";
+    plain.push(vals.concat([sm]).join("\t"));
   }
   return { html: html + "</table></div>", plain: plain.join("\n") };
 }
@@ -3485,16 +3569,20 @@ function renderSla(view) {
   const brk = slaGebrochen(wSel, list);
   let artVor = null;
   const statZeilen = per.map(x => { const a = slaStat(x, list); const sep = artVor && x.art !== artVor ? `<tr class="sep"><td colspan="7"></td></tr>` : ""; artVor = x.art;
-    return sep + `<tr class="${x.laufend ? "laufend" : ""}"${x.titel ? ` title="${esc(x.titel)}"` : ""}><td class="nowrap"><b>${esc(x.label)}</b>${x.laufend ? ' <span class="hint">bisher</span>' : ""}</td><td class="ta-r tnum">${fmtDur(a.rot.avg)}</td><td class="ta-r tnum">${fmtDur(a.blau.avg)}</td><td class="ta-r tnum">${fmtDur(a["grün"].avg)}</td><td class="ta-r tnum"><b>${fmtDur(a.ges.avg)}</b></td><td class="ta-r tnum">${a.ges.n}${a.ges.unbekannt ? ` <span class="hint" title="Calls, die geschlossen wurden, bevor das Board eine Reaktion gesehen hat – nicht im Durchschnitt">+${a.ges.unbekannt} o. A.</span>` : ""}</td><td class="ta-r tnum">${a.ges.quote == null ? "–" : `<span class="pill ${a.ges.quote >= 0.9 ? "s-ok" : a.ges.quote >= 0.7 ? "s-warn" : "s-crit"}">${pct(a.ges.quote)}</span>`}</td></tr>`; }).join("");
+    const z = p => `<td class="ta-r tnum${a[p].fix ? " vorgabe" : ""}"${a[p].fix ? ' title="Vorgabewert aus der bisherigen Statistik – keine Zählung im Board"' : ""}>${p === "ges" ? "<b>" + fmtDur(a[p].avg) + "</b>" : fmtDur(a[p].avg)}</td>`;
+    return sep + `<tr class="${x.laufend ? "laufend" : ""}"${x.titel ? ` title="${esc(x.titel)}"` : ""}><td class="nowrap"><b>${esc(x.label)}</b>${x.laufend ? ' <span class="hint">bisher</span>' : ""}${a.sm ? ` <span class="hint">${esc(a.sm)}</span>` : ""}</td>${z("rot")}${z("blau")}${z("grün")}${z("ges")}<td class="ta-r tnum">${a.fixiert && !a.ges.n ? '<span class="hint">Vorgabe</span>' : a.ges.n}${a.ges.unbekannt ? ` <span class="hint" title="Calls, die geschlossen wurden, bevor das Board eine Reaktion gesehen hat – nicht im Durchschnitt">+${a.ges.unbekannt} o. A.</span>` : ""}</td><td class="ta-r tnum">${a.ges.quote == null ? "–" : `<span class="pill ${a.ges.quote >= 0.9 ? "s-ok" : a.ges.quote >= 0.7 ? "s-warn" : "s-crit"}">${pct(a.ges.quote)}</span>`}</td></tr>`; }).join("");
   view.innerHTML = `<div class="kpis">
       <button class="kpi ${ohne.length ? "" : ""}" data-goto="ohne"><div class="k-label">Ohne erste Reaktion</div><div class="k-value">${fmtN.format(ohne.length)}</div><div class="k-note">offene Calls, noch keine externe Reaktion</div></button>
       <button class="kpi ${ueber.length ? "crit" : ""}" data-goto="ohne"><div class="k-label">davon Frist überschritten</div><div class="k-value">${fmtN.format(ueber.length)}</div><div class="k-note">SLA läuft gerade schief</div></button>
       <button class="kpi" data-goto="stat"><div class="k-label">SLA-Quote ${esc(wochen[wochen.length - 1].label)}</div><div class="k-value">${pct(kw.ges.quote)}</div><div class="k-note">${kw.ges.ok} eingehalten · ${kw.ges.brk} gebrochen</div></button>
       <button class="kpi" data-goto="stat"><div class="k-label">Ø Reaktionszeit ${esc(wochen[wochen.length - 1].label)}</div><div class="k-value" style="font-size:26px">${fmtDur(kw.ges.avg)}</div><div class="k-note">${kw.ges.n} Calls mit Reaktion</div></button>
     </div>
+    <div class="card"><h2>Filter <span class="hint" style="font-weight:400;margin-left:6px">gilt für alle Zahlen dieses Reiters, teamweit</span></h2>
+      <p class="sub">Ausgeblendete Gruppen, Prioritäten und Kunden werden weder gezählt noch gelistet. Ab Werk ohne ${esc(state.internKunde || "MPDV")}-Calls. Wirkt auf neue Aufzeichnungen; bereits eingefrorene Wochen bleiben, wie sie sind.</p>
+      ${filterPanel("sla", allRows(), { text: "kunden", textLabel: "Kunden ausschließen", textHint: "Kürzel oder Namensteile, mit Semikolon – z. B. ASIA; USA" })}
+    </div>
     <div class="card" id="slaOhne"><h2>Ohne erste externe Reaktion <span class="pill ${ueber.length ? "s-crit" : "s-ok"}" style="margin-left:6px">${ueber.length} überfällig</span></h2>
       <p class="sub">${regeln} Sortiert nach Überfälligkeit; Calls innerhalb der Frist stehen unten.</p>
-      ${filterPanel("sla", allRows().filter(r => !r.ErsteExtReaktion))}
       ${ohne.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Gruppe</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th><th>Eröffnet</th><th class="ta-r">Alter</th><th class="ta-r">Frist</th><th class="ta-r">Rest / überfällig</th></tr></thead><tbody>
       ${ohne.map(x => `<tr><td class="nowrap">${prioZelle(x.p)}</td><td class="tnum nowrap">${esc(x.r.Call)}</td><td class="nowrap">${esc(gruppeKurz(x.r.Gruppe) || "–")}</td><td class="nowrap" title="${esc(resolveName(x.r.Bearbeiter) ?? "")}">${esc(x.r.Bearbeiter ?? "–")}</td><td class="nowrap">${esc(x.r.Kunde ?? "–")}${smBadge(x.r)}</td><td class="titlecell">${esc(x.r.Titel ?? "–")}</td><td class="nowrap">${esc(x.r.Status ?? "–")}</td><td class="tnum nowrap">${fmtDT.format(x.r["Eröffnet"])}</td><td class="ta-r tnum">${fmtAgo(x.alter)}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td><td class="ta-r tnum nowrap ${x.ueber > 0 ? "c-crit" : "c-warn"}">${x.ueber > 0 ? "überfällig seit " + fmtAgo(x.ueber) : "noch " + fmtAgo(-x.ueber)}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="empty"><b>Alles beantwortet.</b> Jeder offene Call hat eine erste externe Reaktion.</p>`}
