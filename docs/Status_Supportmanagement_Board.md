@@ -1,6 +1,6 @@
 # Status: Supportmanagement Board
 
-**Stand:** v1.37 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-03
+**Stand:** v1.38 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-03
 
 ## Was ist das?
 
@@ -56,6 +56,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 | v1.35 | Reaktionszeit: teamweiter Filter (Status, Gruppe, Prio, interner Kunde, Kunden-Ausschluss als Text) wirkt auf Aufzeichnung, Statistik und Listen; MPDV ab Werk ausgeschlossen; Vorgabewerte der bisherigen Excel-Statistik (2023–2025, Jan–Aug 2026, KW 30–35 mit SupMan) als `fix` in `state.reaktAgg` eingespielt, gelten für ihre Zeiträume endgültig; Jahreswert = Mittel der Monatswerte, solange Vorgaben enthalten sind; SupMan in der Kopie für abgeschlossene Wochen gefüllt, laufende Woche leer |
 | v1.36 | SaaS-Kunden: Kürzelliste in der Verwaltung („Grundregeln“, `state.saasKunden`, teamweit), Chip „SaaS“ unter „Sonstiges“ in jeder Filterleiste blendet diese Kunden je Liste aus (auch in der Reaktionszeit-Aufzeichnung) |
 | v1.37 | Reaktionszeit nur in Geschäftszeit (Mo–Do 08:00–17:30, Fr 08:00–16:30; `GESCHAEFTSZEIT`, `geschaeftszeit()`): Dauer bis zur ersten Reaktion, Fristen, „offen seit“ und Alter offener Calls; Kundengruppen USA und Asien wie SaaS (`KUNDENGRUPPEN`, `state.usaKunden`/`state.asiaKunden`, Chips in jeder Filterleiste), im Reaktionszeit-Filter ab Werk ausgeblendet |
+| v1.38 | Reiter „Keine ext. Reaktion“ entfernt (Liste nach letzter externer Reaktion; die erste Reaktion ist das, was zählt, danach greifen die Controlling-Listen). Reiter „Reaktionszeit“ bleibt samt Tabelle der offenen Calls ohne erste Reaktion |
 
 ## Feste Regeln
 
@@ -82,7 +83,7 @@ Die Dashboards sind Omnitracker-Abfragetabellen mit „Daten vor dem Speichern e
 
 ## Offene Punkte
 
-0. Parallelbetrieb SQL-Test läuft (Abfrage passt zum Schema, Aufgabenplanung lokal auf VKUs Notebook). Nächster Schritt: Skript auf den (Test-)Server; danach Vergleich Test vs. Produktiv nach Checkliste. Auslastung Dispatcher folgt, sobald die Abfrage Daten dafür liefert. Danach entscheiden: Ansicht „Keine ext. Reaktion“ ohne *Wartend*/*Customer Care* als Standard?
+0. Parallelbetrieb SQL-Test läuft (Abfrage passt zum Schema, Aufgabenplanung lokal auf VKUs Notebook). Nächster Schritt: Skript auf den (Test-)Server; danach Vergleich Test vs. Produktiv nach Checkliste. Auslastung Dispatcher folgt, sobald die Abfrage Daten dafür liefert.
 1. OneNote-Link im PD-Fußtext ersetzen (Platzhalter-URL `https://LINK-ZUM-ONENOTE-HIER-EINFUEGEN`)
 2. Team-Rollout: gemeinsame JSON auf dem Share einrichten, Kollegen verknüpfen
 3. Optional: Gelb-Schwelle Terminänderungen in der Freitagsmail evtl. ≥5 statt >6 (unbestätigt)

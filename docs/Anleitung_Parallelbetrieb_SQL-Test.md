@@ -79,7 +79,7 @@ Beide Boards nebeneinander (zwei Tabs). Abweichungen sind erwartbar, wenn der Ex
 - Stichproben: bei 5 Calls Prio, Status, Dauer, LT, Terminänderungen, Haken, „Tage ohne Info“ und Score gegen die Excel-Liste prüfen.
 - Datumsfelder mit Uhrzeit (Eröffnet, Letzte Änderung) – stimmt die Uhrzeit, keine Verschiebung um Stunden?
 - Titel mit Sonderzeichen (Semikolon, Anführungszeichen, Umlaute) unversehrt?
-- Ansicht **„Keine ext. Reaktion“**: erstmals mit echten Daten. Stehen dort sehr viele Calls, meist Status *Wartend* / *Customer Care* per Filter-Chips ausblenden – danach entscheiden, ob das zum Standard wird.
+- Reiter **„Reaktionszeit“**: erstmals mit echten Daten. Stehen in „Offen ohne erste Reaktion“ sehr viele Calls, meist Status *Wartend* / *Customer Care* per Filter-Chips ausblenden.
 - Mittwochsmail-Vorschau: gleiche Langläufer wie in der Produktivversion?
 - Nach 15–30 Minuten: aktualisiert sich der Dashboard-Punkt unten links von selbst („gepr. hh:mm“)? Ändert sich der Stand, wenn das Skript gelaufen ist?
 
