@@ -281,6 +281,8 @@
   .bk.we { opacity: 0.55; }
   .topgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 16px; }
   .topgrid .card { margin-bottom: 0; }
+  table.slatab tr.sep td { border: none; height: 8px; padding: 0; background: none !important; }
+  table.slatab tr.laufend td { background: var(--accent-soft) !important; }
   .ackx { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
   .ackx input[type="text"] { width: 150px; padding: 2px 6px; font-size: 11.5px; border-radius: 5px; }
   .ackx input[type="date"] { padding: 1px 4px; font-size: 11.5px; border-radius: 5px; }
@@ -490,7 +492,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.31";
+const VERSION = "1.32";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -603,6 +605,8 @@ const DEFAULT_STATE = {
       intro: "Hallo,\n\nbitte die Calls heute in folgender Reihenfolge (sortiert nach „Letzte Aktion zum Kunden“) bearbeiten:",
       fuss: "Bitte auch die Calls im Status „Wartend“ prüfen, ob der Status noch korrekt ist bzw. ob die Calls ggf. geschlossen werden können.\n\nZu Calls, bei denen Unterstützung durch einen PSOD notwendig ist, den jeweiligen PSOD kontaktieren, siehe auch [link=file://mpdv.local/Data/OurPros/ResourcePlanning/CallDispatching_Dienstplan.xlsm]\\\\mpdv.local\\Data\\OurPros\\ResourcePlanning\\CallDispatching_Dienstplan.xlsm[/link]\n\nEine Übersichtsseite zum Thema Supporttag ist im MPDVNet zu finden: [link=http://mpdvnet.mpdv.local/de/Abteilungen/SupportServices/Seiten/Supporttag.aspx]http://mpdvnet.mpdv.local/de/Abteilungen/SupportServices/Seiten/Supporttag.aspx[/link]\n\nBitte anschließend bei den Calls, die auf WARTEND stehen und das „Wartend Bis“ Datum erreicht ist, prüfen, wie es weitergeht.\n\nBitte nach Abschluss der Tätigkeiten an die Statusmail denken.\n\nViele Grüße" }
   ],
+  reakt: {},     // "YYYY-MM" (Monat der Eröffnung) -> { call: {e, r, p, k, g, b} } – gemerkte erste externe Reaktion je Call (teamweit), Basis der Reaktionszeit-Statistik
+  slaNote: {},   // call -> Kommentar zu einem SLA-Bruch (Montagsmeeting)
   udDone: {},    // Dienst-Kürzel -> {d, by, ts}: Mail an den Unterstützungsdienst heute verschickt (teamweit)
   gruppenFilter: [ // Filtergruppen: bündeln mehrere Bearbeitergruppen zu einem Filter-Chip (Verwaltung)
     { name: "Hotline", members: "Hotline; 1st_Level" },
@@ -618,6 +622,7 @@ const DEFAULT_STATE = {
     wartend: { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     extreakt: { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     udienst: { status: [], gruppe: [], prio: [], intern: false, hxmp: false },
+    sla:     { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     last:    { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     mi:     { status: ["cc", "customer care", "update", "pre-update"], gruppe: [], prio: [], minDauer: "10", intern: false, hxmp: true },
     fr:     { status: [], gruppe: [], prio: [], intern: false, hxmp: true }
@@ -728,6 +733,8 @@ function normalizeState() {
   state.sort ??= {};
   state.tagesstat ??= {};
   state.udDone ??= {};
+  state.reakt ??= {};
+  state.slaNote ??= {};
   state.verteiler.udCc ??= "";
   if (!Array.isArray(state.udienste)) state.udienste = structuredClone(DEFAULT_STATE.udienste);
   else for (const d of state.udienste) { // ältere Stände: fehlende Texte aus den Standards des gleichen Kürzels ergänzen
@@ -868,9 +875,10 @@ const COLMAP = {
   "nicht werten für kd.komm.": "Haken", "nicht werten fuer kd.komm.": "Haken",
   "letzte info an kd.": "LetzteInfo", "tage ohne info an kd.": "TageOhneInfo",
   "letzte externe reaktion": "LetzteExtReaktion", "letzte ext. reaktion": "LetzteExtReaktion", "externe reaktion": "LetzteExtReaktion",
+  "erste externe reaktion": "ErsteExtReaktion", "erste ext. reaktion": "ErsteExtReaktion", "erste_externe_reaktion": "ErsteExtReaktion", "erste reaktion": "ErsteExtReaktion",
   "score": "Score"
 };
-const DATECOLS = ["Eröffnet", "Weiterleitung", "Letzte_Änderung", "Wartend_bis", "Lösung_bis", "LetzteInfo", "LetzteExtReaktion"];
+const DATECOLS = ["Eröffnet", "Weiterleitung", "Letzte_Änderung", "Wartend_bis", "Lösung_bis", "LetzteInfo", "LetzteExtReaktion", "ErsteExtReaktion"];
 /* Bereich (PD/SD/2nd/1st) aus der Bearbeitergruppe ableiten – seit v1.11 kommt
    alles aus einer einzigen Abfrageliste, die frühere PD/SD-Trennung entsteht hier. */
 function quelleOf(g) {
@@ -911,13 +919,15 @@ const REQUIRED = ["Call", "Bearbeiter", "Status"];
 async function parseCallFile(file) {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { cellDates: true });
-  let best = null, bestLen = -1;
+  let best = null, bestLen = -1, bestRaw = null;
   for (const name of wb.SheetNames) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: null });
     const norm = normalizeRows(rows);
     const bonus = /call/i.test(name) ? 1000 : 0;
-    if (norm.length + bonus > bestLen) { bestLen = norm.length + bonus; best = norm; }
+    if (norm.length + bonus > bestLen) { bestLen = norm.length + bonus; best = norm; bestRaw = rows; }
   }
+  // Welche Spalten liefert die Quelle wirklich? (Ansichten wie „Reaktionszeit“ schalten sich danach frei)
+  if (best) best.cols = [...new Set(Object.keys(bestRaw?.[0] || {}).map(k => COLMAP[String(k).trim().toLowerCase()]).filter(Boolean))];
   if (!best || !best.length) throw new Error(`${file.name}: keine Call-Daten gefunden. Enthält die Datei gespeicherte Werte? (Abfragedateien mit „Daten beim Speichern entfernen“ sind auf der Platte leer.)`);
   const missing = REQUIRED.filter(c => !(c in best[0]));
   if (missing.length) throw new Error(`${file.name}: Pflichtspalten fehlen (${missing.join(", ")}). Spaltenschema geändert? Import abgebrochen.`);
@@ -936,7 +946,7 @@ function cacheSources() {
   try {
     const c = {};
     if (sources.ALL.rows.length && !sources.ALL.demo)
-      c.ALL = { rows: serRows(sources.ALL.rows), label: sources.ALL.label, ts: sources.ALL.ts?.toISOString() };
+      c.ALL = { rows: serRows(sources.ALL.rows), label: sources.ALL.label, ts: sources.ALL.ts?.toISOString(), cols: sources.ALL.cols || [] };
     localStorage.setItem(LS_CACHE, JSON.stringify(c));
   } catch (e) { /* Cache optional */ }
 }
@@ -945,6 +955,7 @@ function restoreSources() {
     const c = JSON.parse(localStorage.getItem(LS_CACHE) || "{}");
     if (c.ALL) {
       sources.ALL.rows = revRows(c.ALL.rows);
+      sources.ALL.cols = c.ALL.cols || [];
       sources.ALL.label = c.ALL.label;
       sources.ALL.ts = c.ALL.ts ? new Date(c.ALL.ts) : null;
     } else if (c.PD || c.SD) { // Übernahme aus v1.10: getrennte PD/SD-Caches zusammenführen
@@ -1117,7 +1128,7 @@ async function resumeWatch() {
    Haken, Kommentare, Markierungen, Personen, Verteiler und Vorlagen werden mit einer
    JSON-Datei abgeglichen, die alle Boards im Team lesen und schreiben. Je Eintrag
    gewinnt die jüngste Änderung (Zeitstempel in state.touch). */
-const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll", "tagesstat", "udDone"];
+const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll", "tagesstat", "udDone", "reakt", "slaNote"];
 const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "protoMinCalls", "rules", "filters", "cols", "gruppenFilter", "sort", "udienste"];
 let sharedHandle = null, pendingSharedHandle = null, sharedDirty = false, sharedBusy = false, sharedLastSync = null;
 /* Härtung v1.14: geschrieben wird NUR nach einem erfolgreichen Lese-/Merge-Zyklus.
@@ -1562,10 +1573,12 @@ async function importCallFile(file, live) {
   try {
     const rows = await parseCallFile(file);
     sources.ALL.rows = rows;
+    sources.ALL.cols = rows.cols || [];
     sources.ALL.label = `${file.name} (${rows.length})`;
     sources.ALL.ts = new Date();
     updateChips(live);
     recordTagesstat();
+    recordReakt();
     render();
     snapshotKpis(computeKpis());
     cacheSources();
@@ -2393,7 +2406,11 @@ function loadDemo() {
     pts += dauer >= 20 ? 2 : dauer >= 10 ? 1 : 0;
     pts += ch >= 30 ? 2 : ch >= 14 ? 1 : 0;
     if (lt && lt < todayStart()) pts += daysSince(lt) > 7 ? 2 : 1;
+    // erste externe Reaktion: meist innerhalb der Frist, ein Teil darüber, wenige noch ohne
+    const reaktMin = prio.startsWith("1") ? Math.floor(rnd() * 50) : prio.startsWith("2") ? Math.floor(rnd() * 330) : Math.floor(rnd() * 70 * 60);
+    const erste = (age > 2 || rnd() < 0.7) ? new Date(er.getTime() + reaktMin * 60000) : null;
     rows.push({
+      ErsteExtReaktion: erste,
       Quelle: quelleOf(gruppe), Prio: prio, Call: 156000 + i * 7 + Math.floor(rnd() * 6),
       "Eröffnet": er, Gruppe: gruppe, Bearbeiter: hx ? "HX-MP-UPDATE" : pick(bearb[gruppe]), Kunde: pick(kunden),
       Titel: pick(titles), SupMan: rnd() < 0.25 ? pick(["MLH", "APA", "RRE", "VKU"]) : "", Status: status, Dauer: dauer,
@@ -2405,7 +2422,7 @@ function loadDemo() {
       Score: mult * pts
     });
   }
-  sources.ALL.rows = rows; sources.ALL.label = "Beispieldaten"; sources.ALL.ts = new Date(); sources.ALL.demo = true;
+  sources.ALL.rows = rows; sources.ALL.cols = Object.keys(rows[0] || {}); sources.ALL.label = "Beispieldaten"; sources.ALL.ts = new Date(); sources.ALL.demo = true;
   updateChips(); render();
   toast(`Beispieldaten geladen (${rows.length} Calls über alle Gruppen, fiktive Personen)`);
 }
@@ -2416,6 +2433,7 @@ const TABS = [
   ...WF.map(w => ({ id: w.id, label: w.title, wf: true })),
   { id: "udienst", label: "Unterstützungsdienste" },
   { id: "extreakt", label: "Keine ext. Reaktion" },
+  { id: "sla", label: "Reaktionszeit" },
   { id: "last", label: "Auslastung", nurFuer: ["VKU"] },
   { id: "proto", label: "Supportmanager Protokoll" },
   { id: "mi", label: "Mittwochsmail" },
@@ -2589,6 +2607,7 @@ const NAV_ICONS = {
   haken: '<rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8 12.5l2.8 2.8L16.5 9"/>',
   wartend: '<path d="M6.5 3.5h11M6.5 20.5h11"/><path d="M7.5 3.5v1.8c0 3.2 4.5 4.2 4.5 6.7s-4.5 3.5-4.5 6.7v1.8"/><path d="M16.5 3.5v1.8c0 3.2-4.5 4.2-4.5 6.7s4.5 3.5 4.5 6.7v1.8"/>',
   udienst: '<circle cx="9" cy="8" r="3"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="9.5" r="2.4"/><path d="M15.2 14.6A4.8 4.8 0 0 1 21 19.5"/>',
+  sla: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M9.5 3h5"/><path d="M12 3v2"/>',
   extreakt: '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/>',
   last: '<line x1="5" y1="20" x2="5" y2="12"/><line x1="10.5" y1="20" x2="10.5" y2="6"/><line x1="16" y1="20" x2="16" y2="9.5"/><line x1="3" y1="20" x2="19" y2="20"/>',
   proto: '<rect x="5" y="4.5" width="14" height="16.5" rx="2"/><path d="M9 4.5a3 3 0 0 1 6 0"/><line x1="8.5" y1="10.5" x2="15.5" y2="10.5"/><line x1="8.5" y1="14" x2="15.5" y2="14"/><line x1="8.5" y1="17.5" x2="13" y2="17.5"/>',
@@ -2931,6 +2950,21 @@ function zweiteLevelGruppen() {
   const m = def ? def.members.map(x => x.toLowerCase()) : [];
   return r => { const g = String(r.Gruppe ?? "").trim().toLowerCase(); return m.length ? m.includes(g) : g.startsWith("2nd_"); };
 }
+function slaKarte() {
+  if (!hatSpalte("ErsteExtReaktion")) return "";
+  const list = reaktEintraege();
+  const wochen = slaPerioden().filter(x => x.art === "woche"), akt = wochen[wochen.length - 1];
+  const kw = slaStat(akt, list);
+  const ohne = allRows().filter(r => !r.ErsteExtReaktion && r["Eröffnet"]);
+  const ueber = ohne.filter(r => (now() - r["Eröffnet"]) > slaLimit(prioName(r.Prio))).length;
+  return `<div class="card"><h2>Erste externe Reaktion <span class="hint" style="font-weight:400;margin-left:6px">Rot 30 Min. · Blau 4 Std. · Grün 48 Std.</span></h2>
+    <div class="kpis" style="margin-bottom:0">
+      <button class="kpi" data-goto="sla"><div class="k-label">Ohne erste Reaktion</div><div class="k-value">${fmtN.format(ohne.length)}</div><div class="k-note">offene Calls</div></button>
+      <button class="kpi${ueber ? " crit" : ""}" data-goto="sla"><div class="k-label">davon Frist überschritten</div><div class="k-value">${fmtN.format(ueber)}</div><div class="k-note">jetzt reagieren</div></button>
+      <button class="kpi" data-goto="sla"><div class="k-label">SLA-Quote ${esc(akt.label)}</div><div class="k-value">${pct(kw.ges.quote)}</div><div class="k-note">${kw.ges.ok} eingehalten · ${kw.ges.brk} gebrochen</div></button>
+      <button class="kpi" data-goto="sla"><div class="k-label">Ø Reaktionszeit ${esc(akt.label)}</div><div class="k-value" style="font-size:26px">${fmtDur(kw.ges.avg)}</div><div class="k-note">Rot ${fmtDur(kw.rot.avg)} · Blau ${fmtDur(kw.blau.avg)} · Grün ${fmtDur(kw["grün"].avg)}</div></button>
+    </div></div>`;
+}
 function trendKarten(rows) {
   const reihe = tagesstatReihe(14);
   const heute = reihe[reihe.length - 1];
@@ -2986,7 +3020,7 @@ function trendKarten(rows) {
     ${topTab("dauer", "Top 10 nach Dauer", "Die zehn offenen Calls mit der höchsten Gesamtdauer. „Geschlossen“ = stand in dieser Liste und ist seit höchstens 7 Tagen nicht mehr im Datenstand.", "Dauer (h)", topDauer.map(r => topZeile(r, fmtDauer.format(r.Dauer ?? 0))).join(""))}
     ${topTab("alt", "Top 10 am längsten offen", "Die zehn offenen Calls mit dem ältesten Eröffnungsdatum. „Geschlossen“ wie links.", "Offen seit", topAlt.map(r => topZeile(r, `${fmtD.format(r["Eröffnet"])} <span class="hint">(${fmtN.format(daysSince(r["Eröffnet"]))} T.)</span>`)).join(""))}
   </div>`;
-  return stat + last + tops;
+  return slaKarte() + stat + last + tops;
 }
 /* Pfeil mit Differenz (ohne Tages-Schnappschuss-Logik) – für Trend-Angaben auf der Startseite */
 trendHtml.raw = (diff, tip) => diff === 0 ? "" : `<span class="trend ${diff > 0 ? "t-up" : "t-down"}" title="${esc(tip)}">${diff > 0 ? "▲ +" : "▼ "}${diff}</span>`;
@@ -3243,6 +3277,181 @@ function renderExtReakt(view) {
     </tr>`; }).join("")}
     </tbody></table></div>` : `<p class="empty"><b>Nichts offen.</b> Alle Calls liegen innerhalb der Reaktionszeiten.</p>`}
   </div>`;
+  bindFilterPanel(view);
+}
+
+/* ================= Reaktionszeit: erste externe Reaktion, SLA =================
+   Grundlage ist die Spalte „Erste externe Reaktion“ der Abfrage. Weil der Export nur offene Calls enthält,
+   merkt sich das Board jeden gesehenen Call mit Eröffnung und erster Reaktion (teamweit, 13 Monate) –
+   nur so entstehen Wochen- und Monatsdurchschnitte, die auch geschlossene Calls einschließen.
+   SLA je Priorität: Rot 30 Min., Blau 4 Std., Grün 48 Std. (EXT_LIMITS). */
+function hatSpalte(k) { return (sources.ALL.cols || []).includes(k); }
+function monatKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
+function slaLimit(p) { return EXT_LIMITS[p] ?? EXT_LIMITS["grün"]; }
+function fmtDur(ms) {
+  if (ms == null || !isFinite(ms)) return "–";
+  const t = Math.round(ms / 1000), h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), sec = t % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+const pct = q => q == null ? "–" : `${Math.round(q * 100)} %`;
+const PRIO_ORD = { rot: 0, blau: 1, "grün": 2 };
+function recordReakt() {
+  if (sources.ALL.demo || !hatSpalte("ErsteExtReaktion")) return;
+  state.reakt ??= {};
+  const touched = new Set();
+  const grenze = monatKey(new Date(todayStart().getTime() - 400 * DAY)); // 13 Monate behalten
+  for (const r of allRows()) {
+    if (!r["Eröffnet"]) continue;
+    const mk = monatKey(r["Eröffnet"]), call = String(r.Call);
+    if (mk < grenze) continue; // ältere Calls gar nicht erst aufnehmen (sonst würden sie bei jedem Lauf neu angelegt und gelöscht)
+    const rec = { e: r["Eröffnet"].getTime(), r: r.ErsteExtReaktion ? r.ErsteExtReaktion.getTime() : 0, p: prioName(r.Prio),
+      k: String(r.Kunde ?? ""), g: gruppeKurz(String(r.Gruppe ?? "")), b: String(r.Bearbeiter ?? "") };
+    const m = state.reakt[mk] ??= {};
+    const alt = m[call];
+    if (!alt || ["e", "r", "p", "k", "g", "b"].some(f => alt[f] !== rec[f])) { m[call] = rec; touched.add(mk); }
+  }
+  for (const k of Object.keys(state.reakt)) if (k < grenze) { delete state.reakt[k]; touched.add(k); }
+  if (touched.size) { for (const k of touched) touch("reakt|" + k); saveState(); }
+}
+/* Alle gemerkten Calls, bewertet: ok · spaet (Reaktion nach Frist) · offenUeber (noch keine Reaktion, Frist vorbei)
+   · offenInnen (noch keine Reaktion, Frist läuft) · unbekannt (geschlossen, ohne dass eine Reaktion gesehen wurde) */
+function reaktEintraege() {
+  const offen = new Map(allRows().map(r => [String(r.Call), r]));
+  const out = [];
+  for (const m of Object.values(state.reakt || {})) for (const [call, rec] of Object.entries(m)) {
+    const e = rec.e, r = rec.r || 0, p = rec.p || "", lim = slaLimit(p), row = offen.get(call) || null;
+    let art;
+    if (r) art = (r - e) <= lim ? "ok" : "spaet";
+    else if (row) art = (now() - e) > lim ? "offenUeber" : "offenInnen";
+    else art = "unbekannt";
+    out.push({ call, e, r, p, lim, art, dauer: r ? r - e : null, row, k: rec.k ?? row?.Kunde ?? "", g: rec.g ?? gruppeKurz(row?.Gruppe ?? ""), b: rec.b ?? row?.Bearbeiter ?? "" });
+  }
+  return out;
+}
+function slaAgg(list) {
+  const mk = () => ({ n: 0, sum: 0, ok: 0, brk: 0, unbekannt: 0 });
+  const agg = { rot: mk(), blau: mk(), "grün": mk(), ges: mk() };
+  for (const x of list) {
+    for (const t of (agg[x.p] ? [agg[x.p], agg.ges] : [agg.ges])) {
+      if (x.dauer != null) { t.n++; t.sum += x.dauer; }
+      if (x.art === "ok") t.ok++; else if (x.art === "spaet" || x.art === "offenUeber") t.brk++; else if (x.art === "unbekannt") t.unbekannt++;
+    }
+  }
+  for (const t of Object.values(agg)) { t.avg = t.n ? t.sum / t.n : null; t.quote = (t.ok + t.brk) ? t.ok / (t.ok + t.brk) : null; }
+  return agg;
+}
+function wocheStart(d) { const t = new Date(d); t.setHours(0, 0, 0, 0); t.setDate(t.getDate() - (t.getDay() + 6) % 7); return t; }
+const fmtMonat = new Intl.DateTimeFormat("de-DE", { month: "short" });
+/* Zeiträume wie im Montagsmeeting: Jahr bisher, Monate des Jahres, die letzten 8 Kalenderwochen */
+function slaPerioden() {
+  const heute = todayStart(), jahr = heute.getFullYear(), per = [];
+  per.push({ id: `J${jahr}`, label: `${jahr} (bisher)`, von: new Date(jahr, 0, 1), bis: new Date(jahr + 1, 0, 1), art: "jahr" });
+  for (let m = 0; m <= heute.getMonth(); m++) per.push({ id: `M${jahr}-${m + 1}`, label: fmtMonat.format(new Date(jahr, m, 1)).replace(/\.$/, ""), von: new Date(jahr, m, 1), bis: new Date(jahr, m + 1, 1), art: "monat", laufend: m === heute.getMonth() });
+  const ws = wocheStart(heute);
+  for (let i = 7; i >= 0; i--) {
+    const von = new Date(ws.getTime() - i * 7 * DAY), bis = new Date(von.getTime() + 7 * DAY);
+    per.push({ id: `W${isoDateOf(von)}`, label: `KW ${isoWeek(von)}`, von, bis, art: "woche", laufend: i === 0, titel: `${fmtD.format(von)} – ${fmtD.format(new Date(bis.getTime() - DAY))}` });
+  }
+  return per;
+}
+function inPeriode(x, per) { return x.e >= per.von.getTime() && x.e < per.bis.getTime(); }
+function slaStat(per, list) { return slaAgg(list.filter(x => inPeriode(x, per))); }
+function slaGebrochen(per, list) {
+  return list.filter(x => inPeriode(x, per) && (x.art === "spaet" || x.art === "offenUeber"))
+    .sort((a, b) => (PRIO_ORD[a.p] ?? 9) - (PRIO_ORD[b.p] ?? 9) || a.e - b.e);
+}
+/* Offene Calls ohne erste Reaktion – aus dem aktuellen Datenstand */
+function ohneReaktionRows() {
+  return applyFilters("sla", allRows().filter(r => !r.ErsteExtReaktion && r["Eröffnet"]))
+    .map(r => { const p = prioName(r.Prio), lim = slaLimit(p), alter = now() - r["Eröffnet"]; return { r, p, lim, alter, ueber: alter - lim }; })
+    .sort((a, b) => b.ueber - a.ueber);
+}
+function prioZelle(p) { return `<span class="pd-dot" style="background:${p === "rot" ? "var(--crit)" : p === "blau" ? "var(--accent)" : "var(--good)"};margin-right:6px"></span>${esc(p ? p[0].toUpperCase() + p.slice(1) : "–")}`; }
+/* Tabellen fürs Protokoll (OneNote): mit leerer SupMan-Spalte */
+function slaStatTabelle(list) {
+  const header = ["Zeitraum", "Rot", "Blau", "Grün", "Gesamt", "Calls", "SLA", "SupMan"];
+  let html = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><b>Erste ext. Reaktion (Durchschnitt)</b> – Stand ${esc(fmtDT.format(new Date()))}<br><table style="${mailTableStyle()}"><tr>${header.map(v => th(v, MAIL_HDR)).join("")}</tr>`;
+  const plain = ["Erste ext. Reaktion (Durchschnitt)", header.join("\t")];
+  let artVor = null;
+  for (const per of slaPerioden()) {
+    if (artVor && per.art !== artVor) { html += `<tr><td colspan="${header.length}" style="border:none;padding:2px"></td></tr>`; plain.push(""); }
+    artVor = per.art;
+    const a = slaStat(per, list);
+    const vals = [per.label, fmtDur(a.rot.avg), fmtDur(a.blau.avg), fmtDur(a["grün"].avg), fmtDur(a.ges.avg), String(a.ges.n), pct(a.ges.quote)];
+    html += "<tr>" + vals.map((v, j) => td(v, j ? "text-align:right;" : "", true)).join("") + td("", "") + "</tr>";
+    plain.push(vals.concat([""]).join("\t"));
+  }
+  return { html: html + "</table></div>", plain: plain.join("\n") };
+}
+function slaBruchTabelle(per, list) {
+  const rows = slaGebrochen(per, list);
+  const header = ["Prio", "Call", "Kunde", "Gruppe", "Bearbeiter", "Eröffnet", "Reaktion nach", "Frist", "Kommentar", "SupMan"];
+  let html = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><b>SLA gebrochen – ${esc(per.label)}</b> (${esc(per.titel || "")})<br><table style="${mailTableStyle()}"><tr>${header.map(v => th(v, MAIL_HDR)).join("")}</tr>`;
+  const plain = [`SLA gebrochen – ${per.label}`, header.join("\t")];
+  rows.forEach((x, i) => {
+    const zeb = i % 2 ? "background-color:#f2f2f2;" : "";
+    const pz = x.p === "rot" ? `background:${MAILCLR.red};` : x.p === "blau" ? "background:#dbe5f1;" : `background:${MAILCLR.green};`;
+    const vals = [x.p ? x.p[0].toUpperCase() + x.p.slice(1) : "–", x.call, x.k, x.g, x.b, fmtDT.format(new Date(x.e)), x.dauer != null ? fmtDur(x.dauer) : `offen seit ${fmtDur(now() - x.e)}`, extLimitLabel(x.p), state.slaNote?.[x.call] ?? ""];
+    html += "<tr>" + td(vals[0], pz, true) + vals.slice(1).map((v, j) => td(v, zeb, j !== 7)).join("") + td("", zeb) + "</tr>";
+    plain.push(vals.concat([""]).join("\t"));
+  });
+  if (!rows.length) { html += `<tr><td colspan="${header.length}" style="border:1px solid #999;padding:2px 6px;"><i>Keine Brüche in diesem Zeitraum.</i></td></tr>`; plain.push("Keine Brüche."); }
+  return { html: html + "</table></div>", plain: plain.join("\n"), rows };
+}
+let slaWoche = null;
+function renderSla(view) {
+  const regeln = `SLA je Priorität: <b>Rot</b> 30 Minuten · <b>Blau</b> 4 Stunden · <b>Grün</b> 48 Stunden – gemessen von der Eröffnung bis zur ersten externen Reaktion.`;
+  if (!hatSpalte("ErsteExtReaktion")) {
+    view.innerHTML = `<div class="card"><h2>Reaktionszeit</h2><p class="sub">${regeln}</p>
+      <p class="empty">Die Quelle liefert die Spalte <b>„Erste externe Reaktion“</b> noch nicht. Sobald die Abfrage sie enthält (Spaltenname genau so, siehe SupportBoard-Abfrage.sql), füllt sich diese Ansicht automatisch – die Auswertung ist bereits eingebaut.</p></div>`;
+    return;
+  }
+  const list = reaktEintraege();
+  const per = slaPerioden(), wochen = per.filter(x => x.art === "woche");
+  if (!wochen.some(w => w.id === slaWoche)) slaWoche = wochen[wochen.length - 1].id;
+  const wSel = wochen.find(w => w.id === slaWoche);
+  const kw = slaStat(wochen[wochen.length - 1], list);
+  const ohne = ohneReaktionRows(), ueber = ohne.filter(x => x.ueber > 0);
+  const brk = slaGebrochen(wSel, list);
+  let artVor = null;
+  const statZeilen = per.map(x => { const a = slaStat(x, list); const sep = artVor && x.art !== artVor ? `<tr class="sep"><td colspan="7"></td></tr>` : ""; artVor = x.art;
+    return sep + `<tr class="${x.laufend ? "laufend" : ""}"${x.titel ? ` title="${esc(x.titel)}"` : ""}><td class="nowrap"><b>${esc(x.label)}</b>${x.laufend ? ' <span class="hint">bisher</span>' : ""}</td><td class="ta-r tnum">${fmtDur(a.rot.avg)}</td><td class="ta-r tnum">${fmtDur(a.blau.avg)}</td><td class="ta-r tnum">${fmtDur(a["grün"].avg)}</td><td class="ta-r tnum"><b>${fmtDur(a.ges.avg)}</b></td><td class="ta-r tnum">${a.ges.n}${a.ges.unbekannt ? ` <span class="hint" title="Calls, die geschlossen wurden, bevor das Board eine Reaktion gesehen hat – nicht im Durchschnitt">+${a.ges.unbekannt} o. A.</span>` : ""}</td><td class="ta-r tnum">${a.ges.quote == null ? "–" : `<span class="pill ${a.ges.quote >= 0.9 ? "s-ok" : a.ges.quote >= 0.7 ? "s-warn" : "s-crit"}">${pct(a.ges.quote)}</span>`}</td></tr>`; }).join("");
+  view.innerHTML = `<div class="kpis">
+      <button class="kpi ${ohne.length ? "" : ""}" data-goto="ohne"><div class="k-label">Ohne erste Reaktion</div><div class="k-value">${fmtN.format(ohne.length)}</div><div class="k-note">offene Calls, noch keine externe Reaktion</div></button>
+      <button class="kpi ${ueber.length ? "crit" : ""}" data-goto="ohne"><div class="k-label">davon Frist überschritten</div><div class="k-value">${fmtN.format(ueber.length)}</div><div class="k-note">SLA läuft gerade schief</div></button>
+      <button class="kpi" data-goto="stat"><div class="k-label">SLA-Quote ${esc(wochen[wochen.length - 1].label)}</div><div class="k-value">${pct(kw.ges.quote)}</div><div class="k-note">${kw.ges.ok} eingehalten · ${kw.ges.brk} gebrochen</div></button>
+      <button class="kpi" data-goto="stat"><div class="k-label">Ø Reaktionszeit ${esc(wochen[wochen.length - 1].label)}</div><div class="k-value" style="font-size:26px">${fmtDur(kw.ges.avg)}</div><div class="k-note">${kw.ges.n} Calls mit Reaktion</div></button>
+    </div>
+    <div class="card" id="slaOhne"><h2>Ohne erste externe Reaktion <span class="pill ${ueber.length ? "s-crit" : "s-ok"}" style="margin-left:6px">${ueber.length} überfällig</span></h2>
+      <p class="sub">${regeln} Sortiert nach Überfälligkeit; Calls innerhalb der Frist stehen unten.</p>
+      ${filterPanel("sla", allRows().filter(r => !r.ErsteExtReaktion))}
+      ${ohne.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Gruppe</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th><th>Eröffnet</th><th class="ta-r">Alter</th><th class="ta-r">Frist</th><th class="ta-r">Rest / überfällig</th></tr></thead><tbody>
+      ${ohne.map(x => `<tr><td class="nowrap">${prioZelle(x.p)}</td><td class="tnum nowrap">${esc(x.r.Call)}</td><td class="nowrap">${esc(gruppeKurz(x.r.Gruppe) || "–")}</td><td class="nowrap" title="${esc(resolveName(x.r.Bearbeiter) ?? "")}">${esc(x.r.Bearbeiter ?? "–")}</td><td class="nowrap">${esc(x.r.Kunde ?? "–")}${smBadge(x.r)}</td><td class="titlecell">${esc(x.r.Titel ?? "–")}</td><td class="nowrap">${esc(x.r.Status ?? "–")}</td><td class="tnum nowrap">${fmtDT.format(x.r["Eröffnet"])}</td><td class="ta-r tnum">${fmtAgo(x.alter)}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td><td class="ta-r tnum nowrap ${x.ueber > 0 ? "c-crit" : "c-warn"}">${x.ueber > 0 ? "überfällig seit " + fmtAgo(x.ueber) : "noch " + fmtAgo(-x.ueber)}</td></tr>`).join("")}
+      </tbody></table></div>` : `<p class="empty"><b>Alles beantwortet.</b> Jeder offene Call hat eine erste externe Reaktion.</p>`}
+    </div>
+    <div class="card" id="slaStat"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Erste ext. Reaktion (Durchschnitt)
+      <button class="small" id="btnSlaStatCopy" style="margin-left:auto" title="Als Tabelle fürs Supportmanager-Protokoll kopieren – mit leerer SupMan-Spalte">Tabelle kopieren</button></h2>
+      <p class="sub">Durchschnittliche Zeit bis zur ersten externen Reaktion je Priorität, nach Eröffnungsdatum: Jahr bisher, Monate, letzte 8 Kalenderwochen. Die Zahlen bauen sich ab jetzt auf: Das Board merkt sich jeden Call, den es mit Eröffnung und Reaktion gesehen hat, auch nachdem er geschlossen wurde. SLA = eingehaltene Fristen geteilt durch bewertete (eingehalten + gebrochen, offene innerhalb der Frist zählen noch nicht).</p>
+      <div class="tscroll"><table class="list slatab"><thead><tr><th>Zeitraum</th><th class="ta-r">Rot</th><th class="ta-r">Blau</th><th class="ta-r">Grün</th><th class="ta-r">Gesamt</th><th class="ta-r">Calls</th><th class="ta-r">SLA</th></tr></thead><tbody>${statZeilen}</tbody></table></div>
+    </div>
+    <div class="card" id="slaBruch"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">SLA gebrochen <span class="pill ${brk.length ? "s-crit" : "s-ok"}">${brk.length} Calls</span>
+      <select id="slaWocheSel" class="small">${wochen.map(w => `<option value="${w.id}"${w.id === slaWoche ? " selected" : ""}>${esc(w.label)} (${esc(w.titel)})</option>`).join("")}</select>
+      <button class="small" id="btnSlaBruchCopy" style="margin-left:auto" title="Als Tabelle fürs Supportmanager-Protokoll kopieren – mit Kommentar und leerer SupMan-Spalte">Tabelle kopieren</button></h2>
+      <p class="sub">Calls der gewählten Woche (nach Eröffnung), deren erste Reaktion nach der Frist kam oder noch aussteht. Der Kommentar wird im Team geteilt und mitkopiert.</p>
+      ${brk.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Kunde</th><th>Gruppe</th><th>Bearbeiter</th><th>Eröffnet</th><th class="ta-r">Reaktion nach</th><th class="ta-r">Frist</th><th style="min-width:260px">Kommentar</th></tr></thead><tbody>
+      ${brk.map(x => `<tr><td class="nowrap">${prioZelle(x.p)}</td><td class="tnum nowrap">${esc(x.call)}${x.row ? "" : ' <span class="hint" title="Call ist nicht mehr im Datenstand (geschlossen)">geschl.</span>'}</td><td class="nowrap">${esc(x.k || "–")}</td><td class="nowrap">${esc(x.g || "–")}</td><td class="nowrap" title="${esc(resolveName(x.b) ?? "")}">${esc(x.b || "–")}</td><td class="tnum nowrap">${fmtDT.format(new Date(x.e))}</td><td class="ta-r tnum nowrap c-crit">${x.dauer != null ? fmtDur(x.dauer) : "offen seit " + fmtDur(now() - x.e)}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td><td><input type="text" data-slanote="${esc(x.call)}" value="${esc(state.slaNote?.[x.call] ?? "")}" placeholder="Kommentar fürs Meeting" style="width:100%"></td></tr>`).join("")}
+      </tbody></table></div>` : `<p class="empty">Keine Brüche in ${esc(wSel.label)}.</p>`}
+    </div>`;
+  view.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click", () => { const el = document.getElementById(b.dataset.goto === "ohne" ? "slaOhne" : "slaStat"); el?.scrollIntoView({ behavior: "smooth", block: "start" }); }));
+  view.querySelector("#btnSlaStatCopy").addEventListener("click", e => { const t = slaStatTabelle(reaktEintraege()); copyHtml(t.html, t.plain, e.target); });
+  view.querySelector("#btnSlaBruchCopy").addEventListener("click", e => { const t = slaBruchTabelle(wSel, reaktEintraege()); copyHtml(t.html, t.plain, e.target); });
+  view.querySelector("#slaWocheSel").addEventListener("change", e => { slaWoche = e.target.value; render(); });
+  view.querySelectorAll("[data-slanote]").forEach(inp => inp.addEventListener("change", () => {
+    const call = inp.dataset.slanote, v = inp.value.trim();
+    state.slaNote ??= {};
+    if (v) state.slaNote[call] = v; else delete state.slaNote[call];
+    touch("slaNote|" + call); saveState();
+  }));
   bindFilterPanel(view);
 }
 
@@ -3901,6 +4110,7 @@ function render() {
   else if (w) renderWf(view, w);
   else if (activeTab === "udienst") renderUdienst(view);
   else if (activeTab === "extreakt") renderExtReakt(view);
+  else if (activeTab === "sla") renderSla(view);
   else if (activeTab === "suche") renderSuche(view);
   else if (activeTab === "last") renderLast(view);
   else if (activeTab === "proto") renderProto(view);

@@ -1,6 +1,6 @@
 # Status: Supportmanagement Board
 
-**Stand:** v1.31 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-02
+**Stand:** v1.32 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-02
 
 ## Was ist das?
 
@@ -15,6 +15,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 - **Mittwochsmail-Generator:** Langläufer >10h, getrennt als Mail 1 (PD/ProdM) und Mail 2 (SD), mit Outlook-festen Farben
 - **Freitagsmail-Generator** mit Wochenauswertung
 - **OneNote-Tabelle** (mit leerer Verbleib-Spalte zum Ausfüllen)
+- **Reaktionszeit (SLA):** erste externe Reaktion gegen Rot 30 Min. / Blau 4 Std. / Grün 48 Std., Wochen- und Monatsdurchschnitte, Brüche mit Kommentar, Kopieren fürs Protokoll
 - **Mail an Unterstützungsdienste** (Tagesaufgabe Dispatcher): je Dienst die offenen Calls seiner Gruppe als fertige Mail, Empfänger manuell, CC aus der Verwaltung
 - **Team-Sharing ohne Server:** gemeinsame JSON auf dem Share, Merge nach Newest-wins
 - **ACK-Workflow:** Bestätigungen mit Grund, Zeitstempel und „geändert!“-Verweis, wenn sich der überwachte Teil eines Tickets danach ändert
@@ -49,6 +50,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 | v1.29 | Top 10: Zähler „in 7 Tagen geschlossen“ je Liste (aus den Tages-Schnappschüssen, Top-10-Mitgliedschaft wird mitgespeichert) und „Tabelle kopieren“ fürs Supportmanager-Protokoll; Mail-Tabellen: Kopfzeile hell mit schwarzer Schrift statt schwarz/weiß, gelb/rot markierte Zellen zusätzlich fett mit fester Schriftfarbe, Zwischenablage als vollständiges HTML-Dokument und ungefiltert (`unsanitized`) |
 | v1.30 | Tagesaufgabe „Mail an Unterstützungsdienste“ (IMP, SAP-CC, CONS): offene Calls der Dienst-Gruppe nach Status gruppiert und nach letzter Aktion zum Kunden sortiert, Zeilenfarbe = Priorität, Einleitung/Fußtext je Dienst und CC in der Verwaltung, Empfänger je Gerät gemerkt, „heute erledigt“ teamweit; Fußzeilen-Markierungen [gelb]/[rot] als Tabellenzellen mit bgcolor, weil Outlook Text-Hintergründe verwirft |
 | v1.31 | Warnhinweis „interner Begriff“ im Vorlagen-Editor entfernt (auf Wunsch des Teams); Vorlagen „Kritische Calls“ ohne Controlling-Begriff (alte Texte werden beim Laden bereinigt), {Score} nicht mehr als Platzhalter-Chip; Einleitung/Fußtext der Unterstützungsdienste im Reiter „Vorlagen“ statt in der Verwaltung; Chip „Kritische Calls“ im Vorlagen-Reiter beschriftet |
+| v1.32 | Reiter „Reaktionszeit“ (Spalte „Erste externe Reaktion“): offene Calls ohne erste Reaktion mit Frist/Überfälligkeit, Durchschnittstabelle je Prio (Jahr bisher, Monate, letzte 8 KW) mit SLA-Quote, SLA-Brüche je Woche mit teamweitem Kommentar; beide Tabellen kopierbar mit leerer SupMan-Spalte fürs Protokoll; Startseiten-Karte; teamweite Call-Historie `state.reakt` (je Monat, 13 Monate), damit auch geschlossene Calls in die Durchschnitte eingehen; Abfrage um `[Erste externe Reaktion]` (firstAT) ergänzt |
 
 ## Feste Regeln
 
@@ -60,6 +62,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 - Team-Datei: Ein Handle wird nur übernommen, wenn es nachweislich dieselbe Datei ist; geschrieben wird ausschließlich nach erfolgreichem Lesen (readOk-Gate). Lässt der Browser keine Berechtigungsanfrage zu, kommt das Schreibrecht über den Speichern-Dialog (Modus „save“, pro Gerät gemerkt, heilt sich selbst)
 - Productmanagement wird in Mails als „ProdM“ abgekürzt
 - Mail-Tabellen: Kopfzeile hell (#d9e2f3) mit schwarzer Schrift – schwarz/weiß war die einzige Kombination, die unlesbar wird, wenn Outlook die Schriftfarbe verwirft oder im Dunkelmodus umfärbt. Markierte Zellen tragen Hintergrund (bgcolor + Style) UND fette Schrift mit fester Farbe (Style + font-Tag). Markierungen in Fließtext ([gelb]/[rot] in Einleitung und Fußtext) werden zu einzeiligen Tabellen mit bgcolor, weil Outlook Hintergrundfarben auf Text verwirft; sie wirken deshalb zeilenweise
+- Reaktionszeit: Der Export enthält nur offene Calls. Das Board merkt sich deshalb jeden gesehenen Call mit Eröffnung, erster Reaktion, Prio, Kunde, Gruppe, Bearbeiter (`state.reakt`, Schlüssel je Monat, 13 Monate). Calls, die geschlossen wurden, bevor eine Reaktion gesehen wurde, zählen als „ohne Aufzeichnung“ und nicht in den Durchschnitt. Offene Calls ohne Reaktion nach Fristablauf zählen als Bruch. Beispieldaten schreiben keine Historie
 - Unterstützungsdienste: Gruppen der Dienste müssen in der WHERE-Liste der Abfrage enthalten sein, sonst bleibt die Liste leer (Hinweis im Reiter)
 - Kanal-Trennung (ab v1.27): Produktiv- und Testversion nutzen getrennte Speicherschlüssel (`smbState_v1` vs. `smbState_v1_sqltest`, IndexedDB `smbHandles` vs. `smbHandles_sqltest`). Die Team-Datei trägt `kanal`; Dateien ohne Kennung gelten als Produktivdateien. Eine Datei des anderen Kanals wird weder gemischt noch geschrieben
 - „Geschlossen“ in der Tagesstatistik ist abgeleitet: Der Export enthält nur offene Calls, gezählt wird, was im Vortags-Schnappschuss stand und heute fehlt (auch Calls, die den Auswertungsbereich verlassen haben). „Neu“ = Eröffnungsdatum am Tag, als Menge über den Tag gesammelt. Beispieldaten schreiben keinen Schnappschuss
