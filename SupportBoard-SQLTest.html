@@ -490,7 +490,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.28";
+const VERSION = "1.29";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -1984,11 +1984,16 @@ async function copyText(text, btn) {
 }
 async function copyHtml(html, plain, btn) {
   let ok = false;
+  // Vollständiges Dokument mit Zeichensatz: Words HTML-Import (Outlook) nimmt Umlaute und Styles so sicherer an.
+  const doc = `<html><head><meta charset="utf-8"></head><body>${html}</body></html>`;
   try {
-    await navigator.clipboard.write([new ClipboardItem({
-      "text/html": new Blob([html], { type: "text/html" }),
+    const item = new ClipboardItem({
+      "text/html": new Blob([doc], { type: "text/html" }),
       "text/plain": new Blob([plain], { type: "text/plain" })
-    })]);
+    });
+    // unsanitized: Chrome/Edge sollen das HTML nicht umschreiben (bgcolor, <font> bleiben erhalten); ältere Browser ignorieren die Option
+    try { await navigator.clipboard.write([item], { unsanitized: ["text/html"] }); }
+    catch (e1) { await navigator.clipboard.write([item]); }
     ok = true;
   } catch (e) { /* Fallback unten */ }
   if (!ok) {
@@ -2005,6 +2010,10 @@ async function copyHtml(html, plain, btn) {
 
 /* ================= Mail-Generatoren ================= */
 const MAILCLR = { yellow: "#ffff99", red: "#ffc7ce", redText: "#9c0006", green: "#c6efce", greenText: "#006100" };
+/* Kopfzeile der Mail-Tabellen. Früher schwarz mit weißer Schrift – die einzige Kombination, die unlesbar wird,
+   sobald ein Mailprogramm die Schriftfarbe verwirft oder im Dunkelmodus umfärbt (Outlook). Hell mit schwarzer Schrift
+   bleibt in beiden Fällen lesbar. */
+const MAIL_HDR = "background-color:#d9e2f3;color:#000000;";
 function mailTableStyle() { return 'border-collapse:collapse;font-family:Calibri,Arial,sans-serif;font-size:11pt;'; }
 function fmtMarkup(text) {
   // einfache Auszeichnung für Mail-Texte: [gelb] [rot] [rottext] [fett] [kursiv] [link=…]
@@ -2051,9 +2060,11 @@ function th(v, hdr) {
   return `<td${c.attr} style="border:1px solid #999;padding:2px 6px;font-weight:bold;${c.s}">${inner}</td>`;
 }
 function gruppeKurz(g) { return String(g ?? "").replace(/productmanagement/i, "ProdM"); }
+/* Markierte Zellen: Hintergrund UND fette Schrift mit fester Farbe. Outlook färbt im Dunkelmodus helle
+   Hintergründe dunkel um, dann bleibt die fette Schrift als Kennzeichen; OneNote zeigt beides. */
 function markStyleOf(mark) {
-  if (mark === "gelb") return `background:${MAILCLR.yellow};`;
-  if (mark === "rot") return `background:${MAILCLR.red};color:${MAILCLR.redText};`;
+  if (mark === "gelb") return `background:${MAILCLR.yellow};color:#000000;font-weight:bold;`;
+  if (mark === "rot") return `background:${MAILCLR.red};color:${MAILCLR.redText};font-weight:bold;`;
   return "";
 }
 function terminStyle(r, mode) {
@@ -2063,10 +2074,10 @@ function terminStyle(r, mode) {
   if (ov === "gelb" || ov === "rot") return markStyleOf(ov);
   if (ov === "none") return "";
   const lt = r["Lösung_bis"];
-  if (!lt) return statusNorm(r) === "wartend" ? "" : `background:${MAILCLR.yellow};`;
-  if (lt < todayStart()) return `background:${MAILCLR.red};color:${MAILCLR.redText};`;
-  if (ltWochenende(r)) return `background:${MAILCLR.red};color:${MAILCLR.redText};`; // Fußtext: "auf ein Wochenende gelegt"
-  if (lt.getTime() === todayStart().getTime()) return `background:${MAILCLR.yellow};`;
+  if (!lt) return statusNorm(r) === "wartend" ? "" : markStyleOf("gelb");
+  if (lt < todayStart()) return markStyleOf("rot");
+  if (ltWochenende(r)) return markStyleOf("rot"); // Fußtext: "auf ein Wochenende gelegt"
+  if (lt.getTime() === todayStart().getTime()) return markStyleOf("gelb");
   return "";
 }
 function kommentarStyle(call) {
@@ -2135,7 +2146,7 @@ function buildMittwochMail(quelle, mitVerbleib) {
   const intro = state.intros[quelle === "PD" ? "miPd" : "miSd"];
   const header = ["Callnr.", "Datum", "Gruppe", "Bearbeiter", "Kurzz.", "Titel", "Status", "zul.bearb.", "Termin", "Dauer", "Kommentar SupMan"];
   if (mitVerbleib) header.push("Verbleib nach Sichtung der Langläufercalls");
-  const HDR = "background-color:#000000;color:#ffffff;"; // gleiche Tabellen-Optik wie die Freitagsmail
+  const HDR = MAIL_HDR; // helle Kopfzeile mit schwarzer Schrift: bleibt in jedem Mailprogramm und auch im Dunkelmodus lesbar
   let html = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;">${mitVerbleib ? "" : fmtMarkup(intro) + "<br><br>"}<table style="${mailTableStyle()}"><tr>${header.map(v => th(v, HDR)).join("")}</tr>`;
   rows.forEach((r, i) => {
     const zeb = i % 2 ? "background-color:#f2f2f2;" : "";
@@ -2165,7 +2176,7 @@ function buildFreitagMail() {
   const us = `${String(limit.getMonth() + 1).padStart(2, "0")}/${String(limit.getDate()).padStart(2, "0")}/${limit.getFullYear()}`;
   const subject = `Call in SWE mit Lösungsdatum ${de} und früher  / calls with solution date ${us} and earlier`;
   const header = ["Call", "Eröffnet", "Gruppe", "Bearbeiter", "Kunde", "Titel", "Status", "Dauer", "Lösung_bis", "Terminänderungen", "Kunde über LT informiert"];
-  const HDRF = "background-color:#000000;color:#ffffff;";
+  const HDRF = MAIL_HDR;
   let html = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;">${fmtMarkup(state.intros.fr)}<br><br>`;
   const kuerzel = new Set(); let total = 0;
   for (const q of ["PD", "SD"]) {
@@ -2380,9 +2391,11 @@ function recordTagesstat() {
   for (const r of rows) { const k = String(r.Bearbeiter ?? "").trim().toUpperCase(); if (k) bearb[k] = (bearb[k] || 0) + 1; }
   const calls = [...new Set(rows.map(r => String(r.Call)))];
   const alt = state.tagesstat[day];
-  const gleich = alt && alt.calls?.length === calls.length && alt.neu?.length === neu.size && alt.calls.every((c, i) => c === calls[i]);
+  const gleich = alt && Array.isArray(alt.topD) && alt.calls?.length === calls.length && alt.neu?.length === neu.size && alt.calls.every((c, i) => c === calls[i]);
   if (gleich) return; // nichts Neues – kein Schreiben in die Team-Datei nötig
-  state.tagesstat[day] = { neu: [...neu], calls, bearb, ts: Date.now() };
+  // Wer stand heute in den Top 10? Grundlage für „diese Woche geschlossen“ auf der Startseite
+  const topD = topRows("dauer").map(r => String(r.Call)), topA = topRows("alt").map(r => String(r.Call));
+  state.tagesstat[day] = { neu: [...neu], calls, bearb, topD, topA, ts: Date.now() };
   touch("tagesstat|" + day);
   const keys = Object.keys(state.tagesstat).sort();
   while (keys.length > 45) { const k = keys.shift(); delete state.tagesstat[k]; touch("tagesstat|" + k); }
@@ -2406,6 +2419,47 @@ function tagesstatReihe(n) {
     out.push({ key, d, we: d.getDay() === 0 || d.getDay() === 6, neu: e ? (e.neu?.length ?? 0) : null, geschl, offen: e ? (e.calls?.length ?? null) : null, hatVortag: !!prev });
   }
   return out;
+}
+/* Top-10-Listen der Startseite */
+function topRows(kind) {
+  const rows = allRows();
+  return kind === "dauer"
+    ? [...rows].sort((a, b) => (Number(b.Dauer) || 0) - (Number(a.Dauer) || 0)).slice(0, 10)
+    : rows.filter(r => r["Eröffnet"]).sort((a, b) => a["Eröffnet"] - b["Eröffnet"]).slice(0, 10);
+}
+/* Calls, die irgendwann in dieser Top-10-Liste standen und in den letzten 7 Tagen aus dem Datenstand
+   verschwunden sind (geschlossen oder aus dem Auswertungsbereich). Tag des Verschwindens = Tag nach dem
+   letzten Schnappschuss, in dem der Call noch offen war. */
+function topGeschlWoche(kind) {
+  const feld = kind === "dauer" ? "topD" : "topA";
+  const grenze = isoDateOf(new Date(todayStart().getTime() - 7 * DAY));
+  const offen = new Set(allRows().map(r => String(r.Call)));
+  const warTop = new Set(), zuletzt = new Map();
+  for (const d of Object.keys(state.tagesstat || {}).sort()) {
+    const e = state.tagesstat[d];
+    for (const c of e?.[feld] || []) warTop.add(String(c));
+    for (const c of e?.calls || []) zuletzt.set(String(c), d);
+  }
+  return [...warTop].filter(c => !offen.has(c) && (zuletzt.get(c) || "") >= grenze).sort();
+}
+/* Tabelle einer Top-10-Liste zum Einfügen ins Supportmanager-Protokoll (OneNote/Outlook) */
+function topTabelleHtml(kind) {
+  const rows = topRows(kind);
+  const titel = kind === "dauer" ? "Top 10 nach Dauer" : "Top 10 am längsten offen";
+  const kopf = kind === "dauer" ? "Dauer (h)" : "Offen seit";
+  const header = ["#", kopf, "Call", "Gruppe", "Bearbeiter", "Kunde", "Titel", "Status", "LT"];
+  const wert = r => kind === "dauer" ? fmtDauer.format(r.Dauer ?? 0) : `${fmtD.format(r["Eröffnet"])} (${fmtN.format(daysSince(r["Eröffnet"]))} T.)`;
+  let html = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><b>${esc(titel)}</b> – Stand ${esc(fmtDT.format(new Date()))}<br><table style="${mailTableStyle()}"><tr>${header.map(v => th(v, MAIL_HDR)).join("")}</tr>`;
+  const plain = [titel, header.join("\t")];
+  rows.forEach((r, i) => {
+    const zeb = i % 2 ? "background-color:#f2f2f2;" : "";
+    const lt = r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "";
+    html += "<tr>" + td(i + 1, zeb + "text-align:right;") + td(wert(r), zeb + (kind === "dauer" ? "text-align:right;" : ""), true) + td(r.Call, zeb) + td(gruppeKurz(r.Gruppe), zeb, true)
+      + td(r.Bearbeiter, zeb) + td(r.Kunde, zeb) + td(r.Titel, zeb) + td(r.Status, zeb, true) + td(lt, zeb) + "</tr>";
+    plain.push([i + 1, wert(r), r.Call, gruppeKurz(r.Gruppe), r.Bearbeiter, r.Kunde, r.Titel, r.Status, lt].join("\t"));
+  });
+  html += "</table></div>";
+  return { html, plain: plain.join("\n") };
 }
 function tagesstatVortag() { const t = Object.keys(state.tagesstat || {}).filter(k => k < todayKey()).sort(); return t.length ? state.tagesstat[t[t.length - 1]] : null; }
 function trendHtml(key, val) {
@@ -2750,6 +2804,7 @@ function renderHeute(view) {
   const list = trendKarten(rows);
   view.innerHTML = kpis + (rows.length ? list : `<div class="card"><p class="empty">Keine Daten. Dashboard-Datei in der Verwaltung verknüpfen, Datei hierher ziehen — oder <button class="small" id="btnDemo">Beispieldaten anzeigen</button>.</p></div>`);
   view.querySelectorAll("[data-goto]").forEach(el => el.addEventListener("click", () => { const id = el.dataset.goto; if (id !== "heute") { activeTab = id; render(); } }));
+  view.querySelectorAll("[data-copytop]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); const t = topTabelleHtml(b.dataset.copytop); copyHtml(t.html, t.plain, b); }));
   const bd = view.querySelector("#btnDemo"); if (bd) bd.addEventListener("click", loadDemo);
 }
 
@@ -2811,13 +2866,17 @@ function trendKarten(rows) {
       <td class="nowrap"><span class="pd-dot" style="background:${prioColor(r.Prio)};margin-right:6px"></span>${esc(gruppeKurz(r.Gruppe) || "–")}</td>
       <td class="nowrap" title="${esc(resolveName(r.Bearbeiter) ?? "")}">${esc(r.Bearbeiter ?? "–")}</td><td class="nowrap">${esc(r.Kunde ?? "–")}${smBadge(r)}</td>
       <td class="titlecell" title="${esc(r.Titel ?? "")}">${esc(r.Titel ?? "–")}</td><td class="nowrap">${esc(r.Status ?? "–")}</td></tr>`;
-  const topTab = (titel, sub, kopf, zeilen) => `<div class="card"><h2>${titel}</h2><p class="sub">${sub}</p>
+  const topTab = (kind, titel, sub, kopf, zeilen) => {
+    const geschl = topGeschlWoche(kind);
+    const pill = `<span class="pill ${geschl.length ? "s-ok" : ""}" title="${geschl.length ? "Calls: " + esc(geschl.join(", ")) : "Zählt Calls, die in dieser Liste standen und in den letzten 7 Tagen aus dem Datenstand verschwunden sind – braucht Tages-Schnappschüsse, füllt sich ab dem zweiten Tag"}">${geschl.length} in 7 Tagen geschlossen</span>`;
+    return `<div class="card"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">${titel} ${pill}
+      <button class="small" data-copytop="${kind}" style="margin-left:auto" title="Als Tabelle kopieren – zum Einfügen ins Supportmanager-Protokoll (OneNote) oder in eine Mail">Tabelle kopieren</button></h2><p class="sub">${sub}</p>
     <div class="tscroll"><table class="list"><thead><tr><th class="ta-r">${kopf}</th><th>Call</th><th>Gruppe</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th></tr></thead><tbody>${zeilen}</tbody></table></div></div>`;
-  const topDauer = [...rows].sort((a, b) => (Number(b.Dauer) || 0) - (Number(a.Dauer) || 0)).slice(0, 10);
-  const topAlt = rows.filter(r => r["Eröffnet"]).sort((a, b) => a["Eröffnet"] - b["Eröffnet"]).slice(0, 10);
+  };
+  const topDauer = topRows("dauer"), topAlt = topRows("alt");
   const tops = `<div class="topgrid">
-    ${topTab("Top 10 nach Dauer", "Die zehn offenen Calls mit der höchsten Gesamtdauer", "Dauer (h)", topDauer.map(r => topZeile(r, fmtDauer.format(r.Dauer ?? 0))).join(""))}
-    ${topTab("Top 10 am längsten offen", "Die zehn offenen Calls mit dem ältesten Eröffnungsdatum", "Offen seit", topAlt.map(r => topZeile(r, `${fmtD.format(r["Eröffnet"])} <span class="hint">(${fmtN.format(daysSince(r["Eröffnet"]))} T.)</span>`)).join(""))}
+    ${topTab("dauer", "Top 10 nach Dauer", "Die zehn offenen Calls mit der höchsten Gesamtdauer. „Geschlossen“ = stand in dieser Liste und ist seit höchstens 7 Tagen nicht mehr im Datenstand.", "Dauer (h)", topDauer.map(r => topZeile(r, fmtDauer.format(r.Dauer ?? 0))).join(""))}
+    ${topTab("alt", "Top 10 am längsten offen", "Die zehn offenen Calls mit dem ältesten Eröffnungsdatum. „Geschlossen“ wie links.", "Offen seit", topAlt.map(r => topZeile(r, `${fmtD.format(r["Eröffnet"])} <span class="hint">(${fmtN.format(daysSince(r["Eröffnet"]))} T.)</span>`)).join(""))}
   </div>`;
   return stat + last + tops;
 }
