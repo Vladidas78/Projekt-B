@@ -492,7 +492,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.33";
+const VERSION = "1.34";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -876,7 +876,9 @@ const COLMAP = {
   "terminänderungen": "Terminänderungen", "terminaenderungen": "Terminänderungen",
   "nicht werten für kd.komm.": "Haken", "nicht werten fuer kd.komm.": "Haken",
   "letzte info an kd.": "LetzteInfo", "tage ohne info an kd.": "TageOhneInfo",
-  "letzte externe reaktion": "LetzteExtReaktion", "letzte ext. reaktion": "LetzteExtReaktion", "externe reaktion": "LetzteExtReaktion",
+  "letzte externe reaktion": "LetzteExtReaktion", "letzte ext. reaktion": "LetzteExtReaktion",
+  // „Externe Reaktion“ aus der Abfrage: Kalenderzeit von der Eröffnung bis zur ersten externen Aktion in Tagen (0 = noch keine)
+  "externe reaktion": "ExtReaktionTage", "externe reaktion (tage)": "ExtReaktionTage",
   "erste externe reaktion": "ErsteExtReaktion", "erste ext. reaktion": "ErsteExtReaktion", "erste_externe_reaktion": "ErsteExtReaktion", "erste reaktion": "ErsteExtReaktion",
   "score": "Score"
 };
@@ -910,6 +912,10 @@ function normalizeRows(raw) {
       }
     }
     if (r.TageOhneInfo == null && r.LetzteInfo) r.TageOhneInfo = Math.max(0, daysSince(r.LetzteInfo) - 1);
+    // Erste externe Reaktion: entweder als Zeitstempel geliefert oder aus „Externe Reaktion“ (Tage ab Eröffnung) berechnet
+    const tg = (r.ExtReaktionTage == null || r.ExtReaktionTage === "") ? NaN : Number(String(r.ExtReaktionTage).replace(",", "."));
+    r.ExtReaktionTage = Number.isFinite(tg) ? tg : null;
+    if (!(r.ErsteExtReaktion instanceof Date) && r.ExtReaktionTage > 0 && r["Eröffnet"] instanceof Date) r.ErsteExtReaktion = new Date(r["Eröffnet"].getTime() + r.ExtReaktionTage * DAY);
     const sc = (r.Score == null || r.Score === "") ? NaN : Number(r.Score);
     r.Score = Number.isFinite(sc) ? sc : null;
     r.TageOhneInfo = (r.TageOhneInfo == null || r.TageOhneInfo === "") ? null : Number(r.TageOhneInfo);
@@ -929,7 +935,10 @@ async function parseCallFile(file) {
     if (norm.length + bonus > bestLen) { bestLen = norm.length + bonus; best = norm; bestRaw = rows; }
   }
   // Welche Spalten liefert die Quelle wirklich? (Ansichten wie „Reaktionszeit“ schalten sich danach frei)
-  if (best) best.cols = [...new Set(Object.keys(bestRaw?.[0] || {}).map(k => COLMAP[String(k).trim().toLowerCase()]).filter(Boolean))];
+  if (best) {
+    best.cols = [...new Set(Object.keys(bestRaw?.[0] || {}).map(k => COLMAP[String(k).trim().toLowerCase()]).filter(Boolean))];
+    if (best.cols.includes("ExtReaktionTage") && !best.cols.includes("ErsteExtReaktion")) best.cols.push("ErsteExtReaktion"); // abgeleitet
+  }
   if (!best || !best.length) throw new Error(`${file.name}: keine Call-Daten gefunden. Enthält die Datei gespeicherte Werte? (Abfragedateien mit „Daten beim Speichern entfernen“ sind auf der Platte leer.)`);
   const missing = REQUIRED.filter(c => !(c in best[0]));
   if (missing.length) throw new Error(`${file.name}: Pflichtspalten fehlen (${missing.join(", ")}). Spaltenschema geändert? Import abgebrochen.`);
@@ -3464,7 +3473,7 @@ function renderSla(view) {
   const regeln = `SLA je Priorität: <b>Rot</b> 30 Minuten · <b>Blau</b> 4 Stunden · <b>Grün</b> 48 Stunden – gemessen von der Eröffnung bis zur ersten externen Reaktion.`;
   if (!hatSpalte("ErsteExtReaktion")) {
     view.innerHTML = `<div class="card"><h2>Reaktionszeit</h2><p class="sub">${regeln}</p>
-      <p class="empty">Die Quelle liefert die Spalte <b>„Erste externe Reaktion“</b> noch nicht. Sobald die Abfrage sie enthält (Spaltenname genau so, siehe SupportBoard-Abfrage.sql), füllt sich diese Ansicht automatisch – die Auswertung ist bereits eingebaut.</p></div>`;
+      <p class="empty">Die Quelle liefert die Spalte <b>„Externe Reaktion“</b> (Tage bis zur ersten externen Aktion) noch nicht. Sobald die Abfrage sie enthält, füllt sich diese Ansicht automatisch – die Auswertung ist bereits eingebaut.</p></div>`;
     return;
   }
   const list = reaktEintraege();

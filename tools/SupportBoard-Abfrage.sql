@@ -22,6 +22,9 @@ SELECT
     o.WAKI_bis                                          AS Wartend_bis,
     o.loesung_bis                                       AS [Lösung_bis],
     o.Anzahl_LT_Verschiebungen                          AS [Terminänderungen],
+    /* Kalenderzeit von der Eroeffnung bis zur ersten externen Aktion, in Tagen (0 = noch keine).
+       Das Board rechnet daraus den Zeitpunkt der ersten Reaktion fuer den Reiter "Reaktionszeit". */
+    cs.erste_ext_aktion_kalender / 86400.0              AS [Externe Reaktion],
     CASE WHEN o.nicht_auswerten_fuer_kd_kommunikation = 1 THEN 'Ja' ELSE 'Nein' END
                                                         AS [nicht werten für Kd.Komm.],
     lastAT.AT_Datum                                     AS [Letzte Info an Kd.],
@@ -76,6 +79,9 @@ SELECT
 
 FROM open_calls AS o
 
+LEFT JOIN call_statistics AS cs
+    ON cs.callnr = o.callnr
+
 OUTER APPLY (
     SELECT TOP (1) r1.erstellt AS AT_Datum
     FROM recent_ATs AS r1
@@ -90,14 +96,5 @@ OUTER APPLY (
     ORDER BY r1.erstellt DESC
 ) AS lastAT
 
-/* Hier kommen weitere Gruppen dazu, sobald das Board sie braucht – z. B. die Unterstuetzungsdienste
-   (Consulting, SAP-CC, ImplementationServices) fuer die Tagesaufgabe "Mail an Unterstuetzungsdienste".
-   Die Gruppennamen muessen exakt so heissen wie in der Verwaltung des Boards eingetragen. */
-WHERE o.verantwortliche_gruppe IN (
-          '3rd_SD', '3rd_PD', 'Productmanagement',
-          '2nd_CAQ', '2nd_MF', '2nd_HR', '1st_Level', 'Hotline'
-      )
-  AND o.verantwortlicher_benutzer NOT IN (
-          'FSO', 'DTA', 'AYX', 'YZH', 'KBY', 'DCO',
-          'KRI', 'SHY', 'CCM', 'KRG', 'CHF', 'KYT'
-      );
+/* Keine Einschraenkung mehr auf Gruppen oder Bearbeiter: Das Board filtert selbst
+   (Filter-Chips je Liste, Bereich "Sonst." fuer unbekannte Gruppen). */
