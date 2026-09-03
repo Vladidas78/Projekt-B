@@ -1,6 +1,6 @@
 # Status: Supportmanagement Board
 
-**Stand:** v1.38 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-03
+**Stand:** v1.39 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-03
 
 ## Was ist das?
 
@@ -20,7 +20,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 - **Team-Sharing ohne Server:** gemeinsame JSON auf dem Share, Merge nach Newest-wins
 - **ACK-Workflow:** Bestätigungen mit Grund, Zeitstempel und „geändert!“-Verweis, wenn sich der überwachte Teil eines Tickets danach ändert
 - **Kommentare** mit Zeitstempel und Autor, lange Kommentare zuklappbar
-- **Spaltenauswahl und -reihenfolge je Liste** (teamweit gespeichert), Sortierung teamweit, eigene sortier-/filterbare Prio-Spalte; bestätigte (ACK) Zeilen stehen am Listenende
+- **Spaltenauswahl und -reihenfolge je Liste** (teamweit gespeichert), Sortierung teamweit, eigene sortier-/filterbare Prio-Spalte; bestätigte (ACK) Zeilen stehen am Listenende (frisch bestätigte erst nach dem Zuklappen der Details)
 - **Filter-Chips:** Status, Bearbeitergruppe, Prio, „MPDV-Calls ausblenden“, „SaaS“/„USA“/„Asien“ (Kundenlisten aus der Verwaltung)
 - **Quellen-Status** (PD/SD/Team) mit Ampel und Prüfzeit in der Sidebar, große Ansicht in der Verwaltung
 - **Auto-Resume:** erster Klick nach dem Öffnen setzt Datei-Überwachung und Team-Speicher fort
@@ -57,6 +57,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 | v1.36 | SaaS-Kunden: Kürzelliste in der Verwaltung („Grundregeln“, `state.saasKunden`, teamweit), Chip „SaaS“ unter „Sonstiges“ in jeder Filterleiste blendet diese Kunden je Liste aus (auch in der Reaktionszeit-Aufzeichnung) |
 | v1.37 | Reaktionszeit nur in Geschäftszeit (Mo–Do 08:00–17:30, Fr 08:00–16:30; `GESCHAEFTSZEIT`, `geschaeftszeit()`): Dauer bis zur ersten Reaktion, Fristen, „offen seit“ und Alter offener Calls; Kundengruppen USA und Asien wie SaaS (`KUNDENGRUPPEN`, `state.usaKunden`/`state.asiaKunden`, Chips in jeder Filterleiste), im Reaktionszeit-Filter ab Werk ausgeblendet |
 | v1.38 | Reiter „Keine ext. Reaktion“ entfernt (Liste nach letzter externer Reaktion; die erste Reaktion ist das, was zählt, danach greifen die Controlling-Listen). Reiter „Reaktionszeit“ bleibt samt Tabelle der offenen Calls ohne erste Reaktion |
+| v1.39 | Frisch bestätigte (ACK) Zeilen bleiben an ihrer Stelle, solange die ACK-Details aufgeklappt sind (`frischAcks`, nur Sitzung); Zuklappen (▾) oder Reiterwechsel lässt sie ans Listenende sinken. Aufklappen einer alten Bestätigung verschiebt nichts |
 
 ## Feste Regeln
 

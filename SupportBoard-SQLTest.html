@@ -493,7 +493,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.38";
+const VERSION = "1.39";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -1963,6 +1963,7 @@ function setAckMeta(r, wf, field, value) {
   saveState();
 }
 const openAcks = new Set(); // "call|wf" -> ACK-Details aufgeklappt (nur für diese Sitzung)
+const frischAcks = new Set(); // "call|wf" -> gerade eben bestätigt und noch aufgeklappt: Zeile bleibt an ihrer Stelle
 
 /* Historie je Call: ACKs, Gründe und Kommentare bleiben mit Zeitstempel nachvollziehbar,
    auch wenn ein ACK abläuft oder entfernt wird. Einträge sind einzeln löschbar (teamweit). */
@@ -2676,7 +2677,7 @@ function renderTabs() {
       cnt = `<span class="cnt${open ? " hot" : ""}">${open}</span>`;
     }
     b.innerHTML = navIcon(t.id) + `<span class="lbl">${esc(t.label)}</span>` + cnt;
-    b.addEventListener("click", () => { activeTab = t.id; closeColPopover(); render(); });
+    b.addEventListener("click", () => { activeTab = t.id; openAcks.clear(); frischAcks.clear(); closeColPopover(); render(); });
     nav.appendChild(b);
   }
 }
@@ -2761,8 +2762,10 @@ function applyTableUI(rows, wfId) {
       return c * so.dir;
     });
   }
-  // Bestätigte (ACK) Zeilen ans Ende – die Reihenfolge innerhalb beider Gruppen bleibt wie sortiert
-  if (WF.some(w => w.id === wfId)) out = [...out.filter(r => !ackInfo(r, wfId).done), ...out.filter(r => ackInfo(r, wfId).done)];
+  // Bestätigte (ACK) Zeilen ans Ende – die Reihenfolge innerhalb beider Gruppen bleibt wie sortiert.
+  // Ausnahme: frisch bestätigte Zeilen bleiben an ihrer Stelle, solange ihre ACK-Details aufgeklappt sind,
+  // damit Grund und Kommentar direkt nach dem Haken eingetragen werden können; Zuklappen oder Reiterwechsel lässt sie absinken.
+  if (WF.some(w => w.id === wfId)) { const unten = r => ackInfo(r, wfId).done && !frischAcks.has(ackKey(r, wfId)); out = [...out.filter(r => !unten(r)), ...out.filter(unten)]; }
   return out;
 }
 function wfRowHtml(r, wf) {
@@ -2772,7 +2775,7 @@ function wfRowHtml(r, wf) {
   const ackTs = a.a?.ts ? fmtDT.format(new Date(a.a.ts)) : (a.a?.d ?? "");
   const noteMeta = a.a?.noteTs ? `Grund bearb. ${fmtDT.format(new Date(a.a.noteTs))}${a.a.noteBy ? " · " + esc(a.a.noteBy) : ""}` : "";
   const ackDetails = a.done ? `<div class="ack-sum">
-      <button class="cmt-tgl" data-atgl="${esc(r.Call)}" title="ACK-Details (Grund, bis-Datum) auf-/zuklappen">${isOpen ? "▾" : "▸"}</button>
+      <button class="cmt-tgl" data-atgl="${esc(r.Call)}" title="ACK-Details (Grund, bis-Datum) auf-/zuklappen${isOpen && frischAcks.has(akey) ? " – nach dem Zuklappen rutscht die Zeile ans Listenende" : ""}">${isOpen ? "▾" : "▸"}</button>
       <span class="hint nowrap">ACK ${esc(ackTs)}${a.a?.by ? " · " + esc(a.a.by) : ""}${a.a?.until ? " · bis " + esc(fmtD.format(new Date(a.a.until))) : ""}</span>
       ${a.a?.note ? `<span class="ack-note" title="${esc(a.a.note)}${noteMeta ? "\n" + noteMeta : ""}">„${esc(a.a.note)}“</span>` : ""}
     </div>${isOpen ? `<div class="ackx">
@@ -2908,7 +2911,7 @@ function bindWfRowEvents(container, rows, wf) {
     if (!r) return;
     setAck(r, wf.id, cb.checked);
     // frisch gesetzt: Details gleich aufklappen, damit Grund/bis direkt eingebbar sind
-    if (cb.checked) openAcks.add(ackKey(r, wf.id)); else openAcks.delete(ackKey(r, wf.id));
+    if (cb.checked) { openAcks.add(ackKey(r, wf.id)); frischAcks.add(ackKey(r, wf.id)); } else { openAcks.delete(ackKey(r, wf.id)); frischAcks.delete(ackKey(r, wf.id)); }
     render();
   }));
   container.querySelectorAll("[data-hist]").forEach(b => b.addEventListener("click", e => {
@@ -2919,7 +2922,7 @@ function bindWfRowEvents(container, rows, wf) {
     const r = rowOf(b.dataset.atgl);
     if (!r) return;
     const k = ackKey(r, wf.id);
-    if (openAcks.has(k)) openAcks.delete(k); else openAcks.add(k);
+    if (openAcks.has(k)) { openAcks.delete(k); frischAcks.delete(k); } else openAcks.add(k);
     render();
   }));
   container.querySelectorAll("[data-acknote]").forEach(inp => inp.addEventListener("change", () => {
