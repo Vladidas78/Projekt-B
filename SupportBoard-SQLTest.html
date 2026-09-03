@@ -493,7 +493,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.35";
+const VERSION = "1.36";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -593,6 +593,7 @@ const DEFAULT_STATE = {
     { k: "DBU", name: "Dominic Burger-Graseck" },
     { k: "MRE", name: "Markus Reißfelder" }
   ],
+  saasKunden: "",      // SaaS-Kunden (Kürzel, Semikolon-getrennt) – Ausblenden über den Filter „Sonstiges“ je Liste
   internKunde: "MPDV", // internes Kunden-Kürzel – Ausblenden über den Filter „Sonstiges" je Liste
   rules: { exclBearbeiter: "HX-MP-UPDATE" }, // Pseudo-Bearbeiter – Ausblenden über den Filter „Sonstiges" je Liste
   udienste: [ // Unterstützungsdienste: Tagesaufgabe „Mail an eingeplanten Kollegen“ (Verwaltung)
@@ -735,6 +736,7 @@ function normalizeState() {
   state.sort ??= {};
   state.tagesstat ??= {};
   state.udDone ??= {};
+  state.saasKunden ??= "";
   state.reakt ??= {};
   state.reaktAgg ??= {};
   state.slaNote ??= {};
@@ -1143,7 +1145,7 @@ async function resumeWatch() {
    JSON-Datei abgeglichen, die alle Boards im Team lesen und schreiben. Je Eintrag
    gewinnt die jüngste Änderung (Zeitstempel in state.touch). */
 const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll", "tagesstat", "udDone", "reakt", "reaktAgg", "slaNote"];
-const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "protoMinCalls", "rules", "filters", "cols", "gruppenFilter", "sort", "udienste"];
+const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "protoMinCalls", "rules", "filters", "cols", "gruppenFilter", "sort", "udienste", "saasKunden"];
 let sharedHandle = null, pendingSharedHandle = null, sharedDirty = false, sharedBusy = false, sharedLastSync = null;
 /* Härtung v1.14: geschrieben wird NUR nach einem erfolgreichen Lese-/Merge-Zyklus.
    Lese- oder Parse-Fehler (Datei gesperrt, halb geschrieben, defekt) führen nie mehr
@@ -1746,6 +1748,8 @@ function statusNorm(r) { return String(r.Status ?? "").trim().toLowerCase(); }
 function hakenGesetzt(r) { return /^(ja|1)$/i.test(String(r.Haken ?? "").trim()); }
 function tageOhneInfo(r) { return r.TageOhneInfo != null ? r.TageOhneInfo : (r.Eröffnet ? daysSince(r.Eröffnet) : null); }
 function isInternKunde(r) { return String(r.Kunde ?? "").trim().toUpperCase() === String(state.internKunde || "MPDV").trim().toUpperCase(); }
+function saasListe() { return String(state.saasKunden || "").split(/[;,\n]/).map(x => x.trim().toUpperCase()).filter(Boolean); }
+function isSaasKunde(r) { const k = String(r.Kunde ?? "").trim().toUpperCase(); return !!k && saasListe().includes(k); }
 function ruleList(s) { return String(s || "").split(/[;\n]/).map(x => x.trim().toLowerCase()).filter(Boolean); }
 function bearbeiterExcluded(r) { return ruleList(state.rules.exclBearbeiter).includes(String(r.Bearbeiter ?? "").trim().toLowerCase()); }
 function ruleNum(v, fallback) { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : fallback; }
@@ -1762,6 +1766,7 @@ function applyFilters(fkey, rows) {
   return rows.filter(r => !fexcl(fkey, "status", r.Status) && !fexcl(fkey, "gruppe", r.Gruppe)
     && !(f.prio ?? []).includes(prioName(r.Prio))
     && !(f.intern && isInternKunde(r))
+    && !(f.saas && isSaasKunde(r))
     && !(f.hxmp && bearbeiterExcluded(r)));
 }
 const STATUS_KNOWN = ["Customer Care", "In Bearbeitung", "Pre-Update", "Update", "Wartend"];
@@ -1797,7 +1802,7 @@ function filterPanel(fkey, candidates, opts = {}) {
   const fgOff = g => g.members.every(m => (f.gruppe ?? []).includes(m.toLowerCase()));
   const fgChips = defs.map(g => `<button class="fchip ${fgOff(g) ? "f-off" : ""}" data-fgrp="${fkey}|${esc(g.name)}" title="Enthält: ${esc(g.members.join(", "))}">${esc(g.name)}</button>`).join("");
   const gruppeHidden = defs.filter(fgOff).length + singles.filter(v => fexcl(fkey, "gruppe", v)).length;
-  const hidden = (f.status?.length || 0) + gruppeHidden + (f.prio?.length || 0) + (f.intern ? 1 : 0) + (f.hxmp ? 1 : 0);
+  const hidden = (f.status?.length || 0) + gruppeHidden + (f.prio?.length || 0) + (f.intern ? 1 : 0) + (f.saas ? 1 : 0) + (f.hxmp ? 1 : 0);
   // Offen, wenn der Nutzer es so gelassen hat; nur ohne eigene Vorgabe: offen, sobald Filter greifen.
   // Früher wurde bei jedem Neuzeichnen (Datenprüfung, ACK-Klick) der Zustand neu berechnet – das war das „zufällige“ Zuklappen.
   const pref = uiPref.fpanel?.[fkey];
@@ -1810,6 +1815,7 @@ function filterPanel(fkey, candidates, opts = {}) {
     <div class="frow"><span class="flabel">Priorität</span>${["Grün", "Blau", "Rot"].map(prioChipHtml).join("")}</div>
     <div class="frow"><span class="flabel">Sonstiges</span>
       <button class="fchip ${f.intern ? "f-off" : ""}" data-fintern="${fkey}" title="Calls des internen Kunden (${esc(state.internKunde || "MPDV")}) ein- oder ausblenden">${esc(state.internKunde || "MPDV")}-Calls</button>
+      <button class="fchip ${f.saas ? "f-off" : ""}" data-fsaas="${fkey}" title="Calls der SaaS-Kunden ein- oder ausblenden (Kürzel in der Verwaltung unter „Grundregeln“${saasListe().length ? ": " + esc(saasListe().join(", ")) : " – noch keine eingetragen"})">SaaS${saasListe().length ? "" : " (leer)"}</button>
       <button class="fchip ${f.hxmp ? "f-off" : ""}" data-fhxmp="${fkey}" title="Calls des Pseudo-Bearbeiters ${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")} ein- oder ausblenden">${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")}</button>
     </div>
     <p class="hint">Klick blendet einen Wert aus bzw. wieder ein. Durchgestrichen = ausgeblendet. Einstellungen bleiben gespeichert. Filtergruppen (z. B. Hotline) pflegt die Verwaltung.</p>
@@ -1851,6 +1857,11 @@ function bindFilterPanel(view) {
   view.querySelectorAll("[data-fintern]").forEach(b => b.addEventListener("click", () => {
     const fkey = b.dataset.fintern;
     state.filters[fkey].intern = !state.filters[fkey].intern;
+    touch("cfg|filters"); saveState(); render();
+  }));
+  view.querySelectorAll("[data-fsaas]").forEach(b => b.addEventListener("click", () => {
+    const fkey = b.dataset.fsaas;
+    state.filters[fkey].saas = !state.filters[fkey].saas;
     touch("cfg|filters"); saveState(); render();
   }));
   view.querySelectorAll("[data-fhxmp]").forEach(b => b.addEventListener("click", () => {
@@ -4155,6 +4166,7 @@ function renderAdmin(view) {
       <p class="sub">Sichtbarkeits-Filter stehen direkt in den jeweiligen Ansichten („Filter“) – dort lassen sich unter „Sonstiges“ auch ${esc(state.internKunde || "MPDV")}-Calls und ${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")} ein- und ausblenden.</p>
       <table class="grid"><tbody>
         <tr><td style="width:230px">Warnung „Datei unverändert“ ab (Min.)</td><td><input data-cfg="staleWarnMin" value="${esc(state.staleWarnMin)}" type="number" min="5" style="width:90px"></td></tr>
+        <tr><td>SaaS-Kunden (Kürzel)</td><td><input data-cfg="saasKunden" value="${esc(state.saasKunden ?? "")}" placeholder="Kürzel mit Semikolon, z. B. ACME; NOVA" style="width:100%"><div class="hint">Ausblenden je Liste über den Filter „Sonstiges“ → Chip „SaaS“.</div></td></tr>
       </tbody></table>
       <h2 style="margin-top:18px">Filtergruppen (Bearbeitergruppen)</h2>
       <p class="sub">Bündeln mehrere Bearbeitergruppen zu einem Filter-Chip in den Listen (z. B. Hotline = Hotline + 1st_Level). Mitglieder mit Semikolon trennen.</p>

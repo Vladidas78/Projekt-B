@@ -1,6 +1,6 @@
 # Status: Supportmanagement Board
 
-**Stand:** v1.35 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-02
+**Stand:** v1.36 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-02
 
 ## Was ist das?
 
@@ -21,7 +21,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 - **ACK-Workflow:** Bestätigungen mit Grund, Zeitstempel und „geändert!“-Verweis, wenn sich der überwachte Teil eines Tickets danach ändert
 - **Kommentare** mit Zeitstempel und Autor, lange Kommentare zuklappbar
 - **Spaltenauswahl und -reihenfolge je Liste** (teamweit gespeichert), Sortierung teamweit, eigene sortier-/filterbare Prio-Spalte; bestätigte (ACK) Zeilen stehen am Listenende
-- **Filter-Chips:** Status, Bearbeitergruppe, Prio, „MPDV-Calls ausblenden“
+- **Filter-Chips:** Status, Bearbeitergruppe, Prio, „MPDV-Calls ausblenden“, „SaaS“ (Kundenliste aus der Verwaltung)
 - **Quellen-Status** (PD/SD/Team) mit Ampel und Prüfzeit in der Sidebar, große Ansicht in der Verwaltung
 - **Auto-Resume:** erster Klick nach dem Öffnen setzt Datei-Überwachung und Team-Speicher fort
 
@@ -54,6 +54,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 | v1.33 | Reaktionszeit: Nach Ablauf der Eröffnungswoche werden entschiedene Calls (Reaktion gesehen oder geschlossen) in Wochen- und Monatssummen (`state.reaktAgg`) eingefroren und als Einzelfall vergessen; Brüche bleiben 8 Wochen als Liste an der Woche; Vergangenheit wird nicht nachgetragen (Calls mit Reaktion aus vergangenen Wochen werden nicht neu aufgenommen, das verhindert Doppelzählung); Abfrage-Änderung zurückgenommen, die Spalte kommt vom Team |
 | v1.34 | Spalte „Externe Reaktion“ der Team-Abfrage (Kalendertage bis zur ersten externen Aktion, 0 = keine) wird als erste externe Reaktion übernommen (Zeitpunkt = Eröffnung + Tage); Zeitstempel-Spalte „Erste externe Reaktion“ bleibt alternativ möglich; Abfrage im Repo auf den Team-Stand gebracht (alle Gruppen, call_statistics) |
 | v1.35 | Reaktionszeit: teamweiter Filter (Status, Gruppe, Prio, interner Kunde, Kunden-Ausschluss als Text) wirkt auf Aufzeichnung, Statistik und Listen; MPDV ab Werk ausgeschlossen; Vorgabewerte der bisherigen Excel-Statistik (2023–2025, Jan–Aug 2026, KW 30–35 mit SupMan) als `fix` in `state.reaktAgg` eingespielt, gelten für ihre Zeiträume endgültig; Jahreswert = Mittel der Monatswerte, solange Vorgaben enthalten sind; SupMan in der Kopie für abgeschlossene Wochen gefüllt, laufende Woche leer |
+| v1.36 | SaaS-Kunden: Kürzelliste in der Verwaltung („Grundregeln“, `state.saasKunden`, teamweit), Chip „SaaS“ unter „Sonstiges“ in jeder Filterleiste blendet diese Kunden je Liste aus (auch in der Reaktionszeit-Aufzeichnung) |
 
 ## Feste Regeln
 
