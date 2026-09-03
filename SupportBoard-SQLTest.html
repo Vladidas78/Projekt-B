@@ -493,7 +493,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.36";
+const VERSION = "1.37";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -593,7 +593,9 @@ const DEFAULT_STATE = {
     { k: "DBU", name: "Dominic Burger-Graseck" },
     { k: "MRE", name: "Markus Reißfelder" }
   ],
-  saasKunden: "",      // SaaS-Kunden (Kürzel, Semikolon-getrennt) – Ausblenden über den Filter „Sonstiges“ je Liste
+  saasKunden: "",      // Kundengruppen (Kürzel, Semikolon-getrennt) – Ausblenden über den Filter „Sonstiges“ je Liste
+  usaKunden: "",
+  asiaKunden: "",
   internKunde: "MPDV", // internes Kunden-Kürzel – Ausblenden über den Filter „Sonstiges" je Liste
   rules: { exclBearbeiter: "HX-MP-UPDATE" }, // Pseudo-Bearbeiter – Ausblenden über den Filter „Sonstiges" je Liste
   udienste: [ // Unterstützungsdienste: Tagesaufgabe „Mail an eingeplanten Kollegen“ (Verwaltung)
@@ -625,7 +627,7 @@ const DEFAULT_STATE = {
     wartend: { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     extreakt: { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     udienst: { status: [], gruppe: [], prio: [], intern: false, hxmp: false },
-    sla:     { status: [], gruppe: [], prio: [], intern: true, hxmp: true, kunden: "" }, // kunden: Kürzel/Teile, Semikolon-getrennt – Calls dieser Kunden bleiben außen vor
+    sla:     { status: [], gruppe: [], prio: [], intern: true, hxmp: true, usa: true, asia: true, kunden: "" }, // kunden: Kürzel/Teile, Semikolon-getrennt – Calls dieser Kunden bleiben außen vor
     last:    { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     mi:     { status: ["cc", "customer care", "update", "pre-update"], gruppe: [], prio: [], minDauer: "10", intern: false, hxmp: true },
     fr:     { status: [], gruppe: [], prio: [], intern: false, hxmp: true }
@@ -736,11 +738,12 @@ function normalizeState() {
   state.sort ??= {};
   state.tagesstat ??= {};
   state.udDone ??= {};
-  state.saasKunden ??= "";
+  state.saasKunden ??= ""; state.usaKunden ??= ""; state.asiaKunden ??= "";
   state.reakt ??= {};
   state.reaktAgg ??= {};
   state.slaNote ??= {};
   if (!state.filters.sla.v35) { state.filters.sla.intern = true; state.filters.sla.v35 = 1; } // v1.35: interner Kunde ab Werk ausgeschlossen
+  if (!state.filters.sla.v37) { state.filters.sla.usa = true; state.filters.sla.asia = true; state.filters.sla.v37 = 1; } // v1.37: USA/Asien ab Werk ausgeschlossen
   slaVorgabenEinspielen();
   state.verteiler.udCc ??= "";
   if (!Array.isArray(state.udienste)) state.udienste = structuredClone(DEFAULT_STATE.udienste);
@@ -1145,7 +1148,7 @@ async function resumeWatch() {
    JSON-Datei abgeglichen, die alle Boards im Team lesen und schreiben. Je Eintrag
    gewinnt die jüngste Änderung (Zeitstempel in state.touch). */
 const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll", "tagesstat", "udDone", "reakt", "reaktAgg", "slaNote"];
-const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "protoMinCalls", "rules", "filters", "cols", "gruppenFilter", "sort", "udienste", "saasKunden"];
+const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "protoMinCalls", "rules", "filters", "cols", "gruppenFilter", "sort", "udienste", "saasKunden", "usaKunden", "asiaKunden"];
 let sharedHandle = null, pendingSharedHandle = null, sharedDirty = false, sharedBusy = false, sharedLastSync = null;
 /* Härtung v1.14: geschrieben wird NUR nach einem erfolgreichen Lese-/Merge-Zyklus.
    Lese- oder Parse-Fehler (Datei gesperrt, halb geschrieben, defekt) führen nie mehr
@@ -1748,8 +1751,16 @@ function statusNorm(r) { return String(r.Status ?? "").trim().toLowerCase(); }
 function hakenGesetzt(r) { return /^(ja|1)$/i.test(String(r.Haken ?? "").trim()); }
 function tageOhneInfo(r) { return r.TageOhneInfo != null ? r.TageOhneInfo : (r.Eröffnet ? daysSince(r.Eröffnet) : null); }
 function isInternKunde(r) { return String(r.Kunde ?? "").trim().toUpperCase() === String(state.internKunde || "MPDV").trim().toUpperCase(); }
-function saasListe() { return String(state.saasKunden || "").split(/[;,\n]/).map(x => x.trim().toUpperCase()).filter(Boolean); }
-function isSaasKunde(r) { const k = String(r.Kunde ?? "").trim().toUpperCase(); return !!k && saasListe().includes(k); }
+/* Kundengruppen: Kürzellisten in der Verwaltung, je Liste über „Sonstiges“ ausblendbar */
+const KUNDENGRUPPEN = [
+  { k: "saas", label: "SaaS", feld: "saasKunden", name: "SaaS-Kunden" },
+  { k: "usa",  label: "USA",  feld: "usaKunden",  name: "USA-Kunden" },
+  { k: "asia", label: "Asien", feld: "asiaKunden", name: "Asien-Kunden" }
+];
+function kundenListe(feld) { return String(state[feld] || "").split(/[;,\n]/).map(x => x.trim().toUpperCase()).filter(Boolean); }
+function isKundeIn(r, feld) { const k = String(r.Kunde ?? "").trim().toUpperCase(); return !!k && kundenListe(feld).includes(k); }
+function saasListe() { return kundenListe("saasKunden"); }
+function isSaasKunde(r) { return isKundeIn(r, "saasKunden"); }
 function ruleList(s) { return String(s || "").split(/[;\n]/).map(x => x.trim().toLowerCase()).filter(Boolean); }
 function bearbeiterExcluded(r) { return ruleList(state.rules.exclBearbeiter).includes(String(r.Bearbeiter ?? "").trim().toLowerCase()); }
 function ruleNum(v, fallback) { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : fallback; }
@@ -1766,7 +1777,7 @@ function applyFilters(fkey, rows) {
   return rows.filter(r => !fexcl(fkey, "status", r.Status) && !fexcl(fkey, "gruppe", r.Gruppe)
     && !(f.prio ?? []).includes(prioName(r.Prio))
     && !(f.intern && isInternKunde(r))
-    && !(f.saas && isSaasKunde(r))
+    && !KUNDENGRUPPEN.some(g => f[g.k] && isKundeIn(r, g.feld))
     && !(f.hxmp && bearbeiterExcluded(r)));
 }
 const STATUS_KNOWN = ["Customer Care", "In Bearbeitung", "Pre-Update", "Update", "Wartend"];
@@ -1802,7 +1813,7 @@ function filterPanel(fkey, candidates, opts = {}) {
   const fgOff = g => g.members.every(m => (f.gruppe ?? []).includes(m.toLowerCase()));
   const fgChips = defs.map(g => `<button class="fchip ${fgOff(g) ? "f-off" : ""}" data-fgrp="${fkey}|${esc(g.name)}" title="Enthält: ${esc(g.members.join(", "))}">${esc(g.name)}</button>`).join("");
   const gruppeHidden = defs.filter(fgOff).length + singles.filter(v => fexcl(fkey, "gruppe", v)).length;
-  const hidden = (f.status?.length || 0) + gruppeHidden + (f.prio?.length || 0) + (f.intern ? 1 : 0) + (f.saas ? 1 : 0) + (f.hxmp ? 1 : 0);
+  const hidden = (f.status?.length || 0) + gruppeHidden + (f.prio?.length || 0) + (f.intern ? 1 : 0) + KUNDENGRUPPEN.filter(g => f[g.k]).length + (f.hxmp ? 1 : 0);
   // Offen, wenn der Nutzer es so gelassen hat; nur ohne eigene Vorgabe: offen, sobald Filter greifen.
   // Früher wurde bei jedem Neuzeichnen (Datenprüfung, ACK-Klick) der Zustand neu berechnet – das war das „zufällige“ Zuklappen.
   const pref = uiPref.fpanel?.[fkey];
@@ -1815,7 +1826,7 @@ function filterPanel(fkey, candidates, opts = {}) {
     <div class="frow"><span class="flabel">Priorität</span>${["Grün", "Blau", "Rot"].map(prioChipHtml).join("")}</div>
     <div class="frow"><span class="flabel">Sonstiges</span>
       <button class="fchip ${f.intern ? "f-off" : ""}" data-fintern="${fkey}" title="Calls des internen Kunden (${esc(state.internKunde || "MPDV")}) ein- oder ausblenden">${esc(state.internKunde || "MPDV")}-Calls</button>
-      <button class="fchip ${f.saas ? "f-off" : ""}" data-fsaas="${fkey}" title="Calls der SaaS-Kunden ein- oder ausblenden (Kürzel in der Verwaltung unter „Grundregeln“${saasListe().length ? ": " + esc(saasListe().join(", ")) : " – noch keine eingetragen"})">SaaS${saasListe().length ? "" : " (leer)"}</button>
+      ${KUNDENGRUPPEN.map(g => { const l = kundenListe(g.feld); return `<button class="fchip ${f[g.k] ? "f-off" : ""}" data-fkg="${fkey}|${g.k}" title="Calls der ${esc(g.name)} ein- oder ausblenden (Kürzel in der Verwaltung unter „Grundregeln“${l.length ? ": " + esc(l.join(", ")) : " – noch keine eingetragen"})">${esc(g.label)}${l.length ? "" : " (leer)"}</button>`; }).join("")}
       <button class="fchip ${f.hxmp ? "f-off" : ""}" data-fhxmp="${fkey}" title="Calls des Pseudo-Bearbeiters ${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")} ein- oder ausblenden">${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")}</button>
     </div>
     <p class="hint">Klick blendet einen Wert aus bzw. wieder ein. Durchgestrichen = ausgeblendet. Einstellungen bleiben gespeichert. Filtergruppen (z. B. Hotline) pflegt die Verwaltung.</p>
@@ -1859,9 +1870,9 @@ function bindFilterPanel(view) {
     state.filters[fkey].intern = !state.filters[fkey].intern;
     touch("cfg|filters"); saveState(); render();
   }));
-  view.querySelectorAll("[data-fsaas]").forEach(b => b.addEventListener("click", () => {
-    const fkey = b.dataset.fsaas;
-    state.filters[fkey].saas = !state.filters[fkey].saas;
+  view.querySelectorAll("[data-fkg]").forEach(b => b.addEventListener("click", () => {
+    const [fkey, k] = b.dataset.fkg.split("|");
+    state.filters[fkey][k] = !state.filters[fkey][k];
     touch("cfg|filters"); saveState(); render();
   }));
   view.querySelectorAll("[data-fhxmp]").forEach(b => b.addEventListener("click", () => {
@@ -2987,8 +2998,8 @@ function slaKarte() {
   const wochen = slaPerioden().filter(x => x.art === "woche"), akt = wochen[wochen.length - 1];
   const kw = slaStat(akt, list);
   const ohne = allRows().filter(r => !r.ErsteExtReaktion && r["Eröffnet"] && slaRowOk(r));
-  const ueber = ohne.filter(r => (now() - r["Eröffnet"]) > slaLimit(prioName(r.Prio))).length;
-  return `<div class="card"><h2>Erste externe Reaktion <span class="hint" style="font-weight:400;margin-left:6px">Rot 30 Min. · Blau 4 Std. · Grün 48 Std.</span></h2>
+  const ueber = ohne.filter(r => geschaeftszeit(r["Eröffnet"], now()) > slaLimit(prioName(r.Prio))).length;
+  return `<div class="card"><h2>Erste externe Reaktion <span class="hint" style="font-weight:400;margin-left:6px">Rot 30 Min. · Blau 4 Std. · Grün 48 Std. · in Geschäftszeit</span></h2>
     <div class="kpis" style="margin-bottom:0">
       <button class="kpi" data-goto="sla"><div class="k-label">Ohne erste Reaktion</div><div class="k-value">${fmtN.format(ohne.length)}</div><div class="k-note">offene Calls</div></button>
       <button class="kpi${ueber ? " crit" : ""}" data-goto="sla"><div class="k-label">davon Frist überschritten</div><div class="k-value">${fmtN.format(ueber)}</div><div class="k-note">jetzt reagieren</div></button>
@@ -3317,6 +3328,25 @@ function renderExtReakt(view) {
    nur so entstehen Wochen- und Monatsdurchschnitte, die auch geschlossene Calls einschließen.
    SLA je Priorität: Rot 30 Min., Blau 4 Std., Grün 48 Std. (EXT_LIMITS). */
 function hatSpalte(k) { return (sources.ALL.cols || []).includes(k); }
+/* Geschäftszeiten: Mo–Do 08:00–17:30, Fr 08:00–16:30, Sa/So keine. Reaktionszeiten zählen nur innerhalb
+   dieser Fenster – ein Call, der Mittwoch 17:30 aufgeht, hat Donnerstag 08:00 noch keine Minute auf der Uhr. */
+const GESCHAEFTSZEIT = { 1: [8, 17.5], 2: [8, 17.5], 3: [8, 17.5], 4: [8, 17.5], 5: [8, 16.5] }; // Wochentag (0 = So) -> [Beginn, Ende] in Stunden
+function geschaeftszeit(a, b) {
+  const von = a instanceof Date ? a.getTime() : +a, bis = b instanceof Date ? b.getTime() : +b;
+  if (!(bis > von)) return 0;
+  let sum = 0;
+  const d = new Date(von); d.setHours(0, 0, 0, 0);
+  for (let i = 0; d.getTime() < bis && i < 4000; i++) {
+    const w = GESCHAEFTSZEIT[d.getDay()];
+    if (w) {
+      const start = d.getTime() + w[0] * 3600000, ende = d.getTime() + w[1] * 3600000;
+      const lo = Math.max(von, start), hi = Math.min(bis, ende);
+      if (hi > lo) sum += hi - lo;
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return sum;
+}
 function monatKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
 function slaLimit(p) { return EXT_LIMITS[p] ?? EXT_LIMITS["grün"]; }
 function fmtDur(ms) {
@@ -3381,8 +3411,9 @@ function freezeReakt() {
       if (ws >= heuteWs) continue;                       // Woche läuft noch
       if (!(rec.r > 0) && offen.has(call)) continue;     // offen ohne Reaktion: bleibt Einzelfall, bis entschieden
       if (!slaRecOk(rec)) { delete m[call]; touched.add("reakt|" + mk); continue; } // ausgefiltert: verwerfen statt zählen
-      const art = rec.r ? ((rec.r - rec.e) <= slaLimit(rec.p) ? "ok" : "spaet") : "unbekannt";
-      const x = { p: rec.p || "", art, dauer: rec.r ? rec.r - rec.e : null };
+      const dauer = rec.r ? geschaeftszeit(rec.e, rec.r) : null;
+      const art = rec.r ? (dauer <= slaLimit(rec.p) ? "ok" : "spaet") : "unbekannt";
+      const x = { p: rec.p || "", art, dauer };
       const wk = "W" + isoDateOf(new Date(ws)), mo = "M" + mk;
       for (const key of [wk, mo]) { const a = state.reaktAgg[key] ??= leerAgg(); aggAdd(a, x); touched.add(key); }
       if (art === "spaet") (state.reaktAgg[wk].liste ??= []).push({ call, p: rec.p || "", e: rec.e, dauer: x.dauer, k: rec.k ?? "", g: gruppeKurz(rec.g ?? ""), b: rec.b ?? "" });
@@ -3446,10 +3477,11 @@ function reaktEintraege() {
     if (!slaRecOk(rec)) continue;
     const e = rec.e, r = rec.r || 0, p = rec.p || "", lim = slaLimit(p), row = offen.get(call) || null;
     let art;
-    if (r) art = (r - e) <= lim ? "ok" : "spaet";
-    else if (row) art = (now() - e) > lim ? "offenUeber" : "offenInnen";
+    const dauer = r ? geschaeftszeit(e, r) : null;
+    if (r) art = dauer <= lim ? "ok" : "spaet";
+    else if (row) art = geschaeftszeit(e, now()) > lim ? "offenUeber" : "offenInnen";
     else art = "unbekannt";
-    out.push({ call, e, r, p, lim, art, dauer: r ? r - e : null, row, k: rec.k ?? row?.Kunde ?? "", g: gruppeKurz(rec.g ?? row?.Gruppe ?? ""), b: rec.b ?? row?.Bearbeiter ?? "" });
+    out.push({ call, e, r, p, lim, art, dauer, row, k: rec.k ?? row?.Kunde ?? "", g: gruppeKurz(rec.g ?? row?.Gruppe ?? ""), b: rec.b ?? row?.Bearbeiter ?? "" });
   }
   return out;
 }
@@ -3527,7 +3559,7 @@ function slaGebrochen(per, list) {
 /* Offene Calls ohne erste Reaktion – aus dem aktuellen Datenstand */
 function ohneReaktionRows() {
   return applyFilters("sla", allRows().filter(r => !r.ErsteExtReaktion && r["Eröffnet"] && !slaKundeAus(r.Kunde)))
-    .map(r => { const p = prioName(r.Prio), lim = slaLimit(p), alter = now() - r["Eröffnet"]; return { r, p, lim, alter, ueber: alter - lim }; })
+    .map(r => { const p = prioName(r.Prio), lim = slaLimit(p), alter = geschaeftszeit(r["Eröffnet"], now()); return { r, p, lim, alter, ueber: alter - lim }; })
     .sort((a, b) => b.ueber - a.ueber);
 }
 function prioZelle(p) { return `<span class="pd-dot" style="background:${p === "rot" ? "var(--crit)" : p === "blau" ? "var(--accent)" : "var(--good)"};margin-right:6px"></span>${esc(p ? p[0].toUpperCase() + p.slice(1) : "–")}`; }
@@ -3556,7 +3588,7 @@ function slaBruchTabelle(per, list) {
   rows.forEach((x, i) => {
     const zeb = i % 2 ? "background-color:#f2f2f2;" : "";
     const pz = x.p === "rot" ? `background:${MAILCLR.red};` : x.p === "blau" ? "background:#dbe5f1;" : `background:${MAILCLR.green};`;
-    const vals = [x.p ? x.p[0].toUpperCase() + x.p.slice(1) : "–", x.call, x.k, x.g, x.b, fmtDT.format(new Date(x.e)), x.dauer != null ? fmtDur(x.dauer) : `offen seit ${fmtDur(now() - x.e)}`, extLimitLabel(x.p), state.slaNote?.[x.call] ?? ""];
+    const vals = [x.p ? x.p[0].toUpperCase() + x.p.slice(1) : "–", x.call, x.k, x.g, x.b, fmtDT.format(new Date(x.e)), x.dauer != null ? fmtDur(x.dauer) : `offen seit ${fmtDur(geschaeftszeit(x.e, now()))}`, extLimitLabel(x.p), state.slaNote?.[x.call] ?? ""];
     html += "<tr>" + td(vals[0], pz, true) + vals.slice(1).map((v, j) => td(v, zeb, j !== 7)).join("") + td("", zeb) + "</tr>";
     plain.push(vals.concat([""]).join("\t"));
   });
@@ -3565,7 +3597,7 @@ function slaBruchTabelle(per, list) {
 }
 let slaWoche = null;
 function renderSla(view) {
-  const regeln = `SLA je Priorität: <b>Rot</b> 30 Minuten · <b>Blau</b> 4 Stunden · <b>Grün</b> 48 Stunden – gemessen von der Eröffnung bis zur ersten externen Reaktion.`;
+  const regeln = `SLA je Priorität: <b>Rot</b> 30 Minuten · <b>Blau</b> 4 Stunden · <b>Grün</b> 48 Stunden – gemessen von der Eröffnung bis zur ersten externen Reaktion, nur in Geschäftszeit (Mo–Do 08:00–17:30, Fr 08:00–16:30).`;
   if (!hatSpalte("ErsteExtReaktion")) {
     view.innerHTML = `<div class="card"><h2>Reaktionszeit</h2><p class="sub">${regeln}</p>
       <p class="empty">Die Quelle liefert die Spalte <b>„Externe Reaktion“</b> (Tage bis zur ersten externen Aktion) noch nicht. Sobald die Abfrage sie enthält, füllt sich diese Ansicht automatisch – die Auswertung ist bereits eingebaut.</p></div>`;
@@ -3594,7 +3626,7 @@ function renderSla(view) {
     </div>
     <div class="card" id="slaOhne"><h2>Ohne erste externe Reaktion <span class="pill ${ueber.length ? "s-crit" : "s-ok"}" style="margin-left:6px">${ueber.length} überfällig</span></h2>
       <p class="sub">${regeln} Sortiert nach Überfälligkeit; Calls innerhalb der Frist stehen unten.</p>
-      ${ohne.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Gruppe</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th><th>Eröffnet</th><th class="ta-r">Alter</th><th class="ta-r">Frist</th><th class="ta-r">Rest / überfällig</th></tr></thead><tbody>
+      ${ohne.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Gruppe</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th><th>Eröffnet</th><th class="ta-r" title="in Geschäftszeit">Alter (GZ)</th><th class="ta-r">Frist</th><th class="ta-r">Rest / überfällig</th></tr></thead><tbody>
       ${ohne.map(x => `<tr><td class="nowrap">${prioZelle(x.p)}</td><td class="tnum nowrap">${esc(x.r.Call)}</td><td class="nowrap">${esc(gruppeKurz(x.r.Gruppe) || "–")}</td><td class="nowrap" title="${esc(resolveName(x.r.Bearbeiter) ?? "")}">${esc(x.r.Bearbeiter ?? "–")}</td><td class="nowrap">${esc(x.r.Kunde ?? "–")}${smBadge(x.r)}</td><td class="titlecell">${esc(x.r.Titel ?? "–")}</td><td class="nowrap">${esc(x.r.Status ?? "–")}</td><td class="tnum nowrap">${fmtDT.format(x.r["Eröffnet"])}</td><td class="ta-r tnum">${fmtAgo(x.alter)}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td><td class="ta-r tnum nowrap ${x.ueber > 0 ? "c-crit" : "c-warn"}">${x.ueber > 0 ? "überfällig seit " + fmtAgo(x.ueber) : "noch " + fmtAgo(-x.ueber)}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="empty"><b>Alles beantwortet.</b> Jeder offene Call hat eine erste externe Reaktion.</p>`}
     </div>
@@ -3608,7 +3640,7 @@ function renderSla(view) {
       <button class="small" id="btnSlaBruchCopy" style="margin-left:auto" title="Als Tabelle fürs Supportmanager-Protokoll kopieren – mit Kommentar und leerer SupMan-Spalte">Tabelle kopieren</button></h2>
       <p class="sub">Calls der gewählten Woche (nach Eröffnung), deren erste Reaktion nach der Frist kam oder noch aussteht. Der Kommentar wird im Team geteilt und mitkopiert.</p>
       ${brk.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Kunde</th><th>Gruppe</th><th>Bearbeiter</th><th>Eröffnet</th><th class="ta-r">Reaktion nach</th><th class="ta-r">Frist</th><th style="min-width:260px">Kommentar</th></tr></thead><tbody>
-      ${brk.map(x => `<tr><td class="nowrap">${prioZelle(x.p)}</td><td class="tnum nowrap">${esc(x.call)}${x.row ? "" : ' <span class="hint" title="Call ist nicht mehr im Datenstand (geschlossen)">geschl.</span>'}</td><td class="nowrap">${esc(x.k || "–")}</td><td class="nowrap">${esc(x.g || "–")}</td><td class="nowrap" title="${esc(resolveName(x.b) ?? "")}">${esc(x.b || "–")}</td><td class="tnum nowrap">${fmtDT.format(new Date(x.e))}</td><td class="ta-r tnum nowrap c-crit">${x.dauer != null ? fmtDur(x.dauer) : "offen seit " + fmtDur(now() - x.e)}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td><td><input type="text" data-slanote="${esc(x.call)}" value="${esc(state.slaNote?.[x.call] ?? "")}" placeholder="Kommentar fürs Meeting" style="width:100%"></td></tr>`).join("")}
+      ${brk.map(x => `<tr><td class="nowrap">${prioZelle(x.p)}</td><td class="tnum nowrap">${esc(x.call)}${x.row ? "" : ' <span class="hint" title="Call ist nicht mehr im Datenstand (geschlossen)">geschl.</span>'}</td><td class="nowrap">${esc(x.k || "–")}</td><td class="nowrap">${esc(x.g || "–")}</td><td class="nowrap" title="${esc(resolveName(x.b) ?? "")}">${esc(x.b || "–")}</td><td class="tnum nowrap">${fmtDT.format(new Date(x.e))}</td><td class="ta-r tnum nowrap c-crit">${x.dauer != null ? fmtDur(x.dauer) : "offen seit " + fmtDur(geschaeftszeit(x.e, now()))}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td><td><input type="text" data-slanote="${esc(x.call)}" value="${esc(state.slaNote?.[x.call] ?? "")}" placeholder="Kommentar fürs Meeting" style="width:100%"></td></tr>`).join("")}
       </tbody></table></div>` : `<p class="empty">Keine Brüche in ${esc(wSel.label)}.</p>`}
     </div>`;
   view.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click", () => { const el = document.getElementById(b.dataset.goto === "ohne" ? "slaOhne" : "slaStat"); el?.scrollIntoView({ behavior: "smooth", block: "start" }); }));
@@ -4166,7 +4198,7 @@ function renderAdmin(view) {
       <p class="sub">Sichtbarkeits-Filter stehen direkt in den jeweiligen Ansichten („Filter“) – dort lassen sich unter „Sonstiges“ auch ${esc(state.internKunde || "MPDV")}-Calls und ${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")} ein- und ausblenden.</p>
       <table class="grid"><tbody>
         <tr><td style="width:230px">Warnung „Datei unverändert“ ab (Min.)</td><td><input data-cfg="staleWarnMin" value="${esc(state.staleWarnMin)}" type="number" min="5" style="width:90px"></td></tr>
-        <tr><td>SaaS-Kunden (Kürzel)</td><td><input data-cfg="saasKunden" value="${esc(state.saasKunden ?? "")}" placeholder="Kürzel mit Semikolon, z. B. ACME; NOVA" style="width:100%"><div class="hint">Ausblenden je Liste über den Filter „Sonstiges“ → Chip „SaaS“.</div></td></tr>
+        ${KUNDENGRUPPEN.map(g => `<tr><td>${esc(g.name)} (Kürzel)</td><td><input data-cfg="${g.feld}" value="${esc(state[g.feld] ?? "")}" placeholder="Kürzel mit Semikolon, z. B. ACME; NOVA" style="width:100%"><div class="hint">Ausblenden je Liste über den Filter „Sonstiges“ → Chip „${esc(g.label)}“.</div></td></tr>`).join("")}
       </tbody></table>
       <h2 style="margin-top:18px">Filtergruppen (Bearbeitergruppen)</h2>
       <p class="sub">Bündeln mehrere Bearbeitergruppen zu einem Filter-Chip in den Listen (z. B. Hotline = Hotline + 1st_Level). Mitglieder mit Semikolon trennen.</p>

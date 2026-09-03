@@ -1,6 +1,6 @@
 # Status: Supportmanagement Board
 
-**Stand:** v1.36 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-02
+**Stand:** v1.37 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-03
 
 ## Was ist das?
 
@@ -21,7 +21,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 - **ACK-Workflow:** Bestätigungen mit Grund, Zeitstempel und „geändert!“-Verweis, wenn sich der überwachte Teil eines Tickets danach ändert
 - **Kommentare** mit Zeitstempel und Autor, lange Kommentare zuklappbar
 - **Spaltenauswahl und -reihenfolge je Liste** (teamweit gespeichert), Sortierung teamweit, eigene sortier-/filterbare Prio-Spalte; bestätigte (ACK) Zeilen stehen am Listenende
-- **Filter-Chips:** Status, Bearbeitergruppe, Prio, „MPDV-Calls ausblenden“, „SaaS“ (Kundenliste aus der Verwaltung)
+- **Filter-Chips:** Status, Bearbeitergruppe, Prio, „MPDV-Calls ausblenden“, „SaaS“/„USA“/„Asien“ (Kundenlisten aus der Verwaltung)
 - **Quellen-Status** (PD/SD/Team) mit Ampel und Prüfzeit in der Sidebar, große Ansicht in der Verwaltung
 - **Auto-Resume:** erster Klick nach dem Öffnen setzt Datei-Überwachung und Team-Speicher fort
 
@@ -55,6 +55,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 | v1.34 | Spalte „Externe Reaktion“ der Team-Abfrage (Kalendertage bis zur ersten externen Aktion, 0 = keine) wird als erste externe Reaktion übernommen (Zeitpunkt = Eröffnung + Tage); Zeitstempel-Spalte „Erste externe Reaktion“ bleibt alternativ möglich; Abfrage im Repo auf den Team-Stand gebracht (alle Gruppen, call_statistics) |
 | v1.35 | Reaktionszeit: teamweiter Filter (Status, Gruppe, Prio, interner Kunde, Kunden-Ausschluss als Text) wirkt auf Aufzeichnung, Statistik und Listen; MPDV ab Werk ausgeschlossen; Vorgabewerte der bisherigen Excel-Statistik (2023–2025, Jan–Aug 2026, KW 30–35 mit SupMan) als `fix` in `state.reaktAgg` eingespielt, gelten für ihre Zeiträume endgültig; Jahreswert = Mittel der Monatswerte, solange Vorgaben enthalten sind; SupMan in der Kopie für abgeschlossene Wochen gefüllt, laufende Woche leer |
 | v1.36 | SaaS-Kunden: Kürzelliste in der Verwaltung („Grundregeln“, `state.saasKunden`, teamweit), Chip „SaaS“ unter „Sonstiges“ in jeder Filterleiste blendet diese Kunden je Liste aus (auch in der Reaktionszeit-Aufzeichnung) |
+| v1.37 | Reaktionszeit nur in Geschäftszeit (Mo–Do 08:00–17:30, Fr 08:00–16:30; `GESCHAEFTSZEIT`, `geschaeftszeit()`): Dauer bis zur ersten Reaktion, Fristen, „offen seit“ und Alter offener Calls; Kundengruppen USA und Asien wie SaaS (`KUNDENGRUPPEN`, `state.usaKunden`/`state.asiaKunden`, Chips in jeder Filterleiste), im Reaktionszeit-Filter ab Werk ausgeblendet |
 
 ## Feste Regeln
 
@@ -68,6 +69,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 - Mail-Tabellen: Kopfzeile hell (#d9e2f3) mit schwarzer Schrift – schwarz/weiß war die einzige Kombination, die unlesbar wird, wenn Outlook die Schriftfarbe verwirft oder im Dunkelmodus umfärbt. Markierte Zellen tragen Hintergrund (bgcolor + Style) UND fette Schrift mit fester Farbe (Style + font-Tag). Markierungen in Fließtext ([gelb]/[rot] in Einleitung und Fußtext) werden zu einzeiligen Tabellen mit bgcolor, weil Outlook Hintergrundfarben auf Text verwirft; sie wirken deshalb zeilenweise
 - Reaktionszeit-Filter (`state.filters.sla`) gilt für Aufzeichnung und Auswertung; ausgefilterte Calls werden nicht aufgezeichnet bzw. beim nächsten Lauf entfernt. Vorgabewerte (`SLA_VORGABEN`, im Code) sind Durchschnitte ohne Fallzahlen und gewinnen für ihren Zeitraum; Zählungen zeigen sich nur in Zeiträumen ohne Vorgabe
 - Reaktionszeit: Quelle ist „Externe Reaktion“ (Tage ab Eröffnung, 0 = noch keine Reaktion; Reaktionen unter 4 Sekunden fallen durch die Rundung auf 4 Nachkommastellen ebenfalls auf 0). Der Export enthält nur offene Calls. Das Board merkt sich deshalb jeden gesehenen Call mit Eröffnung, erster Reaktion, Prio, Kunde, Gruppe, Bearbeiter (`state.reakt`, Schlüssel je Monat) nur solange nötig: Ist die Eröffnungswoche vorbei und der Call entschieden, bleiben allein die Summen je Woche und Monat (`state.reaktAgg`: n, Summe, ok, gebrochen, ohne Aufzeichnung je Prio); Brüche bleiben 8 Wochen als kleine Liste. Calls, die geschlossen wurden, bevor eine Reaktion gesehen wurde, zählen als „ohne Aufzeichnung“ und nicht in den Durchschnitt. Calls aus vergangenen Wochen, die bereits eine Reaktion haben und noch nicht als Einzelfall bekannt sind, werden nicht aufgenommen (keine Nachträge, keine Doppelzählung). Offene Calls ohne Reaktion nach Fristablauf zählen als Bruch. Beispieldaten schreiben keine Historie
+- Reaktionszeit wird in Geschäftszeit gemessen (Mo–Do 08:00–17:30, Fr 08:00–16:30, Sa/So nichts; Feiertage nicht berücksichtigt). Ein Call von Mittwoch 17:30 hat Donnerstag 08:00 null Minuten. Die Fristen (Rot 30 Min., Blau 4 h, Grün 48 h) laufen ebenfalls in Geschäftszeit. Kundengruppen SaaS/USA/Asien: Kürzellisten in der Verwaltung („Grundregeln“), teamweit; Chips unter „Sonstiges“ je Liste, in der Reaktionszeit sind USA und Asien ab Werk ausgeblendet (einmalige Umstellung `filters.sla.v37`)
 - Unterstützungsdienste: Gruppen der Dienste müssen in der WHERE-Liste der Abfrage enthalten sein, sonst bleibt die Liste leer (Hinweis im Reiter)
 - Kanal-Trennung (ab v1.27): Produktiv- und Testversion nutzen getrennte Speicherschlüssel (`smbState_v1` vs. `smbState_v1_sqltest`, IndexedDB `smbHandles` vs. `smbHandles_sqltest`). Die Team-Datei trägt `kanal`; Dateien ohne Kennung gelten als Produktivdateien. Eine Datei des anderen Kanals wird weder gemischt noch geschrieben
 - „Geschlossen“ in der Tagesstatistik ist abgeleitet: Der Export enthält nur offene Calls, gezählt wird, was im Vortags-Schnappschuss stand und heute fehlt (auch Calls, die den Auswertungsbereich verlassen haben). „Neu“ = Eröffnungsdatum am Tag, als Menge über den Tag gesammelt. Beispieldaten schreiben keinen Schnappschuss
