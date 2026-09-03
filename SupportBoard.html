@@ -492,7 +492,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.32";
+const VERSION = "1.33";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -606,6 +606,7 @@ const DEFAULT_STATE = {
       fuss: "Bitte auch die Calls im Status „Wartend“ prüfen, ob der Status noch korrekt ist bzw. ob die Calls ggf. geschlossen werden können.\n\nZu Calls, bei denen Unterstützung durch einen PSOD notwendig ist, den jeweiligen PSOD kontaktieren, siehe auch [link=file://mpdv.local/Data/OurPros/ResourcePlanning/CallDispatching_Dienstplan.xlsm]\\\\mpdv.local\\Data\\OurPros\\ResourcePlanning\\CallDispatching_Dienstplan.xlsm[/link]\n\nEine Übersichtsseite zum Thema Supporttag ist im MPDVNet zu finden: [link=http://mpdvnet.mpdv.local/de/Abteilungen/SupportServices/Seiten/Supporttag.aspx]http://mpdvnet.mpdv.local/de/Abteilungen/SupportServices/Seiten/Supporttag.aspx[/link]\n\nBitte anschließend bei den Calls, die auf WARTEND stehen und das „Wartend Bis“ Datum erreicht ist, prüfen, wie es weitergeht.\n\nBitte nach Abschluss der Tätigkeiten an die Statusmail denken.\n\nViele Grüße" }
   ],
   reakt: {},     // "YYYY-MM" (Monat der Eröffnung) -> { call: {e, r, p, k, g, b} } – gemerkte erste externe Reaktion je Call (teamweit), Basis der Reaktionszeit-Statistik
+  reaktAgg: {},  // "W<Montag>" / "M<YYYY-MM>" -> Summen je Prio (n, sum, ok, brk, unb) – eingefrorene Wochen/Monate; Wochen behalten 8 Wochen lang die Liste der Brüche
   slaNote: {},   // call -> Kommentar zu einem SLA-Bruch (Montagsmeeting)
   udDone: {},    // Dienst-Kürzel -> {d, by, ts}: Mail an den Unterstützungsdienst heute verschickt (teamweit)
   gruppenFilter: [ // Filtergruppen: bündeln mehrere Bearbeitergruppen zu einem Filter-Chip (Verwaltung)
@@ -734,6 +735,7 @@ function normalizeState() {
   state.tagesstat ??= {};
   state.udDone ??= {};
   state.reakt ??= {};
+  state.reaktAgg ??= {};
   state.slaNote ??= {};
   state.verteiler.udCc ??= "";
   if (!Array.isArray(state.udienste)) state.udienste = structuredClone(DEFAULT_STATE.udienste);
@@ -1128,7 +1130,7 @@ async function resumeWatch() {
    Haken, Kommentare, Markierungen, Personen, Verteiler und Vorlagen werden mit einer
    JSON-Datei abgeglichen, die alle Boards im Team lesen und schreiben. Je Eintrag
    gewinnt die jüngste Änderung (Zeitstempel in state.touch). */
-const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll", "tagesstat", "udDone", "reakt", "slaNote"];
+const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll", "tagesstat", "udDone", "reakt", "reaktAgg", "slaNote"];
 const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "protoMinCalls", "rules", "filters", "cols", "gruppenFilter", "sort", "udienste"];
 let sharedHandle = null, pendingSharedHandle = null, sharedDirty = false, sharedBusy = false, sharedLastSync = null;
 /* Härtung v1.14: geschrieben wird NUR nach einem erfolgreichen Lese-/Merge-Zyklus.
@@ -3300,10 +3302,15 @@ function recordReakt() {
   state.reakt ??= {};
   const touched = new Set();
   const grenze = monatKey(new Date(todayStart().getTime() - 400 * DAY)); // 13 Monate behalten
+  const heuteWs = wocheStart(todayStart()).getTime();
   for (const r of allRows()) {
     if (!r["Eröffnet"]) continue;
     const mk = monatKey(r["Eröffnet"]), call = String(r.Call);
     if (mk < grenze) continue; // ältere Calls gar nicht erst aufnehmen (sonst würden sie bei jedem Lauf neu angelegt und gelöscht)
+    // Eröffnungswoche vorbei und Reaktion vorhanden: Der Call ist entweder schon in den Wochensummen (dann darf er
+    // nicht erneut aufgenommen werden, sonst zählt er doppelt) oder er ist neu in den Datenstand gekommen (dann
+    // zählt er nicht mehr – die Vergangenheit wird nicht nachgetragen). Nur bestehende Einzelfälle werden aktualisiert.
+    if (r.ErsteExtReaktion && wocheStart(r["Eröffnet"]).getTime() < heuteWs && !state.reakt[mk]?.[call]) continue;
     const rec = { e: r["Eröffnet"].getTime(), r: r.ErsteExtReaktion ? r.ErsteExtReaktion.getTime() : 0, p: prioName(r.Prio),
       k: String(r.Kunde ?? ""), g: gruppeKurz(String(r.Gruppe ?? "")), b: String(r.Bearbeiter ?? "") };
     const m = state.reakt[mk] ??= {};
@@ -3311,8 +3318,51 @@ function recordReakt() {
     if (!alt || ["e", "r", "p", "k", "g", "b"].some(f => alt[f] !== rec[f])) { m[call] = rec; touched.add(mk); }
   }
   for (const k of Object.keys(state.reakt)) if (k < grenze) { delete state.reakt[k]; touched.add(k); }
-  if (touched.size) { for (const k of touched) touch("reakt|" + k); saveState(); }
+  const eingefroren = freezeReakt();
+  if (touched.size || eingefroren) { for (const k of touched) touch("reakt|" + k); saveState(); }
 }
+/* Ist die Eröffnungswoche eines Calls vorbei und der Call „entschieden“ (Reaktion gesehen oder geschlossen),
+   wandern nur noch seine Zeiten in die Wochen- und Monatssummen; der Call selbst wird vergessen.
+   Brüche bleiben 8 Wochen lang als kleine Liste an der Woche (fürs Montagsmeeting), danach nur die Zahl. */
+function leerAgg() { const mk = () => ({ n: 0, sum: 0, ok: 0, brk: 0, unb: 0 }); return { rot: mk(), blau: mk(), "grün": mk(), ges: mk() }; }
+function aggAdd(a, x) {
+  for (const t of (a[x.p] ? [a[x.p], a.ges] : [a.ges])) {
+    if (x.dauer != null) { t.n++; t.sum += x.dauer; }
+    if (x.art === "ok") t.ok++; else if (x.art === "spaet" || x.art === "offenUeber") t.brk++; else if (x.art === "unbekannt") t.unb++;
+  }
+}
+function freezeReakt() {
+  if (sources.ALL.demo || !hatSpalte("ErsteExtReaktion")) return false;
+  const offen = new Set(allRows().map(r => String(r.Call)));
+  const heuteWs = wocheStart(todayStart()).getTime();
+  const touched = new Set();
+  state.reaktAgg ??= {};
+  for (const [mk, m] of Object.entries(state.reakt || {})) {
+    for (const [call, rec] of Object.entries(m)) {
+      const ws = wocheStart(new Date(rec.e)).getTime();
+      if (ws >= heuteWs) continue;                       // Woche läuft noch
+      if (!(rec.r > 0) && offen.has(call)) continue;     // offen ohne Reaktion: bleibt Einzelfall, bis entschieden
+      const art = rec.r ? ((rec.r - rec.e) <= slaLimit(rec.p) ? "ok" : "spaet") : "unbekannt";
+      const x = { p: rec.p || "", art, dauer: rec.r ? rec.r - rec.e : null };
+      const wk = "W" + isoDateOf(new Date(ws)), mo = "M" + mk;
+      for (const key of [wk, mo]) { const a = state.reaktAgg[key] ??= leerAgg(); aggAdd(a, x); touched.add(key); }
+      if (art === "spaet") (state.reaktAgg[wk].liste ??= []).push({ call, p: rec.p || "", e: rec.e, dauer: x.dauer, k: rec.k ?? "", g: rec.g ?? "", b: rec.b ?? "" });
+      delete m[call]; touched.add("reakt|" + mk);
+    }
+    if (!Object.keys(m).length) { delete state.reakt[mk]; touched.add("reakt|" + mk); }
+  }
+  // Aufräumen: Bruch-Listen nur 8 Wochen, Wochensummen 13 Monate; Monatssummen bleiben
+  const listeBis = isoDateOf(new Date(heuteWs - 8 * 7 * DAY)), wocheBis = isoDateOf(new Date(heuteWs - 400 * DAY));
+  for (const [key, a] of Object.entries(state.reaktAgg)) {
+    if (!key.startsWith("W")) continue;
+    const d = key.slice(1);
+    if (d < wocheBis) { delete state.reaktAgg[key]; touched.add(key); }
+    else if (d < listeBis && a.liste) { delete a.liste; touched.add(key); }
+  }
+  for (const key of touched) touch(key.startsWith("reakt|") ? key : "reaktAgg|" + key);
+  return touched.size > 0;
+}
+function aggMerge(ziel, a) { for (const p of ["rot", "blau", "grün", "ges"]) for (const f of ["n", "sum", "ok", "brk", "unb"]) ziel[p][f] += a?.[p]?.[f] || 0; }
 /* Alle gemerkten Calls, bewertet: ok · spaet (Reaktion nach Frist) · offenUeber (noch keine Reaktion, Frist vorbei)
    · offenInnen (noch keine Reaktion, Frist läuft) · unbekannt (geschlossen, ohne dass eine Reaktion gesehen wurde) */
 function reaktEintraege() {
@@ -3329,15 +3379,19 @@ function reaktEintraege() {
   return out;
 }
 function slaAgg(list) {
-  const mk = () => ({ n: 0, sum: 0, ok: 0, brk: 0, unbekannt: 0 });
-  const agg = { rot: mk(), blau: mk(), "grün": mk(), ges: mk() };
-  for (const x of list) {
-    for (const t of (agg[x.p] ? [agg[x.p], agg.ges] : [agg.ges])) {
-      if (x.dauer != null) { t.n++; t.sum += x.dauer; }
-      if (x.art === "ok") t.ok++; else if (x.art === "spaet" || x.art === "offenUeber") t.brk++; else if (x.art === "unbekannt") t.unbekannt++;
-    }
-  }
-  for (const t of Object.values(agg)) { t.avg = t.n ? t.sum / t.n : null; t.quote = (t.ok + t.brk) ? t.ok / (t.ok + t.brk) : null; }
+  const agg = leerAgg();
+  for (const x of list) aggAdd(agg, x);
+  return slaFinish(agg);
+}
+function slaFinish(agg) {
+  for (const t of Object.values(agg)) { t.avg = t.n ? t.sum / t.n : null; t.quote = (t.ok + t.brk) ? t.ok / (t.ok + t.brk) : null; t.unbekannt = t.unb; }
+  return agg;
+}
+/* Eingefrorene Summen zu einer Periode: Woche/Monat direkt, Jahr = alle Monate des Jahres */
+function slaFrozen(per) {
+  const agg = leerAgg(), ra = state.reaktAgg || {};
+  if (per.art === "jahr") { const pre = `M${per.von.getFullYear()}-`; for (const [k, a] of Object.entries(ra)) if (k.startsWith(pre)) aggMerge(agg, a); }
+  else if (ra[per.id]) aggMerge(agg, ra[per.id]);
   return agg;
 }
 function wocheStart(d) { const t = new Date(d); t.setHours(0, 0, 0, 0); t.setDate(t.getDate() - (t.getDay() + 6) % 7); return t; }
@@ -3346,7 +3400,7 @@ const fmtMonat = new Intl.DateTimeFormat("de-DE", { month: "short" });
 function slaPerioden() {
   const heute = todayStart(), jahr = heute.getFullYear(), per = [];
   per.push({ id: `J${jahr}`, label: `${jahr} (bisher)`, von: new Date(jahr, 0, 1), bis: new Date(jahr + 1, 0, 1), art: "jahr" });
-  for (let m = 0; m <= heute.getMonth(); m++) per.push({ id: `M${jahr}-${m + 1}`, label: fmtMonat.format(new Date(jahr, m, 1)).replace(/\.$/, ""), von: new Date(jahr, m, 1), bis: new Date(jahr, m + 1, 1), art: "monat", laufend: m === heute.getMonth() });
+  for (let m = 0; m <= heute.getMonth(); m++) per.push({ id: `M${monatKey(new Date(jahr, m, 1))}`, label: fmtMonat.format(new Date(jahr, m, 1)).replace(/\.$/, ""), von: new Date(jahr, m, 1), bis: new Date(jahr, m + 1, 1), art: "monat", laufend: m === heute.getMonth() });
   const ws = wocheStart(heute);
   for (let i = 7; i >= 0; i--) {
     const von = new Date(ws.getTime() - i * 7 * DAY), bis = new Date(von.getTime() + 7 * DAY);
@@ -3355,9 +3409,16 @@ function slaPerioden() {
   return per;
 }
 function inPeriode(x, per) { return x.e >= per.von.getTime() && x.e < per.bis.getTime(); }
-function slaStat(per, list) { return slaAgg(list.filter(x => inPeriode(x, per))); }
+function slaStat(per, list) {
+  const agg = slaFrozen(per);
+  for (const x of list) if (inPeriode(x, per)) aggAdd(agg, x);
+  return slaFinish(agg);
+}
 function slaGebrochen(per, list) {
-  return list.filter(x => inPeriode(x, per) && (x.art === "spaet" || x.art === "offenUeber"))
+  const live = list.filter(x => inPeriode(x, per) && (x.art === "spaet" || x.art === "offenUeber"));
+  const frozen = per.art === "woche" ? (state.reaktAgg?.[per.id]?.liste || []).map(x => ({ ...x, art: "spaet", row: null, lim: slaLimit(x.p), r: x.e + (x.dauer || 0) })) : [];
+  const seen = new Set(live.map(x => x.call));
+  return live.concat(frozen.filter(x => !seen.has(x.call)))
     .sort((a, b) => (PRIO_ORD[a.p] ?? 9) - (PRIO_ORD[b.p] ?? 9) || a.e - b.e);
 }
 /* Offene Calls ohne erste Reaktion – aus dem aktuellen Datenstand */
@@ -3431,7 +3492,7 @@ function renderSla(view) {
     </div>
     <div class="card" id="slaStat"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Erste ext. Reaktion (Durchschnitt)
       <button class="small" id="btnSlaStatCopy" style="margin-left:auto" title="Als Tabelle fürs Supportmanager-Protokoll kopieren – mit leerer SupMan-Spalte">Tabelle kopieren</button></h2>
-      <p class="sub">Durchschnittliche Zeit bis zur ersten externen Reaktion je Priorität, nach Eröffnungsdatum: Jahr bisher, Monate, letzte 8 Kalenderwochen. Die Zahlen bauen sich ab jetzt auf: Das Board merkt sich jeden Call, den es mit Eröffnung und Reaktion gesehen hat, auch nachdem er geschlossen wurde. SLA = eingehaltene Fristen geteilt durch bewertete (eingehalten + gebrochen, offene innerhalb der Frist zählen noch nicht).</p>
+      <p class="sub">Durchschnittliche Zeit bis zur ersten externen Reaktion je Priorität, nach Eröffnungsdatum: Jahr bisher, Monate, letzte 8 Kalenderwochen. Die Zahlen bauen sich ab jetzt auf. Nach Ablauf einer Woche bleiben nur die Zeiten und Zähler der Woche und des Monats erhalten, die einzelnen Calls werden vergessen; Brüche bleiben 8 Wochen lang sichtbar. SLA = eingehaltene Fristen geteilt durch bewertete (eingehalten + gebrochen, offene innerhalb der Frist zählen noch nicht).</p>
       <div class="tscroll"><table class="list slatab"><thead><tr><th>Zeitraum</th><th class="ta-r">Rot</th><th class="ta-r">Blau</th><th class="ta-r">Grün</th><th class="ta-r">Gesamt</th><th class="ta-r">Calls</th><th class="ta-r">SLA</th></tr></thead><tbody>${statZeilen}</tbody></table></div>
     </div>
     <div class="card" id="slaBruch"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">SLA gebrochen <span class="pill ${brk.length ? "s-crit" : "s-ok"}">${brk.length} Calls</span>

@@ -39,12 +39,6 @@ SELECT
     COALESCE(lastAT.AT_Datum, o.letzte_Weiterleitung, o.erstellt)
                                                         AS [Letzte externe Reaktion],
 
-    /* NEU fuer den Reiter "Reaktionszeit": Zeitpunkt der ERSTEN Reaktion nach aussen.
-       Das Board misst daraus die Zeit von der Eroeffnung bis zur ersten Reaktion und
-       bewertet sie gegen die Fristen (Rot 30 Min., Blau 4 Std., Grün 48 Std.).
-       Der Spaltenname muss genau so lauten. NULL = noch keine Reaktion. */
-    firstAT.AT_Datum                                    AS [Erste externe Reaktion],
-
     (
         CASE CAST(LEFT(o.prioritaet, 1) AS INT)
             WHEN 1 THEN 3
@@ -95,20 +89,6 @@ OUTER APPLY (
       )
     ORDER BY r1.erstellt DESC
 ) AS lastAT
-
-OUTER APPLY (
-    SELECT TOP (1) r2.erstellt AS AT_Datum
-    FROM recent_ATs AS r2
-    WHERE r2.callnr = o.callnr
-      AND r2.kunde = o.meldende_firma_kurzz
-      AND r2.ersteller IS NOT NULL
-      AND r2.taetigkeit IN (
-          'outgoing email','call to customer','Receipt','update delivery',
-          'technical service estimate offer','conference with customer',
-          'service-order_remote-cons','remote analysis with phone call'
-      )
-    ORDER BY r2.erstellt ASC
-) AS firstAT
 
 /* Hier kommen weitere Gruppen dazu, sobald das Board sie braucht – z. B. die Unterstuetzungsdienste
    (Consulting, SAP-CC, ImplementationServices) fuer die Tagesaufgabe "Mail an Unterstuetzungsdienste".
