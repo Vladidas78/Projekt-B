@@ -490,7 +490,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.29";
+const VERSION = "1.30";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -551,7 +551,7 @@ function flashCopied(btn, label) {
 const DEFAULT_STATE = {
   personen: [],                     // {k, name, mail}
   verteiler: {
-    miPdAn: "", miPdCc: "", miSdAn: "", miSdCc: "", frCc: ""
+    miPdAn: "", miPdCc: "", miSdAn: "", miSdCc: "", frCc: "", udCc: ""
   },
   intros: {
     miPd: "Hallo,\n\nanbei die Übersicht der Calls in PD/ProdM (Gesamt-Dauer > 10h und Status <> Customer Care), zu denen eine Info für Sie aus Sicht des Support Managements relevant ist:",
@@ -592,6 +592,18 @@ const DEFAULT_STATE = {
   ],
   internKunde: "MPDV", // internes Kunden-Kürzel – Ausblenden über den Filter „Sonstiges" je Liste
   rules: { exclBearbeiter: "HX-MP-UPDATE" }, // Pseudo-Bearbeiter – Ausblenden über den Filter „Sonstiges" je Liste
+  udienste: [ // Unterstützungsdienste: Tagesaufgabe „Mail an eingeplanten Kollegen“ (Verwaltung)
+    { k: "IMP", name: "Implementation Services", gruppen: "ImplementationServices; Implementation Services; IMP",
+      intro: "Hallo,\n\nhier die Calls sortiert nach letzter Aktion zum Kunden, sollten noch weitere Calls reinkommen, melden wir uns:",
+      fuss: "Zu Calls, bei denen Unterstützung durch einen PSOD notwendig ist, den jeweiligen PSOD kontaktieren, siehe auch [link=file://mpdv.local/Data/OurPros/ResourcePlanning/CallDispatching_Dienstplan.xlsm]\\\\mpdv.local\\Data\\OurPros\\ResourcePlanning\\CallDispatching_Dienstplan.xlsm[/link]\n\nEine Übersichtsseite zum Thema Supporttag ist im MPDVNet zu finden: [link=http://mpdvnet.mpdv.local/de/Abteilungen/SupportServices/Seiten/Supporttag.aspx]http://mpdvnet.mpdv.local/de/Abteilungen/SupportServices/Seiten/Supporttag.aspx[/link]\n\nAnschließend bei den Calls, die auf WARTEND stehen und das „Wartend Bis“ Datum erreicht ist, prüfen, wie es weitergeht.\n\nNach Abschluss der Tätigkeiten an die Statusmail denken.\n\nViele Grüße" },
+    { k: "SAP-CC", name: "SAP Competence Center", gruppen: "SAP-CC; SAP_CC; SAPCC",
+      intro: "Hallo,\n\nbitte die Calls heute in folgender Reihenfolge bearbeiten (sortiert nach „Letzte Aktion zum Kunden“):",
+      fuss: "Zu Calls, bei denen Unterstützung durch einen PSOD notwendig ist, den jeweiligen PSOD kontaktieren, siehe auch [link=file://mpdv.local/Data/OurPros/ResourcePlanning/CallDispatching_Dienstplan.xlsm]\\\\mpdv.local\\Data\\OurPros\\ResourcePlanning\\CallDispatching_Dienstplan.xlsm[/link]\n\nBitte anschließend bei den Calls, die auf WARTEND stehen und das „Wiedervorlagedatum“ erreicht ist, prüfen, wie es weitergeht.\n\nBitte nach Abschluss der Tätigkeiten an die Statusmail denken.\n\nViele Grüße" },
+    { k: "CONS", name: "Consulting", gruppen: "Consulting; CONS",
+      intro: "Hallo,\n\nbitte die Calls heute in folgender Reihenfolge (sortiert nach „Letzte Aktion zum Kunden“) bearbeiten:",
+      fuss: "Bitte auch die Calls im Status „Wartend“ prüfen, ob der Status noch korrekt ist bzw. ob die Calls ggf. geschlossen werden können.\n\nZu Calls, bei denen Unterstützung durch einen PSOD notwendig ist, den jeweiligen PSOD kontaktieren, siehe auch [link=file://mpdv.local/Data/OurPros/ResourcePlanning/CallDispatching_Dienstplan.xlsm]\\\\mpdv.local\\Data\\OurPros\\ResourcePlanning\\CallDispatching_Dienstplan.xlsm[/link]\n\nEine Übersichtsseite zum Thema Supporttag ist im MPDVNet zu finden: [link=http://mpdvnet.mpdv.local/de/Abteilungen/SupportServices/Seiten/Supporttag.aspx]http://mpdvnet.mpdv.local/de/Abteilungen/SupportServices/Seiten/Supporttag.aspx[/link]\n\nBitte anschließend bei den Calls, die auf WARTEND stehen und das „Wartend Bis“ Datum erreicht ist, prüfen, wie es weitergeht.\n\nBitte nach Abschluss der Tätigkeiten an die Statusmail denken.\n\nViele Grüße" }
+  ],
+  udDone: {},    // Dienst-Kürzel -> {d, by, ts}: Mail an den Unterstützungsdienst heute verschickt (teamweit)
   gruppenFilter: [ // Filtergruppen: bündeln mehrere Bearbeitergruppen zu einem Filter-Chip (Verwaltung)
     { name: "Hotline", members: "Hotline; 1st_Level" },
     { name: "2nd Level", members: "2nd_CAQ; 2nd_MF; 2nd_HR" }
@@ -605,6 +617,7 @@ const DEFAULT_STATE = {
     haken:  { status: [], gruppe: [], prio: [], intern: true, hxmp: true },
     wartend: { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     extreakt: { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
+    udienst: { status: [], gruppe: [], prio: [], intern: false, hxmp: false },
     last:    { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     mi:     { status: ["cc", "customer care", "update", "pre-update"], gruppe: [], prio: [], minDauer: "10", intern: false, hxmp: true },
     fr:     { status: [], gruppe: [], prio: [], intern: false, hxmp: true }
@@ -717,6 +730,13 @@ function normalizeState() {
   state.protokoll ??= {};
   state.sort ??= {};
   state.tagesstat ??= {};
+  state.udDone ??= {};
+  state.verteiler.udCc ??= "";
+  if (!Array.isArray(state.udienste)) state.udienste = structuredClone(DEFAULT_STATE.udienste);
+  else for (const d of state.udienste) { // ältere Stände: fehlende Texte aus den Standards des gleichen Kürzels ergänzen
+    const def = DEFAULT_STATE.udienste.find(x => x.k === d.k);
+    if (def) for (const f of ["name", "gruppen", "intro", "fuss"]) d[f] ??= def[f];
+  }
   // Neue Listen bringen neue Vorlagen mit – fehlende Schlüssel aus den Standards ergänzen
   state.templates ??= structuredClone(DEFAULT_STATE.templates);
   for (const kind of ["teams", "wvl"]) {
@@ -1100,8 +1120,8 @@ async function resumeWatch() {
    Haken, Kommentare, Markierungen, Personen, Verteiler und Vorlagen werden mit einer
    JSON-Datei abgeglichen, die alle Boards im Team lesen und schreiben. Je Eintrag
    gewinnt die jüngste Änderung (Zeitstempel in state.touch). */
-const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll", "tagesstat"];
-const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "protoMinCalls", "rules", "filters", "cols", "gruppenFilter", "sort"];
+const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll", "tagesstat", "udDone"];
+const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "protoMinCalls", "rules", "filters", "cols", "gruppenFilter", "sort", "udienste"];
 let sharedHandle = null, pendingSharedHandle = null, sharedDirty = false, sharedBusy = false, sharedLastSync = null;
 /* Härtung v1.14: geschrieben wird NUR nach einem erfolgreichen Lese-/Merge-Zyklus.
    Lese- oder Parse-Fehler (Datei gesperrt, halb geschrieben, defekt) führen nie mehr
@@ -2020,13 +2040,18 @@ function fmtMarkup(text) {
   // Outlook rendert mit Words HTML-Import: Hintergründe auf Text brauchen mso-highlight,
   // Schriftfarben zusätzlich ein <font>-Tag – sonst kommen die Markierungen nicht an.
   let h = esc(text);
-  h = h.replace(/\[gelb\]([\s\S]*?)\[\/gelb\]/g, '<span style="background:#ffff00;background-color:#ffff00;mso-highlight:yellow;">$1</span>');
-  h = h.replace(/\[rot\]([\s\S]*?)\[\/rot\]/g, '<span style="background:#ff0000;background-color:#ff0000;mso-highlight:red;color:#000000;"><font color="#000000">$1</font></span>');
+  // Hintergrundfarbe auf Text verwirft Outlook beim Einfügen – eine Tabellenzelle mit bgcolor kommt
+  // dagegen sicher an (die Kopfzeilen der Mail-Tabellen beweisen es). Jede Markierung wird deshalb
+  // zu einer einzeiligen Tabelle; Markierungen wirken damit zeilenweise, wie in den Fußtexten üblich.
+  const markBlock = (bg, inner) => `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;display:table;"><tr><td bgcolor="${bg}" style="background:${bg};background-color:${bg};padding:0 3px;color:#000000;"><font color="#000000">${inner}</font></td></tr></table>`;
+  h = h.replace(/\[gelb\]([\s\S]*?)\[\/gelb\]/g, (m, t) => markBlock("#ffff00", t));
+  h = h.replace(/\[rot\]([\s\S]*?)\[\/rot\]/g, (m, t) => markBlock("#ff0000", t));
   h = h.replace(/\[rottext\]([\s\S]*?)\[\/rottext\]/g, '<font color="#c00000"><span style="color:#c00000;">$1</span></font>');
   h = h.replace(/\[fett\]([\s\S]*?)\[\/fett\]/g, "<b>$1</b>");
   h = h.replace(/\[kursiv\]([\s\S]*?)\[\/kursiv\]/g, "<i>$1</i>");
   h = h.replace(/\[link=([^\]]*)\]([\s\S]*?)\[\/link\]/g, '<a href="$1">$2</a>');
-  return h.replace(/\n/g, "<br>");
+  // Eine Markierungs-Tabelle beendet die Zeile bereits – der folgende Umbruch würde eine Leerzeile erzeugen
+  return h.replace(/\n/g, "<br>").replace(/<\/table><br>/g, "</table>");
 }
 /* Zellen Outlook-fest: bgcolor-Attribut zusätzlich zum Style (background + background-color
    doppelt), Schriftfarbe zusätzlich als <font>-Tag – Words HTML-Import verwirft sonst gern. */
@@ -2161,6 +2186,90 @@ function buildMittwochMail(quelle, mitVerbleib) {
   const an = splitList(state.verteiler[quelle === "PD" ? "miPdAn" : "miSdAn"]);
   const cc = splitList(state.verteiler[quelle === "PD" ? "miPdCc" : "miSdCc"]);
   return { subject, an, cc, html, rows, plain: intro + "\n\n(Tabelle: bitte HTML-Einfügen verwenden)" };
+}
+/* ================= Unterstützungsdienste (Tagesaufgabe Dispatcher) =================
+   Ist jemand aus Consulting, SAP-CC oder Implementation Services für uns eingeplant, bekommt er die
+   offenen Calls seiner Gruppe als Mail: nach Status gruppiert, innerhalb nach letzter Aktion zum Kunden. */
+let udStep = null; // gewählter Dienst im Reiter
+function udienstDefs() {
+  return (Array.isArray(state.udienste) ? state.udienste : [])
+    .map(d => ({ ...d, k: String(d.k ?? "").trim(), members: String(d.gruppen ?? "").split(/[;,\n]/).map(x => x.trim().toLowerCase()).filter(Boolean) }))
+    .filter(d => d.k);
+}
+function udienstCandidates(d) { return allRows().filter(r => d.members.includes(String(r.Gruppe ?? "").trim().toLowerCase())); }
+const UD_STATUS_ORDER = ["in bearbeitung", "wartend"];
+function udienstRows(d) {
+  const ord = r => { const i = UD_STATUS_ORDER.indexOf(statusNorm(r)); return i < 0 ? 99 : i; };
+  return applyFilters("udienst", udienstCandidates(d)).sort((a, b) =>
+    ord(a) - ord(b) || String(a.Status ?? "").localeCompare(String(b.Status ?? ""), "de")
+    || ((a.LetzteInfo?.getTime() ?? 0) - (b.LetzteInfo?.getTime() ?? 0)));
+}
+/* Zeilenfarbe nach Priorität – wie in der Omnitracker-Ansicht, die bisher als Bild in der Mail stand */
+function prioRowStyle(r) {
+  const p = prioName(r.Prio);
+  return p === "rot" ? `background:${MAILCLR.red};` : p === "blau" ? "background:#dbe5f1;" : p === "grün" ? `background:${MAILCLR.green};` : "";
+}
+function udAnAufgeloest(k) {
+  const v = String((uiPref.udAn ??= {})[k] ?? "").trim();
+  if (!v) return [];
+  return v.split(/[;,]/).map(x => x.trim()).filter(Boolean).map(x => x.includes("@") ? x : (resolveMail(x) || x));
+}
+function buildUdienstMail(d) {
+  const rows = udienstRows(d);
+  const subject = `${d.k}-Support heute`;
+  const header = ["Nummer", "Erstellt", "Kunde", "Titel", "Status", "Letzte Aktion zum Kunden", "Letzte Änderung", "Wartend bis", "Dauer", "Bearbeiter"];
+  let html = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;">${fmtMarkup(d.intro || "")}<br><br>`;
+  if (rows.length) {
+    html += `<table style="${mailTableStyle()}"><tr>${header.map(v => th(v, MAIL_HDR)).join("")}</tr>`;
+    let cur = null;
+    for (const r of rows) {
+      const st = String(r.Status ?? "–");
+      if (st !== cur) {
+        cur = st;
+        const n = rows.filter(x => String(x.Status ?? "–") === st).length;
+        html += `<tr><td colspan="${header.length}" bgcolor="#f2f2f2" style="border:1px solid #999;padding:2px 6px;background-color:#f2f2f2;background:#f2f2f2;"><b>Status: ${esc(st)} (${n})</b></td></tr>`;
+      }
+      const z = prioRowStyle(r);
+      html += "<tr>" + td(r.Call, z) + td(r["Eröffnet"] ? fmtDT.format(r["Eröffnet"]) : "", z, true) + td(r.Kunde, z) + td(r.Titel, z) + td(r.Status, z, true)
+        + td(r.LetzteInfo ? fmtDT.format(r.LetzteInfo) : "–", z, true) + td(r["Letzte_Änderung"] ? fmtDT.format(r["Letzte_Änderung"]) : "", z, true)
+        + td(r.Wartend_bis ? fmtD.format(r.Wartend_bis) : "", z, true) + td(fmtDauer.format(r.Dauer ?? 0), z + "text-align:right;") + td(r.Bearbeiter, z, true) + "</tr>";
+    }
+    html += "</table>";
+  } else html += "<i>Aktuell keine offenen Calls.</i>";
+  html += "<br><br>" + fmtMarkup(d.fuss || "") + "</div>";
+  const plain = `${d.intro || ""}\n\n` + rows.map(r => [r.Call, r.Kunde ?? "", r.Titel ?? "", r.Status ?? "", r.LetzteInfo ? fmtDT.format(r.LetzteInfo) : ""].join("\t")).join("\n") + `\n\n${d.fuss || ""}`;
+  return { subject, an: udAnAufgeloest(d.k), cc: splitList(state.verteiler.udCc), html, plain, rows };
+}
+function renderUdienst(view) {
+  const defs = udienstDefs();
+  if (!defs.length) { view.innerHTML = `<div class="card"><h2>Unterstützungsdienste</h2><p class="empty">Keine Dienste definiert – in der Verwaltung unter „Unterstützungsdienste“ anlegen.</p></div>`; return; }
+  if (!defs.some(x => x.k === udStep)) udStep = defs[0].k;
+  const d = defs.find(x => x.k === udStep);
+  const m = buildUdienstMail(d);
+  const cand = udienstCandidates(d);
+  const done = state.udDone?.[d.k], doneHeute = !!(done && done.d === todayKey());
+  view.innerHTML = `<div class="card">
+    <h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Mail an Unterstützungsdienste <span class="pill ${m.rows.length ? "s-warn" : "s-ok"}">${m.rows.length} Calls</span>
+      ${doneHeute ? `<span class="pill s-ok" title="Für heute als erledigt markiert">${esc(d.k)} heute erledigt · ${esc(done.by ?? "")} ${done.ts ? fmtT.format(new Date(done.ts)) : ""}</span>` : ""}</h2>
+    <p class="sub">Tagesaufgabe des Dispatchers: Ist jemand aus einem Unterstützungsdienst eingeplant, bekommt er die offenen Calls seiner Gruppe – nach Status gruppiert, innerhalb nach letzter Aktion zum Kunden, Zeilenfarbe = Priorität. Empfänger hier eintragen; CC und Texte pflegt die Verwaltung.</p>
+    <div class="seg">${defs.map(x => `<button class="segbtn${x.k === d.k ? " seg-on" : ""}" data-udsel="${esc(x.k)}">${esc(x.k)} · ${esc(x.name || "")} (${udienstRows(x).length})${state.udDone?.[x.k]?.d === todayKey() ? " ✓" : ""}</button>`).join("")}</div>
+    ${filterPanel("udienst", cand)}
+    ${!cand.length && allRows().length ? `<div class="warnbox">Keine Calls mit Gruppe „${esc(d.gruppen ?? "")}“ im Datenstand. Gruppenname in der Verwaltung prüfen – und die Abfrage muss diese Gruppe liefern (Gruppenliste in SupportBoard-Abfrage.sql).</div>` : ""}
+    <div class="frow" style="margin:8px 0;align-items:center"><span class="flabel">An (heute eingeplant)</span><input type="text" id="udAn" value="${esc((uiPref.udAn ??= {})[d.k] ?? "")}" placeholder="E-Mail-Adresse oder Kürzel aus der Personen-Tabelle" style="min-width:340px"><span class="hint">wird auf diesem Gerät gemerkt</span></div>
+    ${mailMetaBlock(m)}${mailButtons(m, m.an)}
+    <div class="btnrow"><button class="small${doneHeute ? "" : " primary"}" id="btnUdDone">${doneHeute ? "Erledigt zurücknehmen" : "Als erledigt markieren (heute)"}</button></div>
+    <h2 style="margin-top:16px">Vorschau</h2>
+    <div class="mailpreview">${m.html}</div>
+  </div>`;
+  view.querySelectorAll("[data-udsel]").forEach(b => b.addEventListener("click", () => { udStep = b.dataset.udsel; render(); }));
+  const an = view.querySelector("#udAn");
+  an.addEventListener("change", () => { (uiPref.udAn ??= {})[d.k] = an.value.trim(); saveUiPref(); render(); });
+  bindMailButtons(view, () => buildUdienstMail(d), mm => mm.an);
+  view.querySelector("#btnUdDone").addEventListener("click", () => {
+    if (doneHeute) delete state.udDone[d.k]; else state.udDone[d.k] = { d: todayKey(), by: currentUser().k || "?", ts: Date.now() };
+    touch("udDone|" + d.k); saveState(); render();
+  });
+  bindFilterPanel(view);
 }
 function freitagCandidates(quelle) {
   const limit = nextWeekFriday();
@@ -2308,6 +2417,7 @@ function loadDemo() {
 const TABS = [
   { id: "heute", label: "Übersicht" },
   ...WF.map(w => ({ id: w.id, label: w.title, wf: true })),
+  { id: "udienst", label: "Unterstützungsdienste" },
   { id: "extreakt", label: "Keine ext. Reaktion" },
   { id: "last", label: "Auslastung", nurFuer: ["VKU"] },
   { id: "proto", label: "Supportmanager Protokoll" },
@@ -2481,6 +2591,7 @@ const NAV_ICONS = {
   aender: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
   haken: '<rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8 12.5l2.8 2.8L16.5 9"/>',
   wartend: '<path d="M6.5 3.5h11M6.5 20.5h11"/><path d="M7.5 3.5v1.8c0 3.2 4.5 4.2 4.5 6.7s-4.5 3.5-4.5 6.7v1.8"/><path d="M16.5 3.5v1.8c0 3.2-4.5 4.2-4.5 6.7s4.5 3.5 4.5 6.7v1.8"/>',
+  udienst: '<circle cx="9" cy="8" r="3"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="9.5" r="2.4"/><path d="M15.2 14.6A4.8 4.8 0 0 1 21 19.5"/>',
   extreakt: '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/>',
   last: '<line x1="5" y1="20" x2="5" y2="12"/><line x1="10.5" y1="20" x2="10.5" y2="6"/><line x1="16" y1="20" x2="16" y2="9.5"/><line x1="3" y1="20" x2="19" y2="20"/>',
   proto: '<rect x="5" y="4.5" width="14" height="16.5" rx="2"/><path d="M9 4.5a3 3 0 0 1 6 0"/><line x1="8.5" y1="10.5" x2="15.5" y2="10.5"/><line x1="8.5" y1="14" x2="15.5" y2="14"/><line x1="8.5" y1="17.5" x2="13" y2="17.5"/>',
@@ -3664,7 +3775,17 @@ function renderAdmin(view) {
         <tr><td>Mittwoch PD</td><td><input data-v="miPdAn" value="${esc(state.verteiler.miPdAn)}"></td><td><input data-v="miPdCc" value="${esc(state.verteiler.miPdCc)}"></td></tr>
         <tr><td>Mittwoch SD</td><td><input data-v="miSdAn" value="${esc(state.verteiler.miSdAn)}"></td><td><input data-v="miSdCc" value="${esc(state.verteiler.miSdCc)}"></td></tr>
         <tr><td>Freitag</td><td><span class="hint">automatisch: betroffene Bearbeiter</span></td><td><input data-v="frCc" value="${esc(state.verteiler.frCc)}"></td></tr>
+        <tr><td>Unterstützungsdienste</td><td><span class="hint">manuell im Reiter (eingeplante Person)</span></td><td><input data-v="udCc" value="${esc(state.verteiler.udCc ?? "")}" placeholder="z. B. Dispatcher-Gruppe"></td></tr>
       </tbody></table>
+      <h2 style="margin-top:18px">Unterstützungsdienste</h2>
+      <p class="sub">Dienste für die Tagesaufgabe „Mail an Unterstützungsdienste“. Gruppen = Bearbeitergruppen aus der Abfrage (Semikolon-getrennt, Groß-/Kleinschreibung egal). Einleitung und Fußtext verstehen [gelb]…[/gelb], [rot]…[/rot], [fett]…[/fett] und [link=Adresse]Text[/link].</p>
+      ${(state.udienste || []).map((d, i) => `<div class="fpanel" style="margin-bottom:8px">
+        <div class="frow"><span class="flabel">Kürzel</span><input data-udf="${i}|k" value="${esc(d.k ?? "")}" style="width:90px"><span class="flabel">Name</span><input data-udf="${i}|name" value="${esc(d.name ?? "")}" style="width:220px"><button class="small" data-uddel="${i}" title="Dienst entfernen" style="margin-left:auto">✕</button></div>
+        <div class="frow"><span class="flabel">Gruppen</span><input data-udf="${i}|gruppen" value="${esc(d.gruppen ?? "")}" style="flex:1"></div>
+        <div class="frow"><span class="flabel">Einleitung</span><textarea class="tpl-text" rows="3" data-udf="${i}|intro">${esc(d.intro ?? "")}</textarea></div>
+        <div class="frow"><span class="flabel">Fußtext</span><textarea class="tpl-text" rows="6" data-udf="${i}|fuss">${esc(d.fuss ?? "")}</textarea></div>
+      </div>`).join("")}
+      <div class="btnrow"><button class="small" id="btnUdAdd">+ Dienst</button></div>
       <h2 style="margin-top:18px">Grundregeln</h2>
       <p class="sub">Sichtbarkeits-Filter stehen direkt in den jeweiligen Ansichten („Filter“) – dort lassen sich unter „Sonstiges“ auch ${esc(state.internKunde || "MPDV")}-Calls und ${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")} ein- und ausblenden.</p>
       <table class="grid"><tbody>
@@ -3704,6 +3825,19 @@ function renderAdmin(view) {
   view.querySelectorAll("[data-tmdel]").forEach(b => b.addEventListener("click", () => { state.team.splice(+b.dataset.tmdel, 1); touch("cfg|team"); saveState(); render(); }));
   view.querySelector("#btnTeamAdd").addEventListener("click", () => { state.team.push({ k: "", name: "" }); touch("cfg|team"); saveState(); render(); });
   view.querySelectorAll("[data-cfg]").forEach(inp => inp.addEventListener("change", () => { state[inp.dataset.cfg] = inp.value.trim(); touch("cfg|" + inp.dataset.cfg); saveState(); render(); }));
+  view.querySelectorAll("[data-udf]").forEach(inp => inp.addEventListener("change", () => {
+    const [i, f] = inp.dataset.udf.split("|");
+    (state.udienste ??= [])[+i][f] = f === "intro" || f === "fuss" ? inp.value : inp.value.trim();
+    touch("cfg|udienste"); saveState(); if (f !== "intro" && f !== "fuss") render();
+  }));
+  view.querySelectorAll("[data-uddel]").forEach(b => b.addEventListener("click", () => {
+    if (!confirm("Diesen Unterstützungsdienst entfernen?")) return;
+    state.udienste.splice(+b.dataset.uddel, 1); touch("cfg|udienste"); saveState(); render();
+  }));
+  view.querySelector("#btnUdAdd")?.addEventListener("click", () => {
+    (state.udienste ??= []).push({ k: "", name: "", gruppen: "", intro: "Hallo,\n\nbitte die Calls heute in folgender Reihenfolge bearbeiten (sortiert nach „Letzte Aktion zum Kunden“):", fuss: "Bitte nach Abschluss der Tätigkeiten an die Statusmail denken.\n\nViele Grüße" });
+    touch("cfg|udienste"); saveState(); render();
+  });
   view.querySelectorAll("[data-fg]").forEach(inp => inp.addEventListener("change", () => {
     const [i, f] = inp.dataset.fg.split("|");
     state.gruppenFilter[+i][f] = inp.value.trim();
@@ -3767,6 +3901,7 @@ function render() {
   const w = WF.find(x => x.id === activeTab);
   if (activeTab === "heute") renderHeute(view);
   else if (w) renderWf(view, w);
+  else if (activeTab === "udienst") renderUdienst(view);
   else if (activeTab === "extreakt") renderExtReakt(view);
   else if (activeTab === "suche") renderSuche(view);
   else if (activeTab === "last") renderLast(view);

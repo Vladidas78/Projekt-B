@@ -1,6 +1,6 @@
 # Status: Supportmanagement Board
 
-**Stand:** v1.29 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-02
+**Stand:** v1.30 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-02
 
 ## Was ist das?
 
@@ -15,6 +15,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 - **Mittwochsmail-Generator:** Langläufer >10h, getrennt als Mail 1 (PD/ProdM) und Mail 2 (SD), mit Outlook-festen Farben
 - **Freitagsmail-Generator** mit Wochenauswertung
 - **OneNote-Tabelle** (mit leerer Verbleib-Spalte zum Ausfüllen)
+- **Mail an Unterstützungsdienste** (Tagesaufgabe Dispatcher): je Dienst die offenen Calls seiner Gruppe als fertige Mail, Empfänger manuell, CC aus der Verwaltung
 - **Team-Sharing ohne Server:** gemeinsame JSON auf dem Share, Merge nach Newest-wins
 - **ACK-Workflow:** Bestätigungen mit Grund, Zeitstempel und „geändert!“-Verweis, wenn sich der überwachte Teil eines Tickets danach ändert
 - **Kommentare** mit Zeitstempel und Autor, lange Kommentare zuklappbar
@@ -46,6 +47,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 | v1.27 | Parallelbetrieb: Kanal „prod“/„sqltest“ aus einem Quellcode; Testversion mit eigenem Browser-Speicher, eigener Team-Datei (`SupportBoard-Team-SQLTest.json`) und sichtbarer Markierung; Kanal-Kennung in der Team-Datei mit gegenseitiger Ablehnung; einmalige Übernahme des Produktivstands beim ersten Start; Prüfintervall 5 Min. und Export-Hinweis in der Testversion. Produktivversion funktional unverändert |
 | v1.28 | Teamwünsche: Reiter „Kritische Calls“ als Tagesliste mit ACK/Grund (Score ≥ 6, eigene Vorlagen mit {Score}); Spaltenreihenfolge per Ziehen/▲▼ (teamweit); Sortierung der Tabellen teamweit (`state.sort`); ACK-Zeilen rutschen ans Listenende; Filterleiste merkt sich Auf/Zu je Gerät (Ursache des „zufälligen“ Zuklappens behoben); Startseite mit Tagesstatistik (neu/geschlossen/offen, 14 Tage, aus teamweiten Tages-Schnappschüssen `state.tagesstat`), Auslastung 2nd Level je Bearbeiter mit Vortagstrend, Top 10 nach Dauer und Top 10 am längsten offen; unbekannte Bearbeitergruppen erscheinen als Bereich „Sonst.“ |
 | v1.29 | Top 10: Zähler „in 7 Tagen geschlossen“ je Liste (aus den Tages-Schnappschüssen, Top-10-Mitgliedschaft wird mitgespeichert) und „Tabelle kopieren“ fürs Supportmanager-Protokoll; Mail-Tabellen: Kopfzeile hell mit schwarzer Schrift statt schwarz/weiß, gelb/rot markierte Zellen zusätzlich fett mit fester Schriftfarbe, Zwischenablage als vollständiges HTML-Dokument und ungefiltert (`unsanitized`) |
+| v1.30 | Tagesaufgabe „Mail an Unterstützungsdienste“ (IMP, SAP-CC, CONS): offene Calls der Dienst-Gruppe nach Status gruppiert und nach letzter Aktion zum Kunden sortiert, Zeilenfarbe = Priorität, Einleitung/Fußtext je Dienst und CC in der Verwaltung, Empfänger je Gerät gemerkt, „heute erledigt“ teamweit; Fußzeilen-Markierungen [gelb]/[rot] als Tabellenzellen mit bgcolor, weil Outlook Text-Hintergründe verwirft |
 
 ## Feste Regeln
 
@@ -56,7 +58,8 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 - Die ACK-Spalte der Mittwochsmail-Vorbereitung ist rein intern und erscheint weder in der Mail noch in der OneNote-Tabelle
 - Team-Datei: Ein Handle wird nur übernommen, wenn es nachweislich dieselbe Datei ist; geschrieben wird ausschließlich nach erfolgreichem Lesen (readOk-Gate). Lässt der Browser keine Berechtigungsanfrage zu, kommt das Schreibrecht über den Speichern-Dialog (Modus „save“, pro Gerät gemerkt, heilt sich selbst)
 - Productmanagement wird in Mails als „ProdM“ abgekürzt
-- Mail-Tabellen: Kopfzeile hell (#d9e2f3) mit schwarzer Schrift – schwarz/weiß war die einzige Kombination, die unlesbar wird, wenn Outlook die Schriftfarbe verwirft oder im Dunkelmodus umfärbt. Markierte Zellen tragen Hintergrund (bgcolor + Style) UND fette Schrift mit fester Farbe (Style + font-Tag)
+- Mail-Tabellen: Kopfzeile hell (#d9e2f3) mit schwarzer Schrift – schwarz/weiß war die einzige Kombination, die unlesbar wird, wenn Outlook die Schriftfarbe verwirft oder im Dunkelmodus umfärbt. Markierte Zellen tragen Hintergrund (bgcolor + Style) UND fette Schrift mit fester Farbe (Style + font-Tag). Markierungen in Fließtext ([gelb]/[rot] in Einleitung und Fußtext) werden zu einzeiligen Tabellen mit bgcolor, weil Outlook Hintergrundfarben auf Text verwirft; sie wirken deshalb zeilenweise
+- Unterstützungsdienste: Gruppen der Dienste müssen in der WHERE-Liste der Abfrage enthalten sein, sonst bleibt die Liste leer (Hinweis im Reiter)
 - Kanal-Trennung (ab v1.27): Produktiv- und Testversion nutzen getrennte Speicherschlüssel (`smbState_v1` vs. `smbState_v1_sqltest`, IndexedDB `smbHandles` vs. `smbHandles_sqltest`). Die Team-Datei trägt `kanal`; Dateien ohne Kennung gelten als Produktivdateien. Eine Datei des anderen Kanals wird weder gemischt noch geschrieben
 - „Geschlossen“ in der Tagesstatistik ist abgeleitet: Der Export enthält nur offene Calls, gezählt wird, was im Vortags-Schnappschuss stand und heute fehlt (auch Calls, die den Auswertungsbereich verlassen haben). „Neu“ = Eröffnungsdatum am Tag, als Menge über den Tag gesammelt. Beispieldaten schreiben keinen Schnappschuss
 - Die Liste „Kritische Calls“ ist eine Sammelliste und löst kein ⚠ „steht auch in …“ in anderen Listen aus

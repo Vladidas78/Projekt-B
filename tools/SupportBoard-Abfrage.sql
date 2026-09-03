@@ -90,6 +90,9 @@ OUTER APPLY (
     ORDER BY r1.erstellt DESC
 ) AS lastAT
 
+/* Hier kommen weitere Gruppen dazu, sobald das Board sie braucht – z. B. die Unterstuetzungsdienste
+   (Consulting, SAP-CC, ImplementationServices) fuer die Tagesaufgabe "Mail an Unterstuetzungsdienste".
+   Die Gruppennamen muessen exakt so heissen wie in der Verwaltung des Boards eingetragen. */
 WHERE o.verantwortliche_gruppe IN (
           '3rd_SD', '3rd_PD', 'Productmanagement',
           '2nd_CAQ', '2nd_MF', '2nd_HR', '1st_Level', 'Hotline'
