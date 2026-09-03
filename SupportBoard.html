@@ -490,7 +490,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.30";
+const VERSION = "1.31";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -568,7 +568,7 @@ const DEFAULT_STATE = {
       aender: "Hi {BearbeiterVorname}, bei Call {Call} ({Kunde} – {Titel}) ist seit {TageOhneAenderung} Tagen nichts passiert. Passt da alles bzw. gibt es einen neuen Stand? Danke dir!",
       haken: "Hi {BearbeiterVorname}, zu Call {Call} ({Kunde} – {Titel}) ist der Lösungstermin {LT} gesetzt. Wurde der Kunde darüber schon informiert? Falls ja, gib mir kurz Bescheid – falls nein, informiere ihn bitte. Danke dir!",
       wartend: "Hi {BearbeiterVorname}, Call {Call} ({Kunde} – {Titel}) steht auf „Wartend“, aber das „Wartend bis“-Datum {WartendBis}. Magst du ein Datum in der Zukunft eintragen? Danke dir!",
-      krit: "Hi {BearbeiterVorname}, Call {Call} ({Kunde} – {Titel}) steht bei uns ganz oben auf der Liste (Score {Score}). Gibst du mir kurz einen Stand, wie es da weitergeht? Danke dir!"
+      krit: "Hi {BearbeiterVorname}, Call {Call} ({Kunde} – {Titel}) steht bei uns gerade ganz oben auf der Liste. Gibst du mir kurz einen Stand, wie es da weitergeht? Danke dir!"
     },
     wvl: {
       lt: "{MeinKuerzel} => {Bearbeiter}\n\nDer Lösungstermin ({LT}) zu Call {Call} ({Kunde} – {Titel}) ist überschritten. Bitte Kundenkommunikation aufnehmen und den LT anpassen.\n\nGruß\n{MeinVorname}",
@@ -576,7 +576,7 @@ const DEFAULT_STATE = {
       aender: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) wurde seit {TageOhneAenderung} Tagen nicht bearbeitet. Bitte Stand prüfen und den Call aktualisieren.\n\nGruß\n{MeinVorname}",
       haken: "{MeinKuerzel} => {Bearbeiter}\n\nZu Call {Call} ({Kunde} – {Titel}) ist der Lösungstermin {LT} gesetzt. Bitte prüfen, ob der Kunde über den Termin informiert wurde, und ihn andernfalls informieren. Sobald die Info beim Kunden ist, bitte kurze Rückmeldung.\n\nGruß\n{MeinVorname}",
       wartend: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) steht auf „Wartend“, aber das „Wartend bis“-Datum {WartendBis}. Bitte ein Datum in der Zukunft setzen.\n\nGruß\n{MeinVorname}",
-      krit: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) hat aktuell einen hohen Score ({Score}). Bitte Stand prüfen und den Call aktualisieren.\n\nGruß\n{MeinVorname}"
+      krit: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) steht aus Sicht des Supportmanagements aktuell besonders im Blick. Bitte Stand prüfen und den Call aktualisieren.\n\nGruß\n{MeinVorname}"
     }
   },
   user: "",      // Kürzel des angemeldeten Nutzers
@@ -690,13 +690,17 @@ const TPL_ALTLASTEN = [
   "Falls der LT schon kommuniziert ist, bitte den Haken „nicht werten für Kd.Komm.“ setzen. Danke!",
   "Falls ja, gib mir kurz Bescheid – dann setzen wir den Haken „nicht werten für Kd.Komm.“. Falls nein, informiere bitte den Kunden. Danke dir!",
   "Bitte dem Kunden einen aktuellen Stand mitteilen oder – falls der LT kommuniziert ist – den Haken „nicht werten für Kd.Komm.“ setzen.",
-  "Sobald die Info beim Kunden ist, bitte kurze Rückmeldung – dann wird der Haken „nicht werten für Kd.Komm.“ gesetzt."
+  "Sobald die Info beim Kunden ist, bitte kurze Rückmeldung – dann wird der Haken „nicht werten für Kd.Komm.“ gesetzt.",
+  "Hi {BearbeiterVorname}, Call {Call} ({Kunde} – {Titel}) steht bei uns ganz oben auf der Liste (Score {Score}). Gibst du mir kurz einen Stand, wie es da weitergeht? Danke dir!",
+  "Call {Call} ({Kunde} – {Titel}) hat aktuell einen hohen Score ({Score}). Bitte Stand prüfen und den Call aktualisieren."
 ];
 const TPL_ERSATZ = [
   "Falls du ihn bereits informiert hast, sag mir einfach kurz Bescheid. Danke!",
   "Falls ja, gib mir kurz Bescheid – falls nein, informiere ihn bitte. Danke dir!",
   "Bitte dem Kunden einen aktuellen Stand mitteilen. Wurde der Kunde bereits informiert, genügt eine kurze Rückmeldung.",
-  "Sobald die Info beim Kunden ist, bitte kurze Rückmeldung."
+  "Sobald die Info beim Kunden ist, bitte kurze Rückmeldung.",
+  "Hi {BearbeiterVorname}, Call {Call} ({Kunde} – {Titel}) steht bei uns gerade ganz oben auf der Liste. Gibst du mir kurz einen Stand, wie es da weitergeht? Danke dir!",
+  "Call {Call} ({Kunde} – {Titel}) steht aus Sicht des Supportmanagements aktuell besonders im Blick. Bitte Stand prüfen und den Call aktualisieren."
 ];
 function migrateTemplates() {
   let geaendert = false;
@@ -712,13 +716,6 @@ function migrateTemplates() {
   }
   if (geaendert) { touch("cfg|templates"); try { localStorage.setItem(LS_STATE, JSON.stringify(state)); } catch (e) {} }
   return geaendert;
-}
-/* Begriffe, die in Texten an Bearbeiter nichts zu suchen haben */
-const TPL_INTERN = ["nicht werten", "haken", "kd.komm", "controlling", "score", "auswerten"];
-function internWarnung(txt) {
-  const t = String(txt || "").toLowerCase();
-  const treffer = TPL_INTERN.filter(w => t.includes(w));
-  return treffer.length ? treffer : null;
 }
 
 /* Nach Laden/Abgleich mit älteren Ständen (z. B. Team-JSON aus v1.10): neue
@@ -3635,7 +3632,7 @@ function renderFr(view) {
 
 /* ================= Vorlagen-Tab (Konzept: Workflow-Umschalter, Teams/WVL nebeneinander,
    Platzhalter-Chips mit Einfügen an Cursorposition, Live-Vorschau mit Beispiel-Call) ================= */
-const PLACEHOLDERS = ["{Call}", "{Kunde}", "{Titel}", "{Score}", "{Bearbeiter}", "{BearbeiterName}", "{BearbeiterVorname}", "{LT}", "{Status}", "{TageOhneInfo}", "{TageOhneAenderung}", "{MeinKuerzel}", "{MeinVorname}"];
+const PLACEHOLDERS = ["{Call}", "{Kunde}", "{Titel}", "{Bearbeiter}", "{BearbeiterName}", "{BearbeiterVorname}", "{LT}", "{Status}", "{TageOhneInfo}", "{TageOhneAenderung}", "{MeinKuerzel}", "{MeinVorname}"];
 function exampleRow() {
   return allRows()[0] ?? {
     Call: 156285, Kunde: "VOSS", Titel: "Werkzeugverwaltung: Standmenge falsch", Bearbeiter: "HCH",
@@ -3648,15 +3645,9 @@ function previewHtml(tplText) {
   return fmtMarkup(filled).replace(/\{(\w+)\}/g, '<span style="color:var(--crit);font-weight:650">{$1}</span>');
 }
 const FORMAT_CHIPS = ["[gelb]…[/gelb]", "[rot]…[/rot]", "[rottext]…[/rottext]", "[fett]…[/fett]", "[kursiv]…[/kursiv]", "[link=https://…]Text[/link]"];
-function tplWarnHtml(txt, extern) {
-  if (!extern) return "";
-  const t = internWarnung(txt);
-  return `<div class="tpl-warn ${t ? "" : "hidden"}">⚠ Dieser Text geht an den Bearbeiter. Interner Begriff gefunden: <b>${t ? esc(t.join(", ")) : ""}</b> – der Haken „nicht werten für Kd.Komm.“ ist allein Sache des Supportmanagements und sollte hier nicht auftauchen.</div>`;
-}
 function tplEditorCard(label, getVal, setVal, rows, chips, extern) {
   return `<div class="card tpl-editor">
     <h2>${esc(label)} <span class="pill s-ok save-pill hidden">Gespeichert ✓</span></h2>
-    ${tplWarnHtml(getVal(), extern)}
     <div class="ph-row">${(chips ?? PLACEHOLDERS).map(p => `<button class="small ph" data-ph="${esc(p)}" title="An Cursorposition einfügen">${esc(p)}</button>`).join("")}</div>
     <textarea class="tpl-text" rows="${rows || 5}">${esc(getVal())}</textarea>
     <div class="hint preview"><b>Vorschau (Beispiel-Call):</b><br><span class="pv">${previewHtml(getVal())}</span></div>
@@ -3666,15 +3657,9 @@ function bindTplEditor(cardEl, getVal, setVal) {
   const ta = cardEl.querySelector(".tpl-text");
   const pv = cardEl.querySelector(".pv");
   const pill = cardEl.querySelector(".save-pill");
-  const warn = cardEl.querySelector(".tpl-warn");
   ta.addEventListener("input", () => {
     setVal(ta.value); touch("cfg|templates"); touch("cfg|intros"); saveState();
     pv.innerHTML = previewHtml(ta.value);
-    if (warn) {
-      const t = internWarnung(ta.value);
-      warn.classList.toggle("hidden", !t);
-      if (t) warn.querySelector("b").textContent = t.join(", ");
-    }
     pill.classList.remove("hidden");
     clearTimeout(pill._t); pill._t = setTimeout(() => pill.classList.add("hidden"), 1500);
   });
@@ -3684,10 +3669,10 @@ function bindTplEditor(cardEl, getVal, setVal) {
   }));
 }
 function renderTpl(view) {
-  const wfLabels = { lt: "Überschrittener LT", kdkomm: "Ohne Kundenkommunikation", aender: "Ohne Änderung", haken: "Haken-Prüfung", wartend: "Wartend ohne Datum" };
+  const wfLabels = { krit: "Kritische Calls", lt: "Überschrittener LT", kdkomm: "Ohne Kundenkommunikation", aender: "Ohne Änderung", haken: "Haken-Prüfung", wartend: "Wartend ohne Datum" };
   view.innerHTML = `<div class="card">
     <h2>Textbausteine</h2>
-    <p class="sub">Platzhalter per Klick einfügen; unbekannte erscheinen in der Vorschau rot. Diese Texte gehen an die Bearbeiter – interne Controlling-Begriffe (Haken „nicht werten für Kd.Komm.“, Score) gehören nicht hinein.</p>
+    <p class="sub">Platzhalter per Klick einfügen; unbekannte erscheinen in der Vorschau rot.</p>
     <div class="seg">${WF.map(w => `<button class="chip segbtn ${tplWf === w.tpl ? "seg-on" : ""}" data-wf="${w.tpl}">${esc(wfLabels[w.tpl])}</button>`).join("")}</div>
     <div class="tpl-grid" id="tplGrid"></div>
   </div>
@@ -3695,6 +3680,11 @@ function renderTpl(view) {
     <h2>Mail-Einleitungen & Fußtexte</h2>
     <p class="sub">Formatierung: [gelb]…[/gelb] und [rot]…[/rot] hinterlegen farbig, [rottext] färbt die Schrift, [fett] und [kursiv] wie benannt, [link=Adresse]Text[/link] wird zum Link (z. B. auf das Langläufer-OneNote im PD-Fußtext).</p>
     <div class="tpl-grid tpl-grid3" id="introGrid"></div>
+  </div>
+  <div class="card">
+    <h2>Mail an Unterstützungsdienste</h2>
+    <p class="sub">Einleitung und Fußtext je Dienst; gleiche Formatierung wie oben. Kürzel, Name und Gruppen der Dienste pflegt die Verwaltung.</p>
+    <div class="tpl-grid" id="udGrid"></div>
   </div>`;
   const grid = view.querySelector("#tplGrid");
   grid.innerHTML =
@@ -3710,6 +3700,16 @@ function renderTpl(view) {
   ig.querySelectorAll(".tpl-editor").forEach((el, i) => {
     const key = intros[i][1];
     bindTplEditor(el, () => state.intros[key], v => state.intros[key] = v);
+  });
+  const ug = view.querySelector("#udGrid");
+  const ud = (Array.isArray(state.udienste) ? state.udienste : []).map((d, i) => ({ d, i })).filter(x => String(x.d.k ?? "").trim());
+  const udFelder = ud.flatMap(({ d, i }) => [[`Einleitung ${d.k}-Support`, i, "intro", 4], [`Fußtext ${d.k}-Support`, i, "fuss", 9]]);
+  ug.innerHTML = udFelder.length
+    ? udFelder.map(([lab, i, f, rows]) => tplEditorCard(lab, () => state.udienste[i][f] ?? "", v => { state.udienste[i][f] = v; touch("cfg|udienste"); }, rows, FORMAT_CHIPS)).join("")
+    : `<p class="empty">Keine Dienste angelegt – in der Verwaltung unter „Unterstützungsdienste“.</p>`;
+  ug.querySelectorAll(".tpl-editor").forEach((el, n) => {
+    const [, i, f] = udFelder[n];
+    bindTplEditor(el, () => state.udienste[i][f] ?? "", v => { state.udienste[i][f] = v; touch("cfg|udienste"); });
   });
 }
 
@@ -3778,12 +3778,10 @@ function renderAdmin(view) {
         <tr><td>Unterstützungsdienste</td><td><span class="hint">manuell im Reiter (eingeplante Person)</span></td><td><input data-v="udCc" value="${esc(state.verteiler.udCc ?? "")}" placeholder="z. B. Dispatcher-Gruppe"></td></tr>
       </tbody></table>
       <h2 style="margin-top:18px">Unterstützungsdienste</h2>
-      <p class="sub">Dienste für die Tagesaufgabe „Mail an Unterstützungsdienste“. Gruppen = Bearbeitergruppen aus der Abfrage (Semikolon-getrennt, Groß-/Kleinschreibung egal). Einleitung und Fußtext verstehen [gelb]…[/gelb], [rot]…[/rot], [fett]…[/fett] und [link=Adresse]Text[/link].</p>
+      <p class="sub">Dienste für die Tagesaufgabe „Mail an Unterstützungsdienste“. Gruppen = Bearbeitergruppen aus der Abfrage (Semikolon-getrennt, Groß-/Kleinschreibung egal). Einleitung und Fußtext stehen im Reiter „Vorlagen“.</p>
       ${(state.udienste || []).map((d, i) => `<div class="fpanel" style="margin-bottom:8px">
         <div class="frow"><span class="flabel">Kürzel</span><input data-udf="${i}|k" value="${esc(d.k ?? "")}" style="width:90px"><span class="flabel">Name</span><input data-udf="${i}|name" value="${esc(d.name ?? "")}" style="width:220px"><button class="small" data-uddel="${i}" title="Dienst entfernen" style="margin-left:auto">✕</button></div>
         <div class="frow"><span class="flabel">Gruppen</span><input data-udf="${i}|gruppen" value="${esc(d.gruppen ?? "")}" style="flex:1"></div>
-        <div class="frow"><span class="flabel">Einleitung</span><textarea class="tpl-text" rows="3" data-udf="${i}|intro">${esc(d.intro ?? "")}</textarea></div>
-        <div class="frow"><span class="flabel">Fußtext</span><textarea class="tpl-text" rows="6" data-udf="${i}|fuss">${esc(d.fuss ?? "")}</textarea></div>
       </div>`).join("")}
       <div class="btnrow"><button class="small" id="btnUdAdd">+ Dienst</button></div>
       <h2 style="margin-top:18px">Grundregeln</h2>

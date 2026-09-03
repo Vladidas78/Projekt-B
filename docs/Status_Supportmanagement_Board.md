@@ -1,6 +1,6 @@
 # Status: Supportmanagement Board
 
-**Stand:** v1.30 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-02
+**Stand:** v1.31 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-02
 
 ## Was ist das?
 
@@ -48,6 +48,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 | v1.28 | Teamwünsche: Reiter „Kritische Calls“ als Tagesliste mit ACK/Grund (Score ≥ 6, eigene Vorlagen mit {Score}); Spaltenreihenfolge per Ziehen/▲▼ (teamweit); Sortierung der Tabellen teamweit (`state.sort`); ACK-Zeilen rutschen ans Listenende; Filterleiste merkt sich Auf/Zu je Gerät (Ursache des „zufälligen“ Zuklappens behoben); Startseite mit Tagesstatistik (neu/geschlossen/offen, 14 Tage, aus teamweiten Tages-Schnappschüssen `state.tagesstat`), Auslastung 2nd Level je Bearbeiter mit Vortagstrend, Top 10 nach Dauer und Top 10 am längsten offen; unbekannte Bearbeitergruppen erscheinen als Bereich „Sonst.“ |
 | v1.29 | Top 10: Zähler „in 7 Tagen geschlossen“ je Liste (aus den Tages-Schnappschüssen, Top-10-Mitgliedschaft wird mitgespeichert) und „Tabelle kopieren“ fürs Supportmanager-Protokoll; Mail-Tabellen: Kopfzeile hell mit schwarzer Schrift statt schwarz/weiß, gelb/rot markierte Zellen zusätzlich fett mit fester Schriftfarbe, Zwischenablage als vollständiges HTML-Dokument und ungefiltert (`unsanitized`) |
 | v1.30 | Tagesaufgabe „Mail an Unterstützungsdienste“ (IMP, SAP-CC, CONS): offene Calls der Dienst-Gruppe nach Status gruppiert und nach letzter Aktion zum Kunden sortiert, Zeilenfarbe = Priorität, Einleitung/Fußtext je Dienst und CC in der Verwaltung, Empfänger je Gerät gemerkt, „heute erledigt“ teamweit; Fußzeilen-Markierungen [gelb]/[rot] als Tabellenzellen mit bgcolor, weil Outlook Text-Hintergründe verwirft |
+| v1.31 | Warnhinweis „interner Begriff“ im Vorlagen-Editor entfernt (auf Wunsch des Teams); Vorlagen „Kritische Calls“ ohne Controlling-Begriff (alte Texte werden beim Laden bereinigt), {Score} nicht mehr als Platzhalter-Chip; Einleitung/Fußtext der Unterstützungsdienste im Reiter „Vorlagen“ statt in der Verwaltung; Chip „Kritische Calls“ im Vorlagen-Reiter beschriftet |
 
 ## Feste Regeln
 
