@@ -493,7 +493,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.39";
+const VERSION = "1.40";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -745,6 +745,13 @@ function normalizeState() {
   if (state.filters.extreakt) delete state.filters.extreakt;
   if (!state.filters.sla.v37) { state.filters.sla.usa = true; state.filters.sla.asia = true; state.filters.sla.v37 = 1; } // v1.37: USA/Asien ab Werk ausgeschlossen
   slaVorgabenEinspielen();
+  // v1.40: Spalte „Letzte Info an Kd.“ einmalig in eine bereits gespeicherte Auswahl von „Ohne Kd.-Komm.“ aufnehmen (vor „o. Info“)
+  state.cols ??= {};
+  if (!state.cols.v40) {
+    const sel = state.cols.kdkomm;
+    if (Array.isArray(sel) && sel.length && !sel.includes("letzteinfo")) { const i = sel.indexOf("info"); sel.splice(i < 0 ? sel.length : i, 0, "letzteinfo"); }
+    state.cols.v40 = 1;
+  }
   state.verteiler.udCc ??= "";
   if (!Array.isArray(state.udienste)) state.udienste = structuredClone(DEFAULT_STATE.udienste);
   else for (const d of state.udienste) { // ältere Stände: fehlende Texte aus den Standards des gleichen Kürzels ergänzen
@@ -2461,7 +2468,7 @@ function loadDemo() {
       "Letzte_Änderung": new Date(now() - ch * DAY),
       Wartend_bis: status === "Wartend" && rnd() < 0.7 ? new Date(now().getTime() + (rnd() - 0.4) * 30 * DAY) : null,
       "Lösung_bis": lt, "Terminänderungen": pickW([[0, 45], [1, 25], [2, 14], [3, 8], [5, 5], [9, 3]]),
-      Haken: haken ? "Ja" : "Nein", LetzteInfo: null, TageOhneInfo: infoDays,
+      Haken: haken ? "Ja" : "Nein", LetzteInfo: infoDays != null ? new Date(todayStart().getTime() - (infoDays + 1) * DAY) : null, TageOhneInfo: infoDays,
       Score: mult * pts
     });
   }
@@ -2713,13 +2720,16 @@ const COLS = {
               return `<td class="tnum nowrap ${bad ? "c-crit" : ""}">${r.Wartend_bis ? fmtD.format(r.Wartend_bis) : "fehlt"}</td>`; } },
   aend:   { label: "Letzte Änd.", sort: r => r["Letzte_Änderung"]?.getTime() ?? 0,
             cell: r => { const d = daysSince(r["Letzte_Änderung"]); return `<td class="tnum nowrap ${d >= 30 ? "c-crit" : d >= 14 ? "c-warn" : ""}">${r["Letzte_Änderung"] ? fmtD.format(r["Letzte_Änderung"]) : "–"}</td>`; } },
+  letzteinfo: { label: "Letzte Info an Kd.", sort: r => r.LetzteInfo?.getTime() ?? 0,
+            cell: r => `<td class="tnum nowrap"${r.LetzteInfo ? "" : ' title="Die Quelle liefert für diesen Call kein Datum der letzten Kundeninfo"'}>${r.LetzteInfo ? fmtD.format(r.LetzteInfo) : "–"}</td>` },
   info:   { label: "o. Info", align: "r", sort: r => tageOhneInfo(r) ?? -1, cell: r => `<td class="ta-r tnum">${tageOhneInfo(r) ?? "–"}</td>` },
   termaend: { label: "Term.-Änd.", align: "r", sort: r => Number(r["Terminänderungen"]) || 0, cell: r => `<td class="ta-r tnum">${esc(r["Terminänderungen"] ?? "–")}</td>` },
   dauer:  { label: "Dauer", align: "r", sort: r => Number(r.Dauer) || 0, cell: r => `<td class="ta-r tnum">${fmtDauer.format(r.Dauer ?? 0)}</td>` }
 };
-const COL_ORDER = ["score", "prio", "call", "quelle", "gruppe", "bearbeiter", "kunde", "supman", "titel", "status", "eroeffnet", "lt", "wartbis", "aend", "info", "termaend", "dauer"];
+const COL_ORDER = ["score", "prio", "call", "quelle", "gruppe", "bearbeiter", "kunde", "supman", "titel", "status", "eroeffnet", "lt", "wartbis", "aend", "letzteinfo", "info", "termaend", "dauer"];
 const WF_DEFAULT_COLS = ["score", "prio", "call", "gruppe", "bearbeiter", "kunde", "titel", "status", "lt", "aend", "info", "dauer"];
 const WF_DEFAULT_COLS_BY = { // abweichende Standards je Liste
+  kdkomm: ["score", "prio", "call", "gruppe", "bearbeiter", "kunde", "titel", "status", "lt", "aend", "letzteinfo", "info", "dauer"],
   krit: ["score", "prio", "call", "quelle", "gruppe", "bearbeiter", "kunde", "titel", "status", "lt", "aend", "info", "dauer"],
   wartend: ["score", "prio", "call", "gruppe", "bearbeiter", "kunde", "titel", "wartbis", "aend", "dauer"]
 };

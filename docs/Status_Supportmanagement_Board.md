@@ -1,6 +1,6 @@
 # Status: Supportmanagement Board
 
-**Stand:** v1.39 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-03
+**Stand:** v1.40 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-03
 
 ## Was ist das?
 
@@ -58,6 +58,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 | v1.37 | Reaktionszeit nur in Geschäftszeit (Mo–Do 08:00–17:30, Fr 08:00–16:30; `GESCHAEFTSZEIT`, `geschaeftszeit()`): Dauer bis zur ersten Reaktion, Fristen, „offen seit“ und Alter offener Calls; Kundengruppen USA und Asien wie SaaS (`KUNDENGRUPPEN`, `state.usaKunden`/`state.asiaKunden`, Chips in jeder Filterleiste), im Reaktionszeit-Filter ab Werk ausgeblendet |
 | v1.38 | Reiter „Keine ext. Reaktion“ entfernt (Liste nach letzter externer Reaktion; die erste Reaktion ist das, was zählt, danach greifen die Controlling-Listen). Reiter „Reaktionszeit“ bleibt samt Tabelle der offenen Calls ohne erste Reaktion |
 | v1.39 | Frisch bestätigte (ACK) Zeilen bleiben an ihrer Stelle, solange die ACK-Details aufgeklappt sind (`frischAcks`, nur Sitzung); Zuklappen (▾) oder Reiterwechsel lässt sie ans Listenende sinken. Aufklappen einer alten Bestätigung verschiebt nichts |
+| v1.40 | Spalte „Letzte Info an Kd.“ (Datum der letzten Kundeninfo) in den Tageslisten, sortierbar; Standard in „Ohne Kd.-Komm.“ links neben „o. Info“, in bereits gespeicherte Spaltenauswahlen dieser Liste einmalig ergänzt (`state.cols.v40`); Beispieldaten mit passendem Datum |
 
 ## Feste Regeln
 

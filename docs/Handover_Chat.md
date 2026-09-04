@@ -4,7 +4,7 @@
 VKU (Vladimir Kulakow, Supportmanager MPDV) entwickelt das „Supportmanagement Board“ iterativ weiter: eine Single-File-HTML-Anwendung (kein Server, kein Framework, SheetJS eingebettet) für Dispatcher und Supportmanager. Datenquelle ist ein CSV-Export aus der Omnitracker-Schattendatenbank (PowerShell-Skript, nur lesend, alle 15 Min. per Aufgabenplanung). Team-Sync über eine gemeinsame JSON auf dem Share (File System Access API). Produktiv- und Testversion („Testversion SQL“) laufen parallel mit getrennten Speicherschlüsseln.
 
 ## Aktueller Stand
-Version **v1.39**, alles committet und gepusht auf Branch `claude/support-board-handover-jbau3c` im Repo `vladidas78/projekt-b`. Artefakt-URL (immer mit `url` republishen, nie neu anlegen): `https://claude.ai/code/artifact/025f646d-502f-42c3-9629-b7d9ecbe2a3a`.
+Version **v1.40**, alles committet und gepusht auf Branch `claude/letzte-info-spalte-b48dqp` (baut auf `claude/support-board-handover-jbau3c` = v1.39 auf) im Repo `vladidas78/projekt-b`. Artefakt-URL (immer mit `url` republishen, nie neu anlegen): `https://claude.ai/code/artifact/025f646d-502f-42c3-9629-b7d9ecbe2a3a`.
 
 Seit v1.26 in dieser Sitzung gebaut:
 - v1.27 Kanaltrennung prod/sqltest (`KANAL`, Suffix `_sqltest` an allen Speicherschlüsseln, Team-Datei trägt `kanal`)
@@ -17,6 +17,7 @@ Seit v1.26 in dieser Sitzung gebaut:
 - v1.37 Reaktionszeit nur in Geschäftszeit (Mo–Do 08:00–17:30, Fr 08:00–16:30); Kundengruppen USA/Asien wie SaaS, in Reaktionszeit ab Werk ausgeblendet
 - v1.38 Reiter „Keine ext. Reaktion“ entfernt (nur erste Reaktion zählt, danach Controlling-Listen)
 - v1.39 frisch bestätigte ACK-Zeilen bleiben oben, bis ACK-Details zugeklappt werden oder der Reiter wechselt (`frischAcks`, nur Sitzung)
+- v1.40 Spalte „Letzte Info an Kd.“ (`letzteinfo`, Datum aus dem Export) in den Tageslisten; Standard in „Ohne Kd.-Komm.“ vor „o. Info“, einmalige Ergänzung gespeicherter Auswahlen per `state.cols.v40` in `normalizeState()`
 
 Skript-Betrieb (`tools/SupportBoard-Export.ps1`): Passwort per DPAPI-Datei (`-SetPassword`), `-Preview` zum Testen, Aufgabenplanung per `Register-ScheduledTask` (Batteriebetrieb erlaubt), stiller Start über `tools/SupportBoard-Export-leise.vbs`. Skript liest ausschließlich (ein SELECT, Schlüsselwortprüfung, ReadUncommitted, Rollback, Leserecht-Konto) – es kann nichts in die Schattendatenbank schreiben.
 
@@ -35,7 +36,7 @@ Skript-Betrieb (`tools/SupportBoard-Export.ps1`): Passwort per DPAPI-Datei (`-Se
 ## Artefakte / Code / Daten
 Repo `/home/user/Projekt-B`: `SupportBoard.html`, `SupportBoard-SQLTest.html`, `docs/Status_Supportmanagement_Board.md` (Versionshistorie + feste Regeln, immer fortschreiben), `docs/Anleitung_Parallelbetrieb_SQL-Test.md`, `docs/Anleitung_IT_SupportBoard.md`, `docs/Anleitung_Team_Browser.md`, `docs/IT-Ticket_Datenbereitstellung.md`, `tools/SupportBoard-Abfrage.sql`, `tools/SupportBoard-Export.ps1`, `tools/SupportBoard-Export-leise.vbs`, `tools/Anleitung_SQL-Export.md`.
 
-Quelle und Werkzeuge liegen im Scratchpad (nach Sitzungsende weg, dann aus `SupportBoard.html` rekonstruieren: Quelle = Body ohne `<!doctype>`/`<html>`/`<head>`-Hülle, SheetJS durch `/*__SHEETJS__*/` ersetzen, `const KANAL = "prod"; /*__KANAL__*/`): `board.html` (Quelle, `const VERSION = "1.39"`), `build.py`, `package/dist/xlsx.full.min.js`, Tests `test-kanal-v127.js`, `test-v128.js`, `test-v129.js`, `test-v130.js`, `test-v132.js`, `test-v136.js`, `test-v139.js` (Playwright-core, Chromium `/opt/pw-browsers/chromium`, `--no-sandbox`), `Testdaten_SQL-Export.csv`.
+Quelle und Werkzeuge liegen im Scratchpad (nach Sitzungsende weg, dann aus `SupportBoard.html` rekonstruieren: Quelle = Body ohne `<!doctype>`/`<html>`/`<head>`-Hülle, SheetJS durch `/*__SHEETJS__*/` ersetzen, `const KANAL = "prod"; /*__KANAL__*/`): `board.html` (Quelle, `const VERSION = "1.40"`), `build.py`, `package/dist/xlsx.full.min.js`, Tests `test-kanal-v127.js`, `test-v128.js`, `test-v129.js`, `test-v130.js`, `test-v132.js`, `test-v136.js`, `test-v139.js` (Playwright-core, Chromium `/opt/pw-browsers/chromium`, `--no-sandbox`), `Testdaten_SQL-Export.csv`.
 
 `build.py`:
 ```python
@@ -76,4 +77,4 @@ Claude-Session: https://claude.ai/code/session_01P7W6v3csZhLqctX666nyvt
 Deutsch, direkt, kurze Rückfragen nur wenn nötig. Selbstständig umsetzen, testen (Playwright), beide HTML-Dateien als Datei liefern, Artefakt republishen, Ursachen erklären, Grenzen ehrlich benennen. Bei Fragen nach Optionen: Optionen mit Empfehlung, dann auf Freigabe warten. Keine Rückfragen-Schleifen.
 
 ## Erste Aktion im neuen Chat
-Repo-Stand prüfen (`git log --oneline | head -3` auf Branch `claude/support-board-handover-jbau3c`, HEAD = v1.39), `board.html` aus `SupportBoard.html` rekonstruieren, falls das Scratchpad leer ist, und dann auf den nächsten Wunsch von VKU warten. Nächste Version ist v1.40.
+Repo-Stand prüfen (`git log --oneline | head -3` auf Branch `claude/letzte-info-spalte-b48dqp`, HEAD = v1.40), `board.html` aus `SupportBoard.html` rekonstruieren, falls das Scratchpad leer ist, und dann auf den nächsten Wunsch von VKU warten. Nächste Version ist v1.41.
