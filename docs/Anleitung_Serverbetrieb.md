@@ -129,6 +129,27 @@ Bleibt eine versehentlich aktiv, passiert nichts Schlimmes: Beide Fassungen prü
 
 zeigt Zustand der Aufgabe, letzten und nächsten Lauf, Alter und Zeilenzahl der CSV und die letzten zehn Logzeilen. Vom Arbeitsplatz aus reicht ein Blick in `SupportBoard-Export.log` im Teamshare-Ordner. Fehler landen zusätzlich im Ereignisprotokoll des Servers (Anwendung, Quelle `SupportBoard-Export`), damit die IT sie mit ihren Mitteln überwachen kann.
 
+## Kein schwarzes Fenster
+
+Auf dem Notebook blitzt alle 15 Minuten ein PowerShell-Fenster auf, weil die Aufgabe dort „nur ausführen, wenn der Benutzer angemeldet ist“ in der eigenen Sitzung läuft. Auf dem Server passiert das nicht: Die Aufgabe läuft unter dem Dienstkonto (oder SYSTEM) „unabhängig von der Benutzeranmeldung“ in einer unsichtbaren Sitzung, auch wenn gerade jemand per Remotedesktop angemeldet ist. Zusätzlich trägt `-Install` die Aufgabe mit `-WindowStyle Hidden` ein.
+
+Prüfen, ob die Aufgabe wirklich unsichtbar läuft:
+
+```powershell
+(Get-ScheduledTask -TaskName "Supportboard Datenexport (Server)").Principal | Format-List UserId, LogonType
+```
+
+Erwartet: `LogonType : Password` (Dienstkonto oder gMSA) oder `ServiceAccount` (SYSTEM). Steht dort `Interactive`, wurde die Aufgabe von Hand auf „nur bei Anmeldung“ umgestellt; dann `-Install` erneut ausführen.
+
+Erscheint trotzdem ein Fenster, die Aktion auf den lautlosen Starter umstellen (`SupportBoard-Export-Server-leise.vbs` liegt neben dem Skript):
+
+```powershell
+$a = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument '"C:\Tools\SupportBoard\SupportBoard-Export-Server-leise.vbs"'
+Set-ScheduledTask -TaskName "Supportboard Datenexport (Server)" -Action $a
+```
+
+Zurück auf die direkte Aktion geht es jederzeit mit `-Install`.
+
 ## Was sich für das Board ändert
 
 Nichts. Es liest weiter `SupportBoard-Daten.csv` aus dem Ordner, den es überwacht. Weil der Server auch nachts und am Wochenende läuft, ist die CSV morgens bereits frisch. „Jetzt synchronisieren“ liest wie bisher die aktuelle Datei ein; ein Lauf des Skripts von Hand ist mit dem 10-Minuten-Takt praktisch nie nötig. Wer ihn trotzdem braucht, startet auf dem Server `.\SupportBoard-Export-Server.ps1 -Jetzt`.

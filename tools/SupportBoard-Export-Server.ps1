@@ -223,7 +223,10 @@ if ($Install) {
     # Ereignisquelle fuer Fehlermeldungen im Windows-Ereignisprotokoll (einmalig, braucht Adminrechte)
     try { if (-not [System.Diagnostics.EventLog]::SourceExists($EreignisQuelle)) { New-EventLog -LogName Application -Source $EreignisQuelle } } catch { }
 
-    $aktion   = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $SkriptPfad) -WorkingDirectory $Basis
+    # Kein Fenster: Unter Dienstkonto/SYSTEM laeuft die Aufgabe ohnehin in einer unsichtbaren
+    # Sitzung; -WindowStyle Hidden sichert das zusaetzlich ab, falls jemand die Aufgabe
+    # spaeter auf "nur bei Anmeldung" umstellt.
+    $aktion   = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}"' -f $SkriptPfad) -WorkingDirectory $Basis
     $trigger  = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes $IntervallMin) -RepetitionDuration (New-TimeSpan -Days 3650)
     $optionen = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 15) `
                     -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 2) `
