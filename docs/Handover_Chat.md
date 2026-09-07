@@ -18,6 +18,7 @@ Seit v1.26 in dieser Sitzung gebaut:
 - v1.38 Reiter „Keine ext. Reaktion“ entfernt (nur erste Reaktion zählt, danach Controlling-Listen)
 - v1.39 frisch bestätigte ACK-Zeilen bleiben oben, bis ACK-Details zugeklappt werden oder der Reiter wechselt (`frischAcks`, nur Sitzung)
 - v1.40 Spalte „Letzte Info an Kd.“ (`letzteinfo`, Datum aus dem Export) in den Tageslisten; Standard in „Ohne Kd.-Komm.“ vor „o. Info“, einmalige Ergänzung gespeicherter Auswahlen per `state.cols.v40` in `normalizeState()`
+- tools: Server-Fassung `tools/SupportBoard-Export-Server.ps1` (Schalter -Install/-Uninstall/-Status/-Preview/-Jetzt/-SetPassword; Dienstkonto/gMSA/SYSTEM; Passwort DPAPI LocalMachine mit ACL; Log im Zielordner; Fehler ins Ereignisprotokoll) und `docs/Anleitung_Serverbetrieb.md` (Empfehlung: CSV + Team-JSON bleiben auf dem Teamshare, Server braucht nur Schreibrecht auf den Ordner). Noch nicht auf einem echten Server gelaufen.
 
 Skript-Betrieb (`tools/SupportBoard-Export.ps1`): Passwort per DPAPI-Datei (`-SetPassword`), `-Preview` zum Testen, Aufgabenplanung per `Register-ScheduledTask` (Batteriebetrieb erlaubt), stiller Start über `tools/SupportBoard-Export-leise.vbs`. Skript liest ausschließlich (ein SELECT, Schlüsselwortprüfung, ReadUncommitted, Rollback, Leserecht-Konto) – es kann nichts in die Schattendatenbank schreiben.
 
@@ -67,7 +68,7 @@ Claude-Session: https://claude.ai/code/session_01P7W6v3csZhLqctX666nyvt
 ```
 
 ## Offene Punkte / nächste Schritte
-1. Nächste Woche: Export-Skript vom Notebook auf den (Test-)Server verlagern (Aufgabenplanung dort neu anlegen, DPAPI-Passwortdatei muss auf dem Server unter dem Dienstkonto neu erzeugt werden). Anleitung: `docs/Anleitung_Parallelbetrieb_SQL-Test.md`.
+1. Export-Skript auf den (Test-)Server bringen: Server-Fassung nach `docs/Anleitung_Serverbetrieb.md` einrichten (Dienstkonto + Rechte mit der IT klären, `-Install` macht den Probelauf). Ergebnis des ersten echten Laufs zurückmelden, dann Feinschliff.
 2. Vergleich Test vs. Produktiv nach Checkliste, dann Umstellung der Kollegen auf die SQL-Version.
 3. Auslastung Dispatcher, sobald die Abfrage Daten dafür liefert.
 4. Verwaltung: Kürzel der SaaS-/USA-/Asien-Kunden eintragen (Listen sind ab Werk leer, Chips wirken erst dann).

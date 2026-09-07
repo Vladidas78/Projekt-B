@@ -11,6 +11,7 @@ Für die Erprobung neben dem laufenden Betrieb (eigener Testordner, Testversion 
 | `SupportBoard-Abfrage.sql` | Deine Abfrage. Änderungen wirken sofort beim nächsten Lauf. |
 | `SupportBoard-Export.log` | Entsteht automatisch, protokolliert jeden Lauf. |
 | `SupportBoard-Export-leise.vbs` | Optionaler Starter für die Aufgabenplanung, damit kein Fenster aufblitzt. |
+| `SupportBoard-Export-Server.ps1` | Server-Fassung: gleiche Abfrage, gleiche CSV, läuft rund um die Uhr unter einem Dienstkonto. Anleitung: `docs/Anleitung_Serverbetrieb.md`. |
 
 ## Sicherheit: Es kann nichts kaputtgehen
 

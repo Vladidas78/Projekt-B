@@ -1,0 +1,126 @@
+# Datenexport auf dem Server betreiben
+
+Ziel: Das Export-Skript läuft nicht mehr auf dem Notebook von VKU, sondern rund um die Uhr auf einem Server (z. B. dem OT-Testserver). Für das Board und die Kollegen ändert sich nichts.
+
+Dafür gibt es eine eigene Server-Fassung des Skripts: `tools/SupportBoard-Export-Server.ps1`. Sie nutzt dieselbe Abfrage (`SupportBoard-Abfrage.sql`) und schreibt dieselbe CSV wie die Arbeitsplatz-Fassung, bringt aber die Einrichtung der Aufgabenplanung, das Dienstkonto und die Prüfung gleich mit.
+
+## Wo liegt was: die Empfehlung
+
+**CSV und Team-Datei bleiben auf dem Teamshare, im selben Ordner wie das Board.** Der Server schreibt die CSV nur dorthin, sonst nichts.
+
+| Datei | Ort | Wer schreibt | Wer liest |
+|---|---|---|---|
+| `SupportBoard-Export-Server.ps1`, `SupportBoard-Abfrage.sql`, `.pwd`, `.log` (Ersatz) | Server, z. B. `C:\Tools\SupportBoard\` | Administrator (einmalig) | Dienstkonto |
+| `SupportBoard-Daten.csv` | Teamshare, z. B. `\\Server\Freigabe\Supportmanagement\SQL-Test\` | Dienstkonto vom Server aus | jeder Arbeitsplatz (Board) |
+| `SupportBoard-Export.log` | Teamshare, gleicher Ordner | Dienstkonto | jeder, der nachsehen will |
+| `SupportBoard-Team-SQLTest.json` | Teamshare, gleicher Ordner | jeder Arbeitsplatz (Board) | jeder Arbeitsplatz (Board) |
+| `SupportBoard-SQLTest.html` | Teamshare, gleicher Ordner (später ggf. interner Webserver, siehe IT-Anleitung) | – | jeder Arbeitsplatz |
+
+Warum nicht auf dem Server?
+
+- Das Board läuft im Browser auf dem Arbeitsplatz und liest CSV und Team-Datei als Dateien. Beide müssen also als Freigabe von jedem Arbeitsplatz erreichbar sein. Auf dem Teamshare ist das heute schon so, mit den Rechten, die es bereits gibt.
+- Die **Team-Datei wird ausschließlich vom Board geschrieben**, nie vom Skript. Der Server hat mit ihr nichts zu tun. Läge sie auf dem Server, bräuchte jeder Kollege dort Schreibrecht, und bei jedem Neustart oder jeder Wartung des Servers stünde das Team ohne Haken und Kommentare da.
+- Für die CSV gilt dasselbe in abgeschwächter Form: Läge sie auf dem Server, müsste dort eine Freigabe mit Leserecht für alle eingerichtet werden, und der Anwendungsserver würde nebenbei zum Dateiserver. Auf dem Teamshare greift die normale Sicherung.
+- Der Server braucht dadurch genau **ein** zusätzliches Recht: Schreibrecht des Dienstkontos auf den einen Ordner.
+
+Einzige Ausnahme: Kommt der Server netzwerkseitig nicht an den Teamshare, dann CSV und Log auf eine Freigabe des Servers und im Board „Dashboard überwachen …“ auf diesen Pfad zeigen lassen. Die Team-Datei bleibt trotzdem auf dem Teamshare.
+
+## Was der Server braucht
+
+Vorab mit der IT klären, das ist der einzige Teil, der nicht per Skript geht:
+
+1. **Ein Dienstkonto**, z. B. `DOMAENE\svc-supportboard`. Ein gruppenverwaltetes Dienstkonto (gMSA) geht ebenfalls, dann entfällt das Passwort. SYSTEM geht zur Not auch, greift aber als Computerkonto (`DOMAENE\SERVERNAME$`) auf Share und Datenbank zu.
+2. **Rechte des Dienstkontos**
+   - Datenbank: lesend (bei Windows-Anmeldung ein Login für das Konto mit `db_datareader` auf der Reporting-Datenbank; bei SQL-Anmeldung wie bisher der Read-only-Benutzer).
+   - Teamshare-Ordner: Ändern (schreiben, umbenennen, löschen), damit die CSV atomar ersetzt werden kann.
+   - Skriptordner auf dem Server: Lesen.
+3. **PowerShell 5.1** (auf jedem Windows Server vorhanden) und Netzwerkzugriff vom Server auf SQL-Server und Teamshare.
+
+Empfehlung: **Windows-Anmeldung an der Datenbank** (`$WindowsAuth = $true`). Dann gibt es kein Passwort im Spiel, keine Passwortdatei, nichts, was abläuft.
+
+## Einrichten (auf dem Server, PowerShell „als Administrator“)
+
+**1. Dateien ablegen**
+`SupportBoard-Export-Server.ps1` und `SupportBoard-Abfrage.sql` nach `C:\Tools\SupportBoard\`. Beide Dateien einmal freischalten, falls sie aus dem Internet oder per Download kamen:
+
+```powershell
+Unblock-File C:\Tools\SupportBoard\*
+```
+
+**2. Einstellungen eintragen** (Block `EINSTELLUNGEN` oben im Skript)
+
+```powershell
+$Server       = '…'                      # wie in der Arbeitsplatz-Fassung
+$Datenbank    = '…'
+$WindowsAuth  = $true                    # empfohlen; sonst $false + Schritt 3
+$Benutzer     = '…'                      # nur bei $WindowsAuth = $false
+$Zielpfad     = '\\Server\Freigabe\Supportmanagement\SQL-Test\SupportBoard-Daten.csv'
+$Dienstkonto  = 'DOMAENE\svc-supportboard'   # '' = SYSTEM, 'DOMAENE\konto$' = gMSA
+$IntervallMin = 10
+```
+
+**3. Passwort hinterlegen** (nur bei `$WindowsAuth = $false`)
+
+```powershell
+.\SupportBoard-Export-Server.ps1 -SetPassword
+```
+
+Anders als auf dem Arbeitsplatz ist das Passwort an den **Server** gebunden, nicht an das Konto, das es eingibt. Der Administrator hinterlegt es, die Aufgabe liest es unter dem Dienstkonto. Damit es nicht jeder auf dem Server lesen kann, beschränkt das Skript die Datei auf Administratoren, SYSTEM und das Dienstkonto.
+
+**4. Testlauf ohne Datei** (läuft noch unter dem Admin-Konto, prüft Abfrage und Datenbank)
+
+```powershell
+.\SupportBoard-Export-Server.ps1 -Preview
+```
+
+Erwartet: plausible Zeilenzahl und die bekannten Spaltennamen.
+
+**5. Aufgabe anlegen**
+
+```powershell
+.\SupportBoard-Export-Server.ps1 -Install
+```
+
+Das Skript fragt einmal das Passwort des Dienstkontos ab (es geht nur an die Aufgabenplanung und wird nirgends gespeichert; bei gMSA und SYSTEM entfällt die Frage), legt die Aufgabe an (alle 10 Minuten, unabhängig von der Anmeldung, bei Fehlern bis zu drei Neustarts) und **startet sie sofort einmal als Probelauf unter dem Dienstkonto**. Am Ende stehen Ergebnis, die letzten Logzeilen und der Stand der CSV auf dem Bildschirm. Das ist der eigentliche Test: Erscheint hier `Fertig: … Zeilen`, kommt das Dienstkonto an Datenbank und Share.
+
+Typische Fehler an dieser Stelle:
+
+| Meldung | Ursache |
+|---|---|
+| Kein Log im Zielordner | Dienstkonto hat kein Schreibrecht auf den Teamshare-Ordner. |
+| `Login failed for user …` | Dienstkonto hat kein Login auf dem SQL-Server (Windows-Anmeldung) oder Passwort falsch (SQL-Anmeldung). |
+| `Zielordner nicht erreichbar` | Server kommt netzwerkseitig nicht an den Share, oder der Pfad ist falsch. |
+| Ergebnis `267011` oder `2147943785` | Dienstkonto darf sich nicht als Stapelverarbeitungsauftrag anmelden (lokale Sicherheitsrichtlinie, „Anmelden als Stapelverarbeitungsauftrag“). |
+
+**6. Arbeitsplatz-Aufgaben abschalten**
+Auf dem Notebook (und bei allen, die die Aufgabe eingerichtet hatten):
+
+```powershell
+Disable-ScheduledTask -TaskName "Supportboard Datenexport"
+```
+
+Bleibt eine versehentlich aktiv, passiert nichts Schlimmes: Beide Fassungen prüfen das Alter der CSV und schreiben nur, wenn sie älter als die Schwelle ist. Im Log steht immer, welcher Rechner geschrieben hat.
+
+**7. Kontrolle im Alltag**
+
+```powershell
+.\SupportBoard-Export-Server.ps1 -Status
+```
+
+zeigt Zustand der Aufgabe, letzten und nächsten Lauf, Alter und Zeilenzahl der CSV und die letzten zehn Logzeilen. Vom Arbeitsplatz aus reicht ein Blick in `SupportBoard-Export.log` im Teamshare-Ordner. Fehler landen zusätzlich im Ereignisprotokoll des Servers (Anwendung, Quelle `SupportBoard-Export`), damit die IT sie mit ihren Mitteln überwachen kann.
+
+## Was sich für das Board ändert
+
+Nichts. Es liest weiter `SupportBoard-Daten.csv` aus dem Ordner, den es überwacht. Weil der Server auch nachts und am Wochenende läuft, ist die CSV morgens bereits frisch. „Jetzt synchronisieren“ liest wie bisher die aktuelle Datei ein; ein Lauf des Skripts von Hand ist mit dem 10-Minuten-Takt praktisch nie nötig. Wer ihn trotzdem braucht, startet auf dem Server `.\SupportBoard-Export-Server.ps1 -Jetzt`.
+
+## Umstellung auf den Produktivordner
+
+Wenn die Testphase vorbei ist: im Skript nur `$Zielpfad` auf den Produktivordner ändern, dann `-Install` erneut ausführen (ersetzt die Aufgabe). Im Board Verwaltung → „Dashboard überwachen …“ → neue CSV wählen. Die Excel-Routine bleibt als Rückfallebene erhalten.
+
+## Entfernen
+
+```powershell
+.\SupportBoard-Export-Server.ps1 -Uninstall
+```
+
+entfernt nur die Aufgabe. CSV, Log und Passwortdatei bleiben liegen und können von Hand gelöscht werden.

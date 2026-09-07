@@ -94,15 +94,7 @@ Datei aus dem Testordner öffnen, Verwaltung → Dashboard überwachen (CSV) und
 
 ## Nächster Schritt: Skript auf den Server (bzw. Testserver)
 
-Was gleich bleibt: Skript und Abfrage unverändert. Das Board merkt nichts davon – es liest weiterhin dieselbe CSV im Testordner.
-
-Was sich ändert:
-
-- **Ausführungskonto.** Die Aufgabe läuft auf dem Server unter einem technischen Konto, „unabhängig von der Benutzeranmeldung“. Dieses Konto braucht: lesenden Datenbankzugriff, Schreibrecht auf den Testordner, Leserecht auf den Skriptordner.
-- **Passwort neu hinterlegen.** Die verschlüsselte `.pwd` ist an Konto **und** Rechner gebunden – sie lässt sich nicht mitnehmen. Auf dem Server einmal **als das Ausführungskonto** `-SetPassword` ausführen. Mit Windows-Authentifizierung (`$WindowsAuth = $true`) entfällt das komplett – auf einem Server die sauberere Variante.
-- **Log erreichbar machen.** Das Log liegt neben dem Skript. Damit man es vom Arbeitsplatz aus lesen kann, `$LogDatei` in den Testordner legen, z. B. `'\\Server\Freigabe\Supportmanagement\SQL-Test\SupportBoard-Export.log'`.
-- **Doppelt läuft nichts kaputt.** Bleibt die lokale Aufgabe versehentlich aktiv, sorgt `$NurWennAelterAlsMin` dafür, dass nur eine Instanz tatsächlich schreibt. Sauberer ist es, die lokale Aufgabe zu deaktivieren, sobald der Server läuft.
-- **Aufruf** in der Aufgabenplanung wie gehabt: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "PFAD\SupportBoard-Export.ps1"`. Sprache und Zeitzone des Servers spielen keine Rolle, die CSV wird kulturunabhängig geschrieben.
+Dafür gibt es eine eigene Server-Fassung `tools/SupportBoard-Export-Server.ps1` mit Einrichtung per Schalter (`-Install`, `-Status`, `-Uninstall`), Dienstkonto und Probelauf. Ablage-Empfehlung (CSV und Team-Datei bleiben auf dem Teamshare), benötigte Rechte und Schritt-für-Schritt-Anleitung stehen in `docs/Anleitung_Serverbetrieb.md`. Skript und Board merken davon nichts: Die CSV liegt weiterhin im selben Ordner.
 
 ## Was nicht garantiert werden kann
 
