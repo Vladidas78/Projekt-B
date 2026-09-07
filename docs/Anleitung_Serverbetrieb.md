@@ -34,6 +34,17 @@ Dafür ist der **Ersatzpfad** eingebaut. Das Skript schreibt die CSV bei jedem L
 
 Braucht man den Ersatzpfad nicht, im Skript `$ZielpfadErsatz = ''` setzen.
 
+**Steht von vornherein fest, dass der Server nicht auf den Teamshare schreiben darf**, wird der Server-Ordner zum Hauptziel. Dann gibt es keine Warnung bei jedem Lauf:
+
+```powershell
+$Zielpfad         = 'C:\SupportBoard-Daten\SupportBoard-Daten.csv'   # Hauptziel liegt auf dem Server
+$ZielpfadErsatz   = ''                                               # kein zweites Ziel
+$ErsatzFreigabe   = 'SupportBoard'                                   # -> \\SERVER\SupportBoard
+$ErsatzLesegruppe = 'DEINEDOMAENE\Domänen-Benutzer'                  # darf lesen
+```
+
+`-ErsatzEinrichten` gibt in diesem Fall den Ordner aus `$Zielpfad` frei. Das Dienstkonto braucht dann kein Recht auf dem Teamshare mehr; bei SQL-Anmeldung (`$WindowsAuth = $false`) reicht sogar SYSTEM (`$Dienstkonto = ''`), weil das Konto nur noch lokal schreibt. Die Team-Datei bleibt auf dem Teamshare, das Board überwacht die CSV unter `\\SERVER\SupportBoard\SupportBoard-Daten.csv`.
+
 ## Was der Server braucht
 
 Vorab mit der IT klären, das ist der einzige Teil, der nicht per Skript geht:

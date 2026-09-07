@@ -66,6 +66,9 @@ $Benutzer      = 'Beispiel-readonly'          # nur bei $WindowsAuth = $false
 
 # Ziel: der Team-Ordner auf dem Share, in dem auch Board und Team-Datei liegen.
 # Erprobung: Testordner. Spaeter Produktivordner – nur diese Zeile aendern.
+# Hat der Server KEIN Schreibrecht auf den Teamshare: hier einen Ordner auf dem
+# Server eintragen (z. B. 'C:\SupportBoard-Daten\SupportBoard-Daten.csv') und
+# $ZielpfadErsatz = '' setzen; -ErsatzEinrichten gibt diesen Ordner dann frei.
 $Zielpfad      = '\\Server\Freigabe\Supportmanagement\SQL-Test\SupportBoard-Daten.csv'
 
 # Ersatzpfad (Fallback): Ordner auf dem Server, in den die CSV zusaetzlich
@@ -177,8 +180,10 @@ function Lies-Passwort {
 # --- Ersatzpfad: Ordner, Rechte und Freigabe auf dem Server -----------------
 if ($ErsatzEinrichten) {
     if (-not (Ist-Administrator)) { throw 'Bitte PowerShell "als Administrator" starten.' }
-    if (-not $ZielpfadErsatz) { throw 'Kein Ersatzpfad eingetragen ($ZielpfadErsatz).' }
-    $o = Split-Path -Parent $ZielpfadErsatz
+    # Freigegeben wird der lokale Ordner: der Ersatzpfad – oder das Hauptziel, wenn die CSV direkt auf dem Server liegt
+    $ep = if ($ZielpfadErsatz) { $ZielpfadErsatz } else { $Zielpfad }
+    if ($ep -like '\\*') { throw "Der freizugebende Pfad muss auf diesem Server liegen (z. B. C:\SupportBoard-Daten\...), nicht auf einem Netzlaufwerk: $ep" }
+    $o = Split-Path -Parent $ep
     if (-not (Test-Path $o)) { New-Item -ItemType Directory -Path $o | Out-Null; Write-Host "Ordner angelegt: $o" }
     # NTFS-Rechte: Lesegruppe liest, Dienstkonto schreibt (Aendern), Administratoren und SYSTEM voll
     try {
@@ -201,7 +206,7 @@ if ($ErsatzEinrichten) {
         Write-Host "Freigabe angelegt: \\$env:COMPUTERNAME\$ErsatzFreigabe  ->  $o"
     }
     Write-Host ''
-    Write-Host "Pfad fuer das Board (Verwaltung -> Dashboard ueberwachen): \\$env:COMPUTERNAME\$ErsatzFreigabe\$(Split-Path -Leaf $ZielpfadErsatz)" -ForegroundColor Cyan
+    Write-Host "Pfad fuer das Board (Verwaltung -> Dashboard ueberwachen): \\$env:COMPUTERNAME\$ErsatzFreigabe\$(Split-Path -Leaf $ep)" -ForegroundColor Cyan
     Write-Host "Log ueber die Freigabe: \\$env:COMPUTERNAME\$ErsatzFreigabe\SupportBoard-Export.log"
     return
 }
@@ -286,7 +291,7 @@ if ($Status) {
     } else { Write-Host "Aufgabe '$AufgabenName' ist nicht eingerichtet (-Install)." }
     foreach ($zp in @($Zielpfad, $ZielpfadErsatz)) {
         if (-not $zp) { continue }
-        $art = if ($zp -eq $Zielpfad) { 'Teamshare' } else { 'Ersatzpfad' }
+        $art = if ($zp -ne $Zielpfad) { 'Ersatzpfad' } elseif ($zp -like '\\*') { 'Teamshare' } else { 'Server' }
         if (Test-Path $zp) {
             $d = Get-Item $zp
             $alt = ((Get-Date) - $d.LastWriteTime).TotalMinutes
@@ -420,7 +425,7 @@ try {
         $ok = 0; $fehler = @()
         foreach ($zp in @($Zielpfad, $ZielpfadErsatz)) {
             if (-not $zp) { continue }
-            $art = if ($zp -eq $Zielpfad) { 'Teamshare' } else { 'Ersatzpfad' }
+            $art = if ($zp -ne $Zielpfad) { 'Ersatzpfad' } elseif ($zp -like '\\*') { 'Teamshare' } else { 'Server' }
             try {
                 $zo = Split-Path -Parent $zp
                 if (-not (Test-Path $zo)) { throw "Ordner nicht erreichbar: $zo" }
