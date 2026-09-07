@@ -60,6 +60,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 | v1.39 | Frisch bestätigte (ACK) Zeilen bleiben an ihrer Stelle, solange die ACK-Details aufgeklappt sind (`frischAcks`, nur Sitzung); Zuklappen (▾) oder Reiterwechsel lässt sie ans Listenende sinken. Aufklappen einer alten Bestätigung verschiebt nichts |
 | v1.40 | Spalte „Letzte Info an Kd.“ (Datum der letzten Kundeninfo) in den Tageslisten, sortierbar; Standard in „Ohne Kd.-Komm.“ links neben „o. Info“, in bereits gespeicherte Spaltenauswahlen dieser Liste einmalig ergänzt (`state.cols.v40`); Beispieldaten mit passendem Datum |
 | tools | Server-Fassung des Exports `SupportBoard-Export-Server.ps1` (-Install/-Status/-Uninstall, Dienstkonto, rechnergebundenes Passwort, Log im Zielordner, Fehler ins Ereignisprotokoll) + `docs/Anleitung_Serverbetrieb.md` |
+| v1.40 (Testserver) | `SupportBoard-Testserver.html`: Ausgabe der Testversion mit Beschriftung „Testserver-Version“ / „TEST · TESTSERVER“, technisch derselbe Kanal `sqltest` |
 
 ## Feste Regeln
 
