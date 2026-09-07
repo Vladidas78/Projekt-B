@@ -23,7 +23,16 @@ Warum nicht auf dem Server?
 - Für die CSV gilt dasselbe in abgeschwächter Form: Läge sie auf dem Server, müsste dort eine Freigabe mit Leserecht für alle eingerichtet werden, und der Anwendungsserver würde nebenbei zum Dateiserver. Auf dem Teamshare greift die normale Sicherung.
 - Der Server braucht dadurch genau **ein** zusätzliches Recht: Schreibrecht des Dienstkontos auf den einen Ordner.
 
-Einzige Ausnahme: Kommt der Server netzwerkseitig nicht an den Teamshare, dann CSV und Log auf eine Freigabe des Servers und im Board „Dashboard überwachen …“ auf diesen Pfad zeigen lassen. Die Team-Datei bleibt trotzdem auf dem Teamshare.
+## Fallback: Server kommt nicht an den Teamshare
+
+Dafür ist der **Ersatzpfad** eingebaut. Das Skript schreibt die CSV bei jedem Lauf **an beide Orte**: auf den Teamshare und in einen Ordner auf dem Server (Standard `C:\SupportBoard-Daten\`). Dieser Ordner wird per `-ErsatzEinrichten` als Freigabe `\\SERVER\SupportBoard` veröffentlicht, nur lesend für die eingetragene Gruppe. Das Log liegt in beiden Ordnern.
+
+- Klappt der Teamshare, ist der Ersatzpfad einfach eine zweite, immer aktuelle Kopie. Niemand muss etwas tun.
+- Klappt der Teamshare nicht (Rechte fehlen, Netzwerkzone, Share nicht erreichbar), meldet das Log `Nicht geschrieben – Teamshare …` als Warnung, der Lauf gilt aber als erfolgreich, weil der Ersatzpfad frisch ist. Dann im Board Verwaltung → **„Dashboard überwachen …“** → `\\SERVER\SupportBoard\SupportBoard-Daten.csv` wählen. Fertig, mehr ändert sich nicht.
+- Die **Team-Datei bleibt in jedem Fall auf dem Teamshare.** Sie hat mit dem Server nichts zu tun.
+- Erst wenn beide Ziele scheitern, meldet das Skript einen Fehler und die alte CSV bleibt stehen.
+
+Braucht man den Ersatzpfad nicht, im Skript `$ZielpfadErsatz = ''` setzen.
 
 ## Was der Server braucht
 
@@ -57,7 +66,18 @@ $Benutzer     = '…'                      # nur bei $WindowsAuth = $false
 $Zielpfad     = '\\Server\Freigabe\Supportmanagement\SQL-Test\SupportBoard-Daten.csv'
 $Dienstkonto  = 'DOMAENE\svc-supportboard'   # '' = SYSTEM, 'DOMAENE\konto$' = gMSA
 $IntervallMin = 10
+$ZielpfadErsatz   = 'C:\SupportBoard-Daten\SupportBoard-Daten.csv'   # Fallback auf dem Server, '' = aus
+$ErsatzFreigabe   = 'SupportBoard'                 # -> \\SERVER\SupportBoard
+$ErsatzLesegruppe = 'DOMAENE\Domänen-Benutzer'    # darf die Freigabe lesen
 ```
+
+**2b. Ersatzpfad einrichten** (Ordner, Rechte, Freigabe; einmalig)
+
+```powershell
+.\SupportBoard-Export-Server.ps1 -ErsatzEinrichten
+```
+
+Gibt am Ende den Pfad aus, den das Board im Fallback überwachen kann.
 
 **3. Passwort hinterlegen** (nur bei `$WindowsAuth = $false`)
 

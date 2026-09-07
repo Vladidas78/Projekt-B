@@ -17,6 +17,10 @@
         SYSTEM und das Dienstkonto beschraenkt.
       - Log liegt im Zielordner (vom Arbeitsplatz aus lesbar), Fehler
         zusaetzlich im Windows-Ereignisprotokoll (Anwendung).
+      - Ersatzpfad: Die CSV wird zusaetzlich in einen Ordner auf dem Server
+        gespiegelt, der als Freigabe dient. Kommt der Server nicht an den
+        Teamshare, zeigt das Board einfach auf diese Freigabe.
+        -ErsatzEinrichten legt Ordner, Rechte und Freigabe an.
 
     NUR LESEN – dreifach abgesichert (unveraendert):
       1. Die Abfrage wird vor der Ausfuehrung geprueft: Sie muss mit SELECT
@@ -33,6 +37,7 @@
       .\SupportBoard-Export-Server.ps1 -Status        (Aufgabe, CSV-Alter, letzte Logzeilen)
       .\SupportBoard-Export-Server.ps1 -Jetzt         (Ad-hoc-Lauf von Hand)
       .\SupportBoard-Export-Server.ps1 -Uninstall     (Aufgabe entfernen)
+      .\SupportBoard-Export-Server.ps1 -ErsatzEinrichten (Ordner + Freigabe fuer den Ersatzpfad)
 #>
 
 [CmdletBinding()]
@@ -42,7 +47,8 @@ param(
     [switch]$Jetzt,
     [switch]$Install,
     [switch]$Uninstall,
-    [switch]$Status
+    [switch]$Status,
+    [switch]$ErsatzEinrichten
 )
 
 $ErrorActionPreference = 'Stop'
@@ -62,6 +68,15 @@ $Benutzer      = 'Beispiel-readonly'          # nur bei $WindowsAuth = $false
 # Erprobung: Testordner. Spaeter Produktivordner – nur diese Zeile aendern.
 $Zielpfad      = '\\Server\Freigabe\Supportmanagement\SQL-Test\SupportBoard-Daten.csv'
 
+# Ersatzpfad (Fallback): Ordner auf dem Server, in den die CSV zusaetzlich
+# gespiegelt wird. Er wird per -ErsatzEinrichten als Freigabe veroeffentlicht,
+# das Board kann dann \\SERVER\<Freigabe>\SupportBoard-Daten.csv ueberwachen.
+# Kommt der Server nicht an den Teamshare, bleibt die CSV hier trotzdem frisch.
+# '' = kein Ersatzpfad.
+$ZielpfadErsatz   = 'C:\SupportBoard-Daten\SupportBoard-Daten.csv'
+$ErsatzFreigabe   = 'SupportBoard'                 # Freigabename -> \\SERVER\SupportBoard
+$ErsatzLesegruppe = 'DOMAENE\Domänen-Benutzer'    # wer die Freigabe lesen darf (Gruppe oder Konto)
+
 # Konto, unter dem die Aufgabe laeuft:
 #   'DOMAENE\svc-supportboard'   Dienstkonto mit Passwort (wird bei -Install einmal abgefragt)
 #   'DOMAENE\gmsa-supportboard$' gruppenverwaltetes Dienstkonto (gMSA), kein Passwort noetig
@@ -75,6 +90,7 @@ $AufgabenName  = 'Supportboard Datenexport (Server)'
 $AbfrageDatei  = Join-Path $Basis 'SupportBoard-Abfrage.sql'
 $PasswortDatei = Join-Path $Basis 'SupportBoard-Export.pwd'   # verschluesselt, an diesen Rechner gebunden
 $LogDatei      = Join-Path (Split-Path -Parent $Zielpfad) 'SupportBoard-Export.log'   # im Zielordner: vom Arbeitsplatz aus lesbar
+$LogDateiErsatz = if ($ZielpfadErsatz) { Join-Path (Split-Path -Parent $ZielpfadErsatz) 'SupportBoard-Export.log' } else { Join-Path $Basis 'SupportBoard-Export.log' }
 $TimeoutSek    = 300
 # Laeuft irgendwo noch die Arbeitsplatz-Aufgabe, schreibt nur einer: Ist die Datei
 # juenger als dieser Wert in Minuten, beendet sich das Skript sofort. 0 = aus.
@@ -85,13 +101,14 @@ $EreignisQuelle = 'SupportBoard-Export'       # Windows-Ereignisprotokoll (Anwen
 function Schreibe-Log([string]$Text, [string]$Stufe = 'INFO') {
     $Zeile = '{0} [{1}] {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Stufe, $Text
     Write-Host $Zeile
-    try {
-        Add-Content -Path $LogDatei -Value $Zeile -Encoding UTF8
-        $z = @(Get-Content -Path $LogDatei -ErrorAction SilentlyContinue)
-        if ($z.Count -gt 500) { Set-Content -Path $LogDatei -Value ($z[-500..-1]) -Encoding UTF8 }
-    } catch {
-        # Zielordner nicht erreichbar: wenigstens neben dem Skript festhalten
-        try { Add-Content -Path (Join-Path $Basis 'SupportBoard-Export.log') -Value $Zeile -Encoding UTF8 } catch { }
+    foreach ($lp in @($LogDatei, $LogDateiErsatz) | Select-Object -Unique) {
+        try {
+            $lo = Split-Path -Parent $lp
+            if (-not (Test-Path $lo)) { continue }
+            Add-Content -Path $lp -Value $Zeile -Encoding UTF8
+            $z = @(Get-Content -Path $lp -ErrorAction SilentlyContinue)
+            if ($z.Count -gt 500) { Set-Content -Path $lp -Value ($z[-500..-1]) -Encoding UTF8 }
+        } catch { }
     }
     if ($Stufe -eq 'FEHLER') {
         try { Write-EventLog -LogName Application -Source $EreignisQuelle -EntryType Error -EventId 1 -Message $Text } catch { }
@@ -157,13 +174,51 @@ function Lies-Passwort {
     }
 }
 
+# --- Ersatzpfad: Ordner, Rechte und Freigabe auf dem Server -----------------
+if ($ErsatzEinrichten) {
+    if (-not (Ist-Administrator)) { throw 'Bitte PowerShell "als Administrator" starten.' }
+    if (-not $ZielpfadErsatz) { throw 'Kein Ersatzpfad eingetragen ($ZielpfadErsatz).' }
+    $o = Split-Path -Parent $ZielpfadErsatz
+    if (-not (Test-Path $o)) { New-Item -ItemType Directory -Path $o | Out-Null; Write-Host "Ordner angelegt: $o" }
+    # NTFS-Rechte: Lesegruppe liest, Dienstkonto schreibt (Aendern), Administratoren und SYSTEM voll
+    try {
+        $acl = Get-Acl -Path $o
+        $ok  = [System.Security.AccessControl.AccessControlType]::Allow
+        $erb = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+        $pro = [System.Security.AccessControl.PropagationFlags]::None
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($ErsatzLesegruppe, 'ReadAndExecute', $erb, $pro, $ok)))
+        if ($Dienstkonto) { $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($Dienstkonto, 'Modify', $erb, $pro, $ok))) }
+        Set-Acl -Path $o -AclObject $acl
+        Write-Host "Ordnerrechte gesetzt: '$ErsatzLesegruppe' liest$(if($Dienstkonto){", '$Dienstkonto' schreibt"})."
+    } catch { Write-Warning "Ordnerrechte konnten nicht gesetzt werden: $($_.Exception.Message)" }
+    # Freigabe: nur Lesen fuer die Gruppe. Das Skript schreibt lokal, nicht ueber die Freigabe.
+    $sh = Get-SmbShare -Name $ErsatzFreigabe -ErrorAction SilentlyContinue
+    if ($sh) {
+        if ($sh.Path -ne $o) { throw "Eine Freigabe '$ErsatzFreigabe' zeigt bereits auf '$($sh.Path)'. Bitte anderen Freigabenamen waehlen." }
+        Write-Host "Freigabe '$ErsatzFreigabe' besteht bereits."
+    } else {
+        New-SmbShare -Name $ErsatzFreigabe -Path $o -ReadAccess $ErsatzLesegruppe -Description 'Supportmanagement-Board: CSV-Ersatzpfad (nur lesen)' | Out-Null
+        Write-Host "Freigabe angelegt: \\$env:COMPUTERNAME\$ErsatzFreigabe  ->  $o"
+    }
+    Write-Host ''
+    Write-Host "Pfad fuer das Board (Verwaltung -> Dashboard ueberwachen): \\$env:COMPUTERNAME\$ErsatzFreigabe\$(Split-Path -Leaf $ZielpfadErsatz)" -ForegroundColor Cyan
+    Write-Host "Log ueber die Freigabe: \\$env:COMPUTERNAME\$ErsatzFreigabe\SupportBoard-Export.log"
+    return
+}
+
 # --- Aufgabenplanung: anlegen / entfernen / Status --------------------------
 if ($Install) {
     if (-not (Ist-Administrator)) { throw 'Bitte PowerShell "als Administrator" starten – die Aufgabe laeuft unabhaengig von der Anmeldung und braucht dafuer Administratorrechte beim Anlegen.' }
     if (-not (Test-Path $AbfrageDatei)) { throw "Abfragedatei nicht gefunden: $AbfrageDatei" }
     if (-not $WindowsAuth -and -not (Test-Path $PasswortDatei)) { throw "Zuerst das Passwort hinterlegen:  .\SupportBoard-Export-Server.ps1 -SetPassword" }
     $Zielordner = Split-Path -Parent $Zielpfad
-    if (-not (Test-Path $Zielordner)) { throw "Zielordner nicht erreichbar: $Zielordner (vom Server aus als $env:USERNAME). Pfad pruefen, Share freigeben." }
+    if (-not (Test-Path $Zielordner)) {
+        if ($ZielpfadErsatz -and (Test-Path (Split-Path -Parent $ZielpfadErsatz))) {
+            Write-Warning "Teamshare-Ordner nicht erreichbar: $Zielordner (als $env:USERNAME). Die CSV landet vorerst nur im Ersatzpfad '$ZielpfadErsatz'."
+        } else {
+            throw "Zielordner nicht erreichbar: $Zielordner (vom Server aus als $env:USERNAME). Pfad pruefen, Share freigeben – oder Ersatzpfad mit -ErsatzEinrichten anlegen."
+        }
+    }
 
     # Ereignisquelle fuer Fehlermeldungen im Windows-Ereignisprotokoll (einmalig, braucht Adminrechte)
     try { if (-not [System.Diagnostics.EventLog]::SourceExists($EreignisQuelle)) { New-EventLog -LogName Application -Source $EreignisQuelle } } catch { }
@@ -201,9 +256,10 @@ if ($Install) {
     $warte = 0
     do { Start-Sleep -Seconds 3; $warte += 3; $info = Get-ScheduledTaskInfo -TaskName $AufgabenName; $t = Get-ScheduledTask -TaskName $AufgabenName } while ($t.State -eq 'Running' -and $warte -lt 300)
     Write-Host ("Ergebnis der Aufgabenplanung: {0} (0 = ohne Fehler)" -f $info.LastTaskResult)
-    if (Test-Path $LogDatei) { Write-Host 'Letzte Logzeilen:' -ForegroundColor Cyan; Get-Content $LogDatei -Tail 5 | ForEach-Object { Write-Host "  $_" } }
-    else { Write-Warning "Kein Log unter '$LogDatei' – das Aufgabenkonto kommt vermutlich nicht an den Zielordner. Rechte des Kontos auf dem Share pruefen." }
-    if (Test-Path $Zielpfad) { Write-Host ("CSV: {0}, Stand {1:dd.MM.yyyy HH:mm}" -f $Zielpfad, (Get-Item $Zielpfad).LastWriteTime) }
+    $lg = if (Test-Path $LogDatei) { $LogDatei } elseif (Test-Path $LogDateiErsatz) { $LogDateiErsatz } else { $null }
+    if ($lg) { Write-Host "Letzte Logzeilen ($lg):" -ForegroundColor Cyan; Get-Content $lg -Tail 5 | ForEach-Object { Write-Host "  $_" } }
+    else { Write-Warning "Kein Log gefunden – das Aufgabenkonto kommt vermutlich weder an den Teamshare noch an den Ersatzordner. Rechte des Kontos pruefen." }
+    foreach ($zp in @($Zielpfad, $ZielpfadErsatz)) { if ($zp -and (Test-Path $zp)) { Write-Host ("CSV: {0}, Stand {1:dd.MM.yyyy HH:mm}" -f $zp, (Get-Item $zp).LastWriteTime) } }
     Write-Host ''
     Write-Host 'Fertig. Danach die Arbeitsplatz-Aufgabe(n) deaktivieren, damit nur noch der Server schreibt.'
     return
@@ -225,14 +281,19 @@ if ($Status) {
         Write-Host ("Aufgabe '{0}': {1}, Konto {2}" -f $AufgabenName, $t.State, $t.Principal.UserId)
         Write-Host ("  letzter Lauf {0:dd.MM.yyyy HH:mm}, Ergebnis {1} (0 = ohne Fehler), naechster Lauf {2:dd.MM.yyyy HH:mm}" -f $info.LastRunTime, $info.LastTaskResult, $info.NextRunTime)
     } else { Write-Host "Aufgabe '$AufgabenName' ist nicht eingerichtet (-Install)." }
-    if (Test-Path $Zielpfad) {
-        $d = Get-Item $Zielpfad
-        $alt = ((Get-Date) - $d.LastWriteTime).TotalMinutes
-        $zeilen = (Get-Content $Zielpfad | Measure-Object -Line).Lines - 1
-        Write-Host ("CSV: {0}`n  Stand {1:dd.MM.yyyy HH:mm} ({2:N0} Minuten alt), {3} Zeilen" -f $Zielpfad, $d.LastWriteTime, $alt, $zeilen)
-        if ($alt -gt (3 * $IntervallMin)) { Write-Warning 'Die CSV ist deutlich aelter als das Intervall – die Aufgabe laeuft nicht oder scheitert. Log pruefen.' }
-    } else { Write-Host "CSV noch nicht vorhanden: $Zielpfad" }
-    if (Test-Path $LogDatei) { Write-Host 'Letzte Logzeilen:' -ForegroundColor Cyan; Get-Content $LogDatei -Tail 10 | ForEach-Object { Write-Host "  $_" } }
+    foreach ($zp in @($Zielpfad, $ZielpfadErsatz)) {
+        if (-not $zp) { continue }
+        $art = if ($zp -eq $Zielpfad) { 'Teamshare' } else { 'Ersatzpfad' }
+        if (Test-Path $zp) {
+            $d = Get-Item $zp
+            $alt = ((Get-Date) - $d.LastWriteTime).TotalMinutes
+            $zeilen = (Get-Content $zp | Measure-Object -Line).Lines - 1
+            Write-Host ("CSV ({0}): {1}`n  Stand {2:dd.MM.yyyy HH:mm} ({3:N0} Minuten alt), {4} Zeilen" -f $art, $zp, $d.LastWriteTime, $alt, $zeilen)
+            if ($alt -gt (3 * $IntervallMin)) { Write-Warning "Die CSV ($art) ist deutlich aelter als das Intervall – die Aufgabe laeuft nicht oder scheitert dort. Log pruefen." }
+        } else { Write-Host "CSV ($art) nicht vorhanden oder nicht erreichbar: $zp" }
+    }
+    $lg = if (Test-Path $LogDatei) { $LogDatei } elseif (Test-Path $LogDateiErsatz) { $LogDateiErsatz } else { $null }
+    if ($lg) { Write-Host "Letzte Logzeilen ($lg):" -ForegroundColor Cyan; Get-Content $lg -Tail 10 | ForEach-Object { Write-Host "  $_" } }
     return
 }
 
@@ -292,8 +353,11 @@ function Format-CsvFeld([string]$Text) {
 }
 
 # --- Schreibt gerade jemand anderes? ----------------------------------------
-if (-not $Preview -and -not $Jetzt -and $NurWennAelterAlsMin -gt 0 -and (Test-Path $Zielpfad)) {
-    $AlterMin = ((Get-Date) - (Get-Item $Zielpfad).LastWriteTime).TotalMinutes
+if (-not $Preview -and -not $Jetzt -and $NurWennAelterAlsMin -gt 0) {
+    $AlterMin = [double]::MaxValue
+    foreach ($zp in @($Zielpfad, $ZielpfadErsatz)) {
+        if ($zp -and (Test-Path $zp)) { $a = ((Get-Date) - (Get-Item $zp).LastWriteTime).TotalMinutes; if ($a -lt $AlterMin) { $AlterMin = $a } }
+    }
     if ($AlterMin -lt $NurWennAelterAlsMin) {
         Schreibe-Log ("Uebersprungen: Datei ist erst {0:N0} Minuten alt (Schwelle {1}). Ein anderer Rechner war schneller." -f $AlterMin, $NurWennAelterAlsMin)
         exit 0
@@ -327,11 +391,9 @@ try {
         Write-Host 'Spalten:' -ForegroundColor Cyan
         $Spalten | ForEach-Object { Write-Host "  - $_" }
     } else {
-        # Erst in eine temporaere Datei schreiben, dann in einem Zug ersetzen.
-        # So sieht das Board nie eine halb geschriebene Datei.
-        $Zielordner = Split-Path -Parent $Zielpfad
-        if (-not (Test-Path $Zielordner)) { throw "Zielordner nicht erreichbar: $Zielordner" }
-        $TempDatei = Join-Path $Zielordner ('~SupportBoard-{0}.tmp' -f ([guid]::NewGuid().ToString('N')))
+        # Erst lokal in eine temporaere Datei schreiben, dann je Ziel in einem Zug
+        # ersetzen. So sieht das Board nie eine halb geschriebene Datei.
+        $TempDatei = Join-Path $env:TEMP ('~SupportBoard-{0}.tmp' -f ([guid]::NewGuid().ToString('N')))
 
         $enc = New-Object System.Text.UTF8Encoding($true)   # mit BOM – wegen Umlauten
         $sw  = New-Object System.IO.StreamWriter($TempDatei, $false, $enc)
@@ -352,9 +414,26 @@ try {
             throw "Die Abfrage lieferte 0 Zeilen. Die vorhandene Datei wurde nicht ersetzt (Schutz vor leeren Staenden)."
         }
 
-        Move-Item -Path $TempDatei -Destination $Zielpfad -Force
-        $TempDatei = $null
-        Schreibe-Log "Fertig: $Zeilen Zeilen nach '$Zielpfad' geschrieben (von $env:COMPUTERNAME)."
+        $ok = 0; $fehler = @()
+        foreach ($zp in @($Zielpfad, $ZielpfadErsatz)) {
+            if (-not $zp) { continue }
+            $art = if ($zp -eq $Zielpfad) { 'Teamshare' } else { 'Ersatzpfad' }
+            try {
+                $zo = Split-Path -Parent $zp
+                if (-not (Test-Path $zo)) { throw "Ordner nicht erreichbar: $zo" }
+                $zt = Join-Path $zo ('~SupportBoard-{0}.tmp' -f ([guid]::NewGuid().ToString('N')))
+                Copy-Item -Path $TempDatei -Destination $zt -Force
+                Move-Item -Path $zt -Destination $zp -Force
+                Schreibe-Log "Fertig ($art): $Zeilen Zeilen nach '$zp' geschrieben (von $env:COMPUTERNAME)."
+                $ok++
+            } catch {
+                $fehler += "$art '$zp': $($_.Exception.Message)"
+                if ($zt -and (Test-Path $zt)) { Remove-Item $zt -Force -ErrorAction SilentlyContinue }
+            }
+        }
+        foreach ($f in $fehler) { Schreibe-Log "Nicht geschrieben – $f" $(if ($ok -gt 0) { 'WARNUNG' } else { 'FEHLER' }) }
+        if ($ok -eq 0) { throw "Kein Ziel erreichbar. $($fehler -join ' | ')" }
+        if ($fehler.Count -gt 0 -and $ok -gt 0) { Schreibe-Log 'Das Board kann auf den Ersatzpfad (Freigabe des Servers) umgestellt werden, solange der Teamshare nicht erreichbar ist.' 'WARNUNG' }
     }
 }
 catch {
