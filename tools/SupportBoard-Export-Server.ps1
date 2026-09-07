@@ -1,5 +1,5 @@
-<#
-    Supportmanagement-Board – Datenexport, SERVER-FASSUNG
+﻿<#
+    Supportmanagement-Board - Datenexport, SERVER-FASSUNG
     ---------------------------------------------------------------------------
     Laeuft auf einem Server (z. B. dem OT-Testserver) rund um die Uhr in der
     Aufgabenplanung, unabhaengig davon, ob jemand angemeldet ist. Fuehrt die
@@ -22,7 +22,7 @@
         Teamshare, zeigt das Board einfach auf diese Freigabe.
         -ErsatzEinrichten legt Ordner, Rechte und Freigabe an.
 
-    NUR LESEN – dreifach abgesichert (unveraendert):
+    NUR LESEN - dreifach abgesichert (unveraendert):
       1. Die Abfrage wird vor der Ausfuehrung geprueft: Sie muss mit SELECT
          oder WITH beginnen und darf kein schreibendes Schluesselwort enthalten.
       2. Alles laeuft in einer Transaktion, die IMMER zurueckgerollt wird.
@@ -56,7 +56,7 @@ $Basis      = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SkriptPfad = $MyInvocation.MyCommand.Path
 
 # ============================ EINSTELLUNGEN =================================
-# Hier eintragen – sonst muss nichts angepasst werden.
+# Hier eintragen - sonst muss nichts angepasst werden.
 
 $Server        = 'BeispielServer-01'          # Data Source (wie in der Arbeitsplatz-Fassung)
 $Datenbank     = 'MPDV-Reporting'             # Initial Catalog
@@ -65,7 +65,7 @@ $WindowsAuth   = $true                         # $true  = das Dienstkonto meldet
 $Benutzer      = 'Beispiel-readonly'          # nur bei $WindowsAuth = $false
 
 # Ziel: der Team-Ordner auf dem Share, in dem auch Board und Team-Datei liegen.
-# Erprobung: Testordner. Spaeter Produktivordner – nur diese Zeile aendern.
+# Erprobung: Testordner. Spaeter Produktivordner - nur diese Zeile aendern.
 # Hat der Server KEIN Schreibrecht auf den Teamshare: hier einen Ordner auf dem
 # Server eintragen (z. B. 'C:\SupportBoard-Daten\SupportBoard-Daten.csv') und
 # $ZielpfadErsatz = '' setzen; -ErsatzEinrichten gibt diesen Ordner dann frei.
@@ -83,7 +83,7 @@ $ErsatzLesegruppe = 'DOMAENE\Domänen-Benutzer'    # wer die Freigabe lesen darf
 # Konto, unter dem die Aufgabe laeuft:
 #   'DOMAENE\svc-supportboard'   Dienstkonto mit Passwort (wird bei -Install einmal abgefragt)
 #   'DOMAENE\gmsa-supportboard$' gruppenverwaltetes Dienstkonto (gMSA), kein Passwort noetig
-#   ''                           SYSTEM – greift auf Share und Datenbank als Computerkonto
+#   ''                           SYSTEM - greift auf Share und Datenbank als Computerkonto
 #                                (DOMAENE\SERVERNAME$) zu; dieses braucht dann die Rechte.
 $Dienstkonto   = 'DOMAENE\svc-supportboard'
 
@@ -124,7 +124,7 @@ function Ist-Administrator {
 }
 
 # --- Passwort: an den Rechner gebunden (DPAPI LocalMachine) ---------------
-# Jeder Prozess auf DIESEM Server kann es lesen – deshalb wird die Datei per
+# Jeder Prozess auf DIESEM Server kann es lesen - deshalb wird die Datei per
 # Zugriffsrechten auf Administratoren, SYSTEM und das Dienstkonto beschraenkt.
 Add-Type -AssemblyName System.Security
 
@@ -148,7 +148,7 @@ function Schuetze-Passwortdatei {
 }
 
 if ($SetPassword) {
-    if ($WindowsAuth) { Write-Host "Windows-Anmeldung ist aktiv (`$WindowsAuth = `$true) – ein Passwort wird nicht benoetigt."; return }
+    if ($WindowsAuth) { Write-Host "Windows-Anmeldung ist aktiv (`$WindowsAuth = `$true) - ein Passwort wird nicht benoetigt."; return }
     $sec   = Read-Host -Prompt "Passwort fuer '$Benutzer'" -AsSecureString
     $klar  = (New-Object System.Management.Automation.PSCredential('x', $sec)).GetNetworkCredential().Password
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($klar)
@@ -180,7 +180,7 @@ function Lies-Passwort {
 # --- Ersatzpfad: Ordner, Rechte und Freigabe auf dem Server -----------------
 if ($ErsatzEinrichten) {
     if (-not (Ist-Administrator)) { throw 'Bitte PowerShell "als Administrator" starten.' }
-    # Freigegeben wird der lokale Ordner: der Ersatzpfad – oder das Hauptziel, wenn die CSV direkt auf dem Server liegt
+    # Freigegeben wird der lokale Ordner: der Ersatzpfad - oder das Hauptziel, wenn die CSV direkt auf dem Server liegt
     $ep = if ($ZielpfadErsatz) { $ZielpfadErsatz } else { $Zielpfad }
     if ($ep -like '\\*') { throw "Der freizugebende Pfad muss auf diesem Server liegen (z. B. C:\SupportBoard-Daten\...), nicht auf einem Netzlaufwerk: $ep" }
     $o = Split-Path -Parent $ep
@@ -213,7 +213,7 @@ if ($ErsatzEinrichten) {
 
 # --- Aufgabenplanung: anlegen / entfernen / Status --------------------------
 if ($Install) {
-    if (-not (Ist-Administrator)) { throw 'Bitte PowerShell "als Administrator" starten – die Aufgabe laeuft unabhaengig von der Anmeldung und braucht dafuer Administratorrechte beim Anlegen.' }
+    if (-not (Ist-Administrator)) { throw 'Bitte PowerShell "als Administrator" starten - die Aufgabe laeuft unabhaengig von der Anmeldung und braucht dafuer Administratorrechte beim Anlegen.' }
     if (-not (Test-Path $AbfrageDatei)) { throw "Abfragedatei nicht gefunden: $AbfrageDatei" }
     if (-not $WindowsAuth -and -not (Test-Path $PasswortDatei)) { throw "Zuerst das Passwort hinterlegen:  .\SupportBoard-Export-Server.ps1 -SetPassword" }
     $Zielordner = Split-Path -Parent $Zielpfad
@@ -221,7 +221,7 @@ if ($Install) {
         if ($ZielpfadErsatz -and (Test-Path (Split-Path -Parent $ZielpfadErsatz))) {
             Write-Warning "Teamshare-Ordner nicht erreichbar: $Zielordner (als $env:USERNAME). Die CSV landet vorerst nur im Ersatzpfad '$ZielpfadErsatz'."
         } else {
-            throw "Zielordner nicht erreichbar: $Zielordner (vom Server aus als $env:USERNAME). Pfad pruefen, Share freigeben – oder Ersatzpfad mit -ErsatzEinrichten anlegen."
+            throw "Zielordner nicht erreichbar: $Zielordner (vom Server aus als $env:USERNAME). Pfad pruefen, Share freigeben - oder Ersatzpfad mit -ErsatzEinrichten anlegen."
         }
     }
 
@@ -242,7 +242,7 @@ if ($Install) {
         $principal = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\SYSTEM' -LogonType ServiceAccount -RunLevel Limited
         Register-ScheduledTask -TaskName $AufgabenName -Action $aktion -Trigger $trigger -Settings $optionen -Principal $principal -Description $beschreibung -Force | Out-Null
         Write-Host "Aufgabe '$AufgabenName' angelegt: laeuft als SYSTEM, alle $IntervallMin Minuten."
-        Write-Host "Hinweis: Auf Share und Datenbank greift SYSTEM als Computerkonto '$env:USERDOMAIN\$env:COMPUTERNAME`$' zu – dieses braucht die Rechte."
+        Write-Host "Hinweis: Auf Share und Datenbank greift SYSTEM als Computerkonto '$env:USERDOMAIN\$env:COMPUTERNAME`$' zu - dieses braucht die Rechte."
     } elseif ($Dienstkonto.EndsWith('$')) {
         $principal = New-ScheduledTaskPrincipal -UserId $Dienstkonto -LogonType Password -RunLevel Limited
         Register-ScheduledTask -TaskName $AufgabenName -Action $aktion -Trigger $trigger -Settings $optionen -Principal $principal -Description $beschreibung -Force | Out-Null
@@ -253,7 +253,7 @@ if ($Install) {
         Register-ScheduledTask -TaskName $AufgabenName -Action $aktion -Trigger $trigger -Settings $optionen -Description $beschreibung -User $Dienstkonto -Password $pw -RunLevel Limited -Force | Out-Null
         $pw = $null
         Write-Host "Aufgabe '$AufgabenName' angelegt: laeuft als '$Dienstkonto' (auch ohne Anmeldung), alle $IntervallMin Minuten."
-        Write-Host "Hinweis: Das Dienstkonto braucht das Recht 'Anmelden als Stapelverarbeitungsauftrag' – die Aufgabenplanung vergibt es beim Anlegen normalerweise selbst."
+        Write-Host "Hinweis: Das Dienstkonto braucht das Recht 'Anmelden als Stapelverarbeitungsauftrag' - die Aufgabenplanung vergibt es beim Anlegen normalerweise selbst."
     }
     if (-not $WindowsAuth -and $Dienstkonto) { Schuetze-Passwortdatei }
 
@@ -266,7 +266,7 @@ if ($Install) {
     Write-Host ("Ergebnis der Aufgabenplanung: {0} (0 = ohne Fehler)" -f $info.LastTaskResult)
     $lg = if (Test-Path $LogDatei) { $LogDatei } elseif (Test-Path $LogDateiErsatz) { $LogDateiErsatz } else { $null }
     if ($lg) { Write-Host "Letzte Logzeilen ($lg):" -ForegroundColor Cyan; Get-Content $lg -Tail 5 | ForEach-Object { Write-Host "  $_" } }
-    else { Write-Warning "Kein Log gefunden – das Aufgabenkonto kommt vermutlich weder an den Teamshare noch an den Ersatzordner. Rechte des Kontos pruefen." }
+    else { Write-Warning "Kein Log gefunden - das Aufgabenkonto kommt vermutlich weder an den Teamshare noch an den Ersatzordner. Rechte des Kontos pruefen." }
     foreach ($zp in @($Zielpfad, $ZielpfadErsatz)) { if ($zp -and (Test-Path $zp)) { Write-Host ("CSV: {0}, Stand {1:dd.MM.yyyy HH:mm}" -f $zp, (Get-Item $zp).LastWriteTime) } }
     Write-Host ''
     Write-Host 'Fertig. Danach die Arbeitsplatz-Aufgabe(n) deaktivieren, damit nur noch der Server schreibt.'
@@ -297,7 +297,7 @@ if ($Status) {
             $alt = ((Get-Date) - $d.LastWriteTime).TotalMinutes
             $zeilen = (Get-Content $zp | Measure-Object -Line).Lines - 1
             Write-Host ("CSV ({0}): {1}`n  Stand {2:dd.MM.yyyy HH:mm} ({3:N0} Minuten alt), {4} Zeilen" -f $art, $zp, $d.LastWriteTime, $alt, $zeilen)
-            if ($alt -gt (3 * $IntervallMin)) { Write-Warning "Die CSV ($art) ist deutlich aelter als das Intervall – die Aufgabe laeuft nicht oder scheitert dort. Log pruefen." }
+            if ($alt -gt (3 * $IntervallMin)) { Write-Warning "Die CSV ($art) ist deutlich aelter als das Intervall - die Aufgabe laeuft nicht oder scheitert dort. Log pruefen." }
         } else { Write-Host "CSV ($art) nicht vorhanden oder nicht erreichbar: $zp" }
     }
     $lg = if (Test-Path $LogDatei) { $LogDatei } elseif (Test-Path $LogDateiErsatz) { $LogDateiErsatz } else { $null }
@@ -310,7 +310,7 @@ if (-not (Test-Path $AbfrageDatei)) { throw "Abfragedatei nicht gefunden: $Abfra
 $Sql = Get-Content -Path $AbfrageDatei -Raw -Encoding UTF8
 
 # Fuer die Pruefung Kommentare UND Text in Anfuehrungszeichen entfernen.
-# In der Abfrage stehen Taetigkeiten wie 'update delivery' – blosser Text.
+# In der Abfrage stehen Taetigkeiten wie 'update delivery' - blosser Text.
 $SqlPruef = [regex]::Replace($Sql,      '/\*[\s\S]*?\*/', ' ')   # /* ... */
 $SqlPruef = [regex]::Replace($SqlPruef, '--[^\r\n]*',      ' ')   # -- ...
 $SqlPruef = [regex]::Replace($SqlPruef, "'(?:[^']|'')*'",   ' ')   # 'Text'
@@ -375,7 +375,7 @@ if (-not $Preview -and -not $Jetzt -and $NurWennAelterAlsMin -gt 0) {
 # --- Abfrage ausfuehren -----------------------------------------------------
 $conn = $null; $tx = $null; $TempDatei = $null; $Zeilen = 0
 try {
-    Schreibe-Log "Start – $env:COMPUTERNAME als $env:USERDOMAIN\$env:USERNAME – Server '$Server', Datenbank '$Datenbank'$(if($Preview){' (Testlauf)'})"
+    Schreibe-Log "Start - $env:COMPUTERNAME als $env:USERDOMAIN\$env:USERNAME - Server '$Server', Datenbank '$Datenbank'$(if($Preview){' (Testlauf)'})"
 
     $conn = New-Object System.Data.SqlClient.SqlConnection $b.ConnectionString
     $conn.Open()
@@ -403,7 +403,7 @@ try {
         # ersetzen. So sieht das Board nie eine halb geschriebene Datei.
         $TempDatei = Join-Path $env:TEMP ('~SupportBoard-{0}.tmp' -f ([guid]::NewGuid().ToString('N')))
 
-        $enc = New-Object System.Text.UTF8Encoding($true)   # mit BOM – wegen Umlauten
+        $enc = New-Object System.Text.UTF8Encoding($true)   # mit BOM - wegen Umlauten
         $sw  = New-Object System.IO.StreamWriter($TempDatei, $false, $enc)
         try {
             $sw.WriteLine((($Spalten | ForEach-Object { Format-CsvFeld $_ }) -join ';'))
@@ -439,7 +439,7 @@ try {
                 if ($zt -and (Test-Path $zt)) { Remove-Item $zt -Force -ErrorAction SilentlyContinue }
             }
         }
-        foreach ($f in $fehler) { Schreibe-Log "Nicht geschrieben – $f" $(if ($ok -gt 0) { 'WARNUNG' } else { 'FEHLER' }) }
+        foreach ($f in $fehler) { Schreibe-Log "Nicht geschrieben - $f" $(if ($ok -gt 0) { 'WARNUNG' } else { 'FEHLER' }) }
         if ($ok -eq 0) { throw "Kein Ziel erreichbar. $($fehler -join ' | ')" }
         if ($fehler.Count -gt 0 -and $ok -gt 0) { Schreibe-Log 'Das Board kann auf den Ersatzpfad (Freigabe des Servers) umgestellt werden, solange der Teamshare nicht erreichbar ist.' 'WARNUNG' }
     }
@@ -450,7 +450,7 @@ catch {
     exit 1
 }
 finally {
-    # Absicherung 2: Die Transaktion wird immer zurueckgerollt – nie etwas festgeschrieben.
+    # Absicherung 2: Die Transaktion wird immer zurueckgerollt - nie etwas festgeschrieben.
     if ($tx)   { try { $tx.Rollback() } catch { } }
     if ($conn) { try { $conn.Close()  } catch { } }
     if ($TempDatei -and (Test-Path $TempDatei)) { Remove-Item $TempDatei -Force -ErrorAction SilentlyContinue }
