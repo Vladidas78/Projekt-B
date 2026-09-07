@@ -52,8 +52,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$Basis      = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SkriptPfad = $MyInvocation.MyCommand.Path
+if (-not $SkriptPfad) { $SkriptPfad = $PSCommandPath }
+if (-not $SkriptPfad) { throw 'Das Skript muss als Datei gestartet werden (z. B. .\SupportBoard-Export-Server.ps1), nicht als eingefuegter Text.' }
+$Basis      = Split-Path -Parent $SkriptPfad
 
 # ============================ EINSTELLUNGEN =================================
 # Hier eintragen - sonst muss nichts angepasst werden.
@@ -89,6 +91,17 @@ $Dienstkonto   = 'DOMAENE\svc-supportboard'
 
 $IntervallMin  = 10                            # Abstand der Laeufe in Minuten
 $AufgabenName  = 'Supportboard Datenexport (Server)'
+
+# --- Pruefung der Einstellungen: fehlt etwas, sagt die Meldung was ----------
+foreach ($n in 'Server','Datenbank','Zielpfad') {
+    $v = Get-Variable -Name $n -ValueOnly -ErrorAction SilentlyContinue
+    if ([string]::IsNullOrWhiteSpace($v)) { throw "Einstellung `$$n ist leer oder fehlt. Bitte im Block EINSTELLUNGEN eintragen (die Zeile muss genau `$$n = '...' lauten)." }
+}
+if (-not $WindowsAuth -and [string]::IsNullOrWhiteSpace($Benutzer)) { throw 'Einstellung $Benutzer ist leer, wird aber bei $WindowsAuth = $false gebraucht.' }
+if (-not (Split-Path -Parent $Zielpfad)) { throw "Einstellung `$Zielpfad muss ein vollstaendiger Pfad mit Ordner und Dateiname sein, z. B. C:\SupportBoard-Daten\SupportBoard-Daten.csv (aktuell: '$Zielpfad')." }
+if ($ZielpfadErsatz -and -not (Split-Path -Parent $ZielpfadErsatz)) { throw "Einstellung `$ZielpfadErsatz muss ein vollstaendiger Pfad mit Ordner und Dateiname sein (aktuell: '$ZielpfadErsatz')." }
+if ($null -eq $ZielpfadErsatz) { $ZielpfadErsatz = '' }
+if ($null -eq $Dienstkonto)    { $Dienstkonto = '' }
 
 $AbfrageDatei  = Join-Path $Basis 'SupportBoard-Abfrage.sql'
 $PasswortDatei = Join-Path $Basis 'SupportBoard-Export.pwd'   # verschluesselt, an diesen Rechner gebunden
