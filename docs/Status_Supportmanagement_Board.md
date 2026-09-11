@@ -88,6 +88,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 - Der Cache der geladenen Calls fällt bei Platznot im Browser auf die offenen Calls zurück; die geschlossenen kommen mit dem nächsten Lesen der Datei wieder
 - Die Liste „Kritische Calls“ ist eine Sammelliste und löst kein ⚠ „steht auch in …“ in anderen Listen aus
 - Das Export-Skript liest ausschließlich (Prüfung vor dem Start, Transaktion mit Rollback, ReadUncommitted). Es darf nichts kaputt machen
+- Lieferregel (VKU, 2026-09-11): Das Server-Skript wird immer unter genau dem Dateinamen geliefert, unter dem es auf dem Server liegt: `SupportBoard-Export-Server.ps1` (Ordner `E:\SupMan`). Kein Umbenennen, keine Versionszusätze im Dateinamen. Gleiches gilt für `SupportBoard-Abfrage.sql`, `SupportBoard-Abfrage-Reaktion.sql` und die drei HTML-Dateien
 
 ## Bedienungsroutine (Quell-Dateien)
 
