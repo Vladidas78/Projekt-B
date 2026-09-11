@@ -54,6 +54,8 @@ Drei Punkte, die man kennen sollte:
 2. **Der Export liest nur.** Die Abfrage wird vor jedem Lauf geprüft, läuft in einer Transaktion, die immer zurückgerollt wird, und setzt keine Sperren.
 3. **Geht etwas schief, bleibt die letzte gute CSV stehen.** Das Board arbeitet dann mit dem letzten Stand weiter und zeigt unten links an, dass die Daten alt sind. Es steht nie plötzlich leer da.
 
+Seit v1.41 liefert der Export auch die **geschlossenen Calls der letzten zwei Jahre** und die **Region** des Kunden (USA, Asien, Europa). Geschlossene Calls stehen in keiner Tagesliste und keiner Mail; sie füttern die Tagesstatistik, die Abschlüsse der Top 10 („in der Vorwoche geschlossen“) und die Reaktionszeit. Ein Call, der nach Gelöst/Geschlossen wieder in Bearbeitung geht, trägt den Hinweis „wieder offen“ und zählt nicht als neuer Call. Die Region steht als Filter-Chip in jeder Liste (auch in der Reaktionszeit).
+
 Der **Stand der Daten** ist immer unten links in der Seitenleiste zu sehen: zwei Punkte für Dashboard-Datei und Team-Speicher. Grün heißt in Ordnung, Gelb heißt Beispieldaten, Rot heißt: Datei zu lange unverändert oder nicht erreichbar.
 
 ---
@@ -122,14 +124,21 @@ Beides landet in der Zwischenablage und wird im Zielprogramm eingefügt. Die Tex
 
 ---
 
+### Neu in den Listen (ab v1.41)
+
+- **„neu“** am Call: steht heute zum ersten Mal in dieser Liste und hat noch kein ACK.
+- **„wieder offen“** am Call: war geschlossen und ist wieder in Bearbeitung.
+- **Teams EN / WVL EN**: englische Textbausteine für Kollegen in den USA und in Asien (Reiter „Vorlagen“).
+
 ## 5. Der Wochenrhythmus
 
 | Wann | Reiter | Inhalt |
 |---|---|---|
 | täglich | **Unterstützungsdienste** | Ist jemand aus IMP, SAP-CC oder CONS eingeplant, bekommt er die offenen Calls seiner Gruppe. Empfänger im Reiter eintragen, Text und CC stehen in der Verwaltung. |
 | montags | **Supportmanager Protokoll** | Vorbereitung des Montagsmeetings. Neue Wochenzeilen enthalten nur das Datum, die Inhalte entstehen im Meeting und werden geteilt. Rot markiert: Kunden ohne Supportmanager. |
-| mittwochs | **Mittwochsmail** | Langläufer nach Dauer. Farbpunkte in der Termin- und Kommentarspalte färben die Zelle für die Mail (gelb, rot, ohne). Die ACK-Spalte ganz rechts ist rein intern und steht in keiner Mail. |
+| mittwochs | **Mittwochsmail** | Langläufer nach Dauer. Farbpunkte in der Termin- und Kommentarspalte färben die Zelle für die Mail (gelb, rot, ohne). Fehlende Termine werden nur automatisch gelb, wenn die letzte Weiterleitung über zwei Wochen zurückliegt. Die ACK-Spalte ganz rechts ist dein persönlicher Prüffortschritt (nur für dich sichtbar, steht in keiner Mail); „Alle ACK setzen/entfernen“ gibt es oben rechts. Die Prio steht in der Vorbereitung und in der OneNote-Tabelle, nicht in der Mail. |
 | freitags | **Freitagsmail** | Alle Calls mit Lösungstermin bis zum kommenden Freitag, PD und SD getrennt. Grün = Kunde über den LT informiert, Gelb = mehr als sechs Terminänderungen. |
+| Mails versenden | **ein Knopf** | Bei Mittwochsmail, Freitagsmail und Unterstützungsdiensten öffnet der blaue Knopf Outlook mit Empfängern, CC und Betreff und legt den Text in die Zwischenablage: einmal Strg+V in den Textbereich, prüfen, senden. „Entwurf als Datei (.eml)“ lädt die fertige Mail herunter; öffnet sie in Outlook (klassisch) als Entwurf, genügt „Senden“. Die Einzelschritte (Text, An, CC getrennt) stehen eingeklappt darunter. |
 
 Für alle Mails gilt derselbe Ablauf: Reiter öffnen, Inhalte prüfen und kommentieren, dann **Mail kopieren** und in Outlook einfügen. Die Formatierung bleibt erhalten. Einleitungen und Fußtexte pflegt man unter **Vorlagen**.
 

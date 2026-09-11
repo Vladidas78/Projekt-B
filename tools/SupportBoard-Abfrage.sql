@@ -22,9 +22,10 @@ SELECT
     o.WAKI_bis                                          AS Wartend_bis,
     o.loesung_bis                                       AS [Lösung_bis],
     o.Anzahl_LT_Verschiebungen                          AS [Terminänderungen],
-    /* Kalenderzeit von der Eroeffnung bis zur ersten externen Aktion, in Tagen (0 = noch keine).
-       Das Board rechnet daraus den Zeitpunkt der ersten Reaktion fuer den Reiter "Reaktionszeit". */
-    cs.erste_ext_aktion_kalender / 86400.0              AS [Externe Reaktion],
+    /* "Externe Reaktion" (Kalendertage bis zur ersten externen Aktion) kommt seit v1.41 aus der
+       getrennten Datei SupportBoard-Abfrage-Reaktion.sql; das Exportskript haengt den Wert ueber
+       die Call-Nummer an. So laesst sich diese Abfrage abstellen oder in einem anderen Takt fahren,
+       ohne den Rest zu verlieren. */
     CASE WHEN o.nicht_auswerten_fuer_kd_kommunikation = 1 THEN 'Ja' ELSE 'Nein' END
                                                         AS [nicht werten für Kd.Komm.],
     lastAT.AT_Datum                                     AS [Letzte Info an Kd.],
@@ -79,9 +80,6 @@ SELECT
 
 FROM open_calls AS o
 
-LEFT JOIN call_statistics AS cs
-    ON cs.callnr = o.callnr
-
 OUTER APPLY (
     SELECT TOP (1) r1.erstellt AS AT_Datum
     FROM recent_ATs AS r1
@@ -98,3 +96,18 @@ OUTER APPLY (
 
 /* Keine Einschraenkung mehr auf Gruppen oder Bearbeiter: Das Board filtert selbst
    (Filter-Chips je Liste, Bereich "Sonst." fuer unbekannte Gruppen). */
+
+/* =========================================================================
+   Erwartete Spaltennamen fuer die Erweiterungen ab Board v1.41 (AS ...):
+     [Region]        Primaere Kundenbetreuung: 'USA', 'Asien' oder 'Europa'
+                     (das Board erkennt auch Schreibweisen wie 'Asia', 'Europe', 'US').
+                     Ersetzt die Kuerzellisten USA/Asien in der Verwaltung.
+     Status          Geschlossene Calls der letzten zwei Jahre kommen mit dem echten
+                     Status ('Geloest', 'Geschlossen'); welche Status als "zu" gelten,
+                     steht in der Verwaltung unter Grundregeln.
+     [Geschlossen]   Optional: Abschlussdatum. Fehlt die Spalte, gilt bei geschlossenen
+                     Calls [Letzte_Änderung] als Abschluss.
+   Zweijahresgrenze bitte in der Abfrage setzen, z. B.
+     WHERE o.status NOT IN ('Geloest','Geschlossen')
+        OR o.letzte_aenderung >= DATEADD(YEAR, -2, GETDATE())
+   ========================================================================= */

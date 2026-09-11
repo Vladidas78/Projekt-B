@@ -275,6 +275,7 @@
   .bar.leer .bf { display: none; }
   .bf.b-neu { background: var(--accent); }
   .bf.b-geschl { background: var(--good); }
+  .bf.b-wieder { background: var(--warn); }
   .bf.b-offen { background: var(--baseline); }
   .bar .bv { position: absolute; top: -13px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .bk { flex: 1; text-align: center; font-size: 10px; color: var(--muted); min-width: 0; overflow: hidden; }
@@ -316,6 +317,8 @@
   tr.mi-done > td:not(.miack) { opacity: 0.5; }
   tr.mi-done > td:first-child { box-shadow: inset 3px 0 0 var(--good); }
   .pw-badge { font-size: 10.5px; font-weight: 650; border-radius: 5px; padding: 1px 5px; background: var(--accent-soft); color: var(--accent); }
+  .re-badge { font-size: 10.5px; font-weight: 650; border-radius: 5px; padding: 1px 5px; background: var(--warn-wash); color: #8a5a00; white-space: nowrap; }
+  .new-badge { font-size: 10.5px; font-weight: 700; border-radius: 5px; padding: 1px 5px; background: var(--crit-wash); color: var(--crit); white-space: nowrap; letter-spacing: 0.02em; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
   td.titlecell { min-width: 180px; max-width: 340px; }
   td.c-warn { background: var(--warn-wash) !important; }
@@ -493,7 +496,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.40";
+const VERSION = "1.41";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -580,6 +583,23 @@ const DEFAULT_STATE = {
       haken: "{MeinKuerzel} => {Bearbeiter}\n\nZu Call {Call} ({Kunde} – {Titel}) ist der Lösungstermin {LT} gesetzt. Bitte prüfen, ob der Kunde über den Termin informiert wurde, und ihn andernfalls informieren. Sobald die Info beim Kunden ist, bitte kurze Rückmeldung.\n\nGruß\n{MeinVorname}",
       wartend: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) steht auf „Wartend“, aber das „Wartend bis“-Datum {WartendBis}. Bitte ein Datum in der Zukunft setzen.\n\nGruß\n{MeinVorname}",
       krit: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) steht aus Sicht des Supportmanagements aktuell besonders im Blick. Bitte Stand prüfen und den Call aktualisieren.\n\nGruß\n{MeinVorname}"
+    },
+    // v1.41: englische Fassungen für Kollegen in den USA und in Asien
+    teamsEn: {
+      lt: "Hi {BearbeiterVorname}, quick reminder on call {Call} ({Kunde} – {Titel}): the solution date {LT} has passed. Could you get in touch with the customer and update the solution date? Thanks!",
+      kdkomm: "Hi {BearbeiterVorname}, call {Call} ({Kunde} – {Titel}) has had no update to the customer for {TageOhneInfo} days. Could you give the customer a short status? If you already did, just let me know. Thanks!",
+      aender: "Hi {BearbeiterVorname}, nothing has happened on call {Call} ({Kunde} – {Titel}) for {TageOhneAenderung} days. Is everything on track, or is there a new status? Thanks!",
+      haken: "Hi {BearbeiterVorname}, call {Call} ({Kunde} – {Titel}) has the solution date {LT}. Has the customer been informed about it? If yes, just let me know – if not, please inform them. Thanks!",
+      wartend: "Hi {BearbeiterVorname}, call {Call} ({Kunde} – {Titel}) is set to \"Waiting\", but the \"waiting until\" date {WartendBis}. Could you set a date in the future? Thanks!",
+      krit: "Hi {BearbeiterVorname}, call {Call} ({Kunde} – {Titel}) is currently at the top of our list. Could you give me a short status on how it is progressing? Thanks!"
+    },
+    wvlEn: {
+      lt: "{MeinKuerzel} => {Bearbeiter}\n\nThe solution date ({LT}) of call {Call} ({Kunde} – {Titel}) has passed. Please contact the customer and update the solution date.\n\nRegards\n{MeinVorname}",
+      kdkomm: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) has had no customer communication for {TageOhneInfo} days. Please give the customer a current status. If the customer has already been informed, a short reply is enough.\n\nRegards\n{MeinVorname}",
+      aender: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) has not been worked on for {TageOhneAenderung} days. Please check the status and update the call.\n\nRegards\n{MeinVorname}",
+      haken: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) has the solution date {LT}. Please check whether the customer has been informed about the date and inform them otherwise. Once the customer knows, a short reply is enough.\n\nRegards\n{MeinVorname}",
+      wartend: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) is set to \"Waiting\", but the \"waiting until\" date {WartendBis}. Please set a date in the future.\n\nRegards\n{MeinVorname}",
+      krit: "{MeinKuerzel} => {Bearbeiter}\n\nCall {Call} ({Kunde} – {Titel}) is currently in special focus of support management. Please check the status and update the call.\n\nRegards\n{MeinVorname}"
     }
   },
   user: "",      // Kürzel des angemeldeten Nutzers
@@ -597,7 +617,8 @@ const DEFAULT_STATE = {
   usaKunden: "",
   asiaKunden: "",
   internKunde: "MPDV", // internes Kunden-Kürzel – Ausblenden über den Filter „Sonstiges" je Liste
-  rules: { exclBearbeiter: "HX-MP-UPDATE" }, // Pseudo-Bearbeiter – Ausblenden über den Filter „Sonstiges" je Liste
+  rules: { exclBearbeiter: "HX-MP-UPDATE", // Pseudo-Bearbeiter – Ausblenden über den Filter „Sonstiges" je Liste
+           closedStatus: "Gelöst; Geschlossen; Closed; Resolved; Solved" }, // Status, die als „zu“ gelten (v1.41: der Export liefert auch geschlossene Calls)
   udienste: [ // Unterstützungsdienste: Tagesaufgabe „Mail an eingeplanten Kollegen“ (Verwaltung)
     { k: "IMP", name: "Implementation Services", gruppen: "ImplementationServices; Implementation Services; IMP",
       intro: "Hallo,\n\nhier die Calls sortiert nach letzter Aktion zum Kunden, sollten noch weitere Calls reinkommen, melden wir uns:",
@@ -633,6 +654,9 @@ const DEFAULT_STATE = {
   },
   cols: {}, // je Tagesliste: sichtbare Spalten (leer = Standard, siehe WF_DEFAULT_COLS)
   history: {},   // "YYYY-MM-DD" -> Kennzahlen-Schnappschuss (nur lokal)
+  callStatus: {}, // "YYYY-MM" (Monat der Eröffnung) -> { call: {s, c, r, rt, ls} } – Statusgedächtnis je Call (teamweit): s 1 = zu, c = Abschluss, r = wie oft wieder geöffnet, rt = letzte Wiedereröffnung, ls = zuletzt gesehen
+  topGeschl: {}, // "JJJJ-Www" -> {dauer:[..], alt:[..]} – in der Vorwoche (Mo–So) geschlossene Top-10-Calls, eingefroren fürs Protokoll (teamweit)
+  wfSeen: {},    // "wf|call" -> "YYYY-MM-DD": Tag, an dem der Call zum ersten Mal in dieser Tagesliste stand (teamweit) – Grundlage des „neu“-Flags
   tagesstat: {}, // "YYYY-MM-DD" -> {calls:[..], neu:[..], bearb:{k:n}} – Tages-Schnappschuss der offenen Calls (teamweit), Basis für neu/geschlossen
   sort: {},      // Liste -> {key, dir} – Sortierung der Tabellen, gilt für das ganze Team
   acks: {},      // "call|wf" -> {d, h, by, note, until}
@@ -684,7 +708,9 @@ function loadState() {
         filters: Object.fromEntries(Object.entries(DEFAULT_STATE.filters).map(([k, v]) => [k, { ...structuredClone(v), ...((s.filters || {})[k] || {}) }])),
         templates: {
           teams: { ...DEFAULT_STATE.templates.teams, ...(tpl.teams || {}) },
-          wvl: { ...DEFAULT_STATE.templates.wvl, ...(tpl.wvl || {}) }
+          wvl: { ...DEFAULT_STATE.templates.wvl, ...(tpl.wvl || {}) },
+          teamsEn: { ...DEFAULT_STATE.templates.teamsEn, ...(tpl.teamsEn || {}) },
+          wvlEn: { ...DEFAULT_STATE.templates.wvlEn, ...(tpl.wvlEn || {}) }
         } };
     }
   } catch (e) { /* leerer Start */ }
@@ -741,6 +767,16 @@ function normalizeState() {
   state.reakt ??= {};
   state.reaktAgg ??= {};
   state.slaNote ??= {};
+  state.callStatus ??= {};
+  state.topGeschl ??= {};
+  state.wfSeen ??= {};
+  state.templates ??= structuredClone(DEFAULT_STATE.templates);
+  for (const art of ["teams", "wvl", "teamsEn", "wvlEn"]) state.templates[art] = { ...DEFAULT_STATE.templates[art], ...(state.templates[art] || {}) }; // Team-Stände aus älteren Versionen kennen die englischen Vorlagen noch nicht
+  if (!state.v41) { // alte, teamweite Prüfhaken der Mittwochsmail einmalig verwerfen – ab jetzt je Benutzer
+    for (const k of Object.keys(state.acks || {})) if (/\|mi$/.test(k)) { delete state.acks[k]; touch("acks|" + k); }
+    state.v41 = 1;
+  }
+  state.rules.closedStatus ??= DEFAULT_STATE.rules.closedStatus;
   if (!state.filters.sla.v35) { state.filters.sla.intern = true; state.filters.sla.v35 = 1; } // v1.35: interner Kunde ab Werk ausgeschlossen
   if (state.filters.extreakt) delete state.filters.extreakt;
   if (!state.filters.sla.v37) { state.filters.sla.usa = true; state.filters.sla.asia = true; state.filters.sla.v37 = 1; } // v1.37: USA/Asien ab Werk ausgeschlossen
@@ -895,9 +931,23 @@ const COLMAP = {
   // „Externe Reaktion“ aus der Abfrage: Kalenderzeit von der Eröffnung bis zur ersten externen Aktion in Tagen (0 = noch keine)
   "externe reaktion": "ExtReaktionTage", "externe reaktion (tage)": "ExtReaktionTage",
   "erste externe reaktion": "ErsteExtReaktion", "erste ext. reaktion": "ErsteExtReaktion", "erste_externe_reaktion": "ErsteExtReaktion", "erste reaktion": "ErsteExtReaktion",
+  // v1.41: Region des Kunden (USA / Asien / Europa) aus der Abfrage – ersetzt die Kürzellisten der Verwaltung
+  "region": "Region", "kundenregion": "Region", "primäre kundenbetreuung": "Region", "primaere kundenbetreuung": "Region", "kundenbetreuung": "Region", "betreuung": "Region",
+  // v1.41: Schließdatum (optional) – fehlt es, gilt bei geschlossenen Calls die letzte Änderung als Abschluss
+  "geschlossen": "Geschlossen", "geschlossen am": "Geschlossen", "gelöst am": "Geschlossen", "geloest am": "Geschlossen", "abgeschlossen": "Geschlossen", "abgeschlossen am": "Geschlossen",
   "score": "Score"
 };
-const DATECOLS = ["Eröffnet", "Weiterleitung", "Letzte_Änderung", "Wartend_bis", "Lösung_bis", "LetzteInfo", "LetzteExtReaktion", "ErsteExtReaktion"];
+const DATECOLS = ["Eröffnet", "Weiterleitung", "Letzte_Änderung", "Wartend_bis", "Lösung_bis", "LetzteInfo", "LetzteExtReaktion", "ErsteExtReaktion", "Geschlossen"];
+/* Region des Kunden aus der Abfrage, auf drei Werte gebracht */
+function regionNorm(v) {
+  const t = String(v ?? "").trim(); if (!t) return "";
+  const l = t.toLowerCase();
+  if (/\busa?\b|amerika|america|north am|nordam/.test(l)) return "USA";
+  if (/asi|apac|china|japan|singap/.test(l)) return "Asien";
+  if (/eur|emea|deutschland|germany/.test(l)) return "Europa";
+  return t;
+}
+const REGIONEN = ["Europa", "USA", "Asien"];
 /* Bereich (PD/SD/2nd/1st) aus der Bearbeitergruppe ableiten – seit v1.11 kommt
    alles aus einer einzigen Abfrageliste, die frühere PD/SD-Trennung entsteht hier. */
 function quelleOf(g) {
@@ -935,6 +985,7 @@ function normalizeRows(raw) {
     r.Score = Number.isFinite(sc) ? sc : null;
     r.TageOhneInfo = (r.TageOhneInfo == null || r.TageOhneInfo === "") ? null : Number(r.TageOhneInfo);
     r.Quelle = quelleOf(r.Gruppe);
+    r.Region = regionNorm(r.Region);
     return r;
   }).filter(r => r.Call != null || r.Titel);
 }
@@ -969,11 +1020,11 @@ const sources = {
 function serRows(rows) { return rows.map(r => { const o = {}; for (const [k, v] of Object.entries(r)) o[k] = v instanceof Date ? { __d: v.toISOString() } : v; return o; }); }
 function revRows(rows) { return rows.map(r => { const o = {}; for (const [k, v] of Object.entries(r)) o[k] = (v && typeof v === "object" && v.__d) ? new Date(v.__d) : v; return o; }); }
 function cacheSources() {
+  const pack = rows => JSON.stringify({ ALL: { rows: serRows(rows), label: sources.ALL.label, ts: sources.ALL.ts?.toISOString(), cols: sources.ALL.cols || [] } });
   try {
-    const c = {};
-    if (sources.ALL.rows.length && !sources.ALL.demo)
-      c.ALL = { rows: serRows(sources.ALL.rows), label: sources.ALL.label, ts: sources.ALL.ts?.toISOString(), cols: sources.ALL.cols || [] };
-    localStorage.setItem(LS_CACHE, JSON.stringify(c));
+    if (!sources.ALL.rows.length || sources.ALL.demo) { localStorage.setItem(LS_CACHE, "{}"); return; }
+    try { localStorage.setItem(LS_CACHE, pack(sources.ALL.rows)); }
+    catch (e) { localStorage.setItem(LS_CACHE, pack(allRows())); } // Speicher knapp (Browser-Grenze): nur die offenen Calls sichern, die geschlossenen kommen beim nächsten Lesen der Datei wieder
   } catch (e) { /* Cache optional */ }
 }
 function restoreSources() {
@@ -1154,7 +1205,7 @@ async function resumeWatch() {
    Haken, Kommentare, Markierungen, Personen, Verteiler und Vorlagen werden mit einer
    JSON-Datei abgeglichen, die alle Boards im Team lesen und schreiben. Je Eintrag
    gewinnt die jüngste Änderung (Zeitstempel in state.touch). */
-const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll", "tagesstat", "udDone", "reakt", "reaktAgg", "slaNote"];
+const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll", "tagesstat", "udDone", "reakt", "reaktAgg", "slaNote", "callStatus", "topGeschl", "wfSeen"];
 const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "protoMinCalls", "rules", "filters", "cols", "gruppenFilter", "sort", "udienste", "saasKunden", "usaKunden", "asiaKunden"];
 let sharedHandle = null, pendingSharedHandle = null, sharedDirty = false, sharedBusy = false, sharedLastSync = null;
 /* Härtung v1.14: geschrieben wird NUR nach einem erfolgreichen Lese-/Merge-Zyklus.
@@ -1586,13 +1637,78 @@ async function mergeSharedReadOnly(h) {
     return true;
   } catch (e) { console.warn("Team-Speicher: Lesen fehlgeschlagen", e); return false; }
 }
-function allRows() {
+/* Geschlossene Calls (v1.41): Der Export liefert auch die in den letzten zwei Jahren geschlossenen Calls.
+   Für alle Tageslisten und Mails zählen nur offene Calls (allRows); Statistiken greifen zusätzlich auf
+   die geschlossenen zu (closedRows, alleZeilen). Welche Status als „zu“ gelten, steht in der Verwaltung. */
+function istGeschlossen(r) { return ruleList(state.rules?.closedStatus ?? DEFAULT_STATE.rules.closedStatus).includes(statusNorm(r)); }
+function alleZeilen() {
   const seen = new Map();
   for (const r of sources.ALL.rows) {
     const key = String(r.Call);
     if (!seen.has(key)) seen.set(key, r);
   }
   return [...seen.values()];
+}
+let _rowsCache = null; // je Datenstand einmal aufgeteilt (allRows wird pro Bild sehr oft gerufen)
+function rowsSplit() {
+  const rows = sources.ALL.rows, rule = state.rules?.closedStatus ?? "";
+  if (_rowsCache && _rowsCache.src === rows && _rowsCache.n === rows.length && _rowsCache.rule === rule) return _rowsCache;
+  const alle = alleZeilen();
+  _rowsCache = { src: rows, n: rows.length, rule, offen: alle.filter(r => !istGeschlossen(r)), zu: alle.filter(istGeschlossen) };
+  return _rowsCache;
+}
+function allRows() { return rowsSplit().offen; }
+function closedRows() { return rowsSplit().zu; }
+function hatGeschlossene() { return closedRows().length > 0; }
+/* Abschlusszeitpunkt eines geschlossenen Calls: Schließdatum der Abfrage, sonst die letzte Änderung */
+function geschlossenAm(r) { return r.Geschlossen instanceof Date ? r.Geschlossen : (r["Letzte_Änderung"] instanceof Date ? r["Letzte_Änderung"] : null); }
+/* Statusgedächtnis je Call (teamweit, nach Eröffnungsmonat gebündelt): erkennt Wiedereröffnungen.
+   Bei Beispieldaten bleibt alles sitzungslokal. Ohne geschlossene Calls im Export passiert nichts –
+   dann wäre „verschwunden“ nicht von „geschlossen“ zu unterscheiden. */
+const callStatusTemp = {};
+function callStatusStore() { return sources.ALL.demo ? callStatusTemp : (state.callStatus ??= {}); }
+function statusMem(call) {
+  const c = String(call);
+  for (const m of Object.values(callStatusStore())) if (m[c]) return m[c];
+  return null;
+}
+function wiederGeoeffnet(r) { const e = statusMem(r.Call); return e && e.r > 0 && !istGeschlossen(r) ? e : null; }
+function recordCallStatus() {
+  if (!hatGeschlossene()) return;
+  const store = callStatusStore(), demo = !!sources.ALL.demo;
+  const heute = todayKey(), jetzt = Date.now(), touched = new Set();
+  const grenzeMonat = monatKey(new Date(todayStart().getTime() - 800 * DAY)); // gut zwei Jahre
+  for (const r of alleZeilen()) {
+    if (!r["Eröffnet"]) continue;
+    const mk = monatKey(r["Eröffnet"]), call = String(r.Call);
+    if (mk < grenzeMonat) continue;
+    const zu = istGeschlossen(r) ? 1 : 0;
+    const m = store[mk] ??= {};
+    const alt = m[call];
+    if (!alt) { m[call] = { s: zu, ls: heute, ...(zu ? { c: geschlossenAm(r)?.getTime() ?? jetzt } : {}) }; touched.add(mk); continue; }
+    let ch = false;
+    if (alt.s !== zu) {
+      if (zu) { alt.c = geschlossenAm(r)?.getTime() ?? jetzt; }
+      else { alt.r = (alt.r || 0) + 1; alt.rt = jetzt; alt.rs = String(r.Status ?? ""); } // wieder geöffnet
+      alt.s = zu; ch = true;
+    }
+    if (alt.ls !== heute) { alt.ls = heute; ch = true; }
+    if (ch) touched.add(mk);
+  }
+  // Aufräumen: alte Monate und lange nicht mehr gesehene Calls
+  const vergessen = isoDateOf(new Date(todayStart().getTime() - 60 * DAY));
+  for (const [mk, m] of Object.entries(store)) {
+    if (mk < grenzeMonat) { delete store[mk]; touched.add(mk); continue; }
+    for (const [c, e] of Object.entries(m)) if ((e.ls || "") < vergessen) { delete m[c]; touched.add(mk); }
+    if (!Object.keys(m).length) { delete store[mk]; touched.add(mk); }
+  }
+  if (touched.size && !demo) { for (const k of touched) touch("callStatus|" + k); saveState(); }
+}
+/* Wiedereröffnungen im Zeitraum [von, bis) – für Tagesstatistik und Listen */
+function wiederGeoeffnetListe(von, bis) {
+  const out = [];
+  for (const m of Object.values(callStatusStore())) for (const [call, e] of Object.entries(m)) if (e.rt && e.rt >= von && e.rt < bis) out.push({ call, e });
+  return out;
 }
 function areaRows(area) { return allRows().filter(r => r.Quelle === area); }
 async function importCallFile(file, live) {
@@ -1603,7 +1719,10 @@ async function importCallFile(file, live) {
     sources.ALL.label = `${file.name} (${rows.length})`;
     sources.ALL.ts = new Date();
     updateChips(live);
+    _rowsCache = null;
     recordTagesstat();
+    recordCallStatus();
+    recordWfSeen();
     recordReakt();
     render();
     snapshotKpis(computeKpis());
@@ -1761,11 +1880,21 @@ function isInternKunde(r) { return String(r.Kunde ?? "").trim().toUpperCase() ==
 /* Kundengruppen: Kürzellisten in der Verwaltung, je Liste über „Sonstiges“ ausblendbar */
 const KUNDENGRUPPEN = [
   { k: "saas", label: "SaaS", feld: "saasKunden", name: "SaaS-Kunden" },
-  { k: "usa",  label: "USA",  feld: "usaKunden",  name: "USA-Kunden" },
-  { k: "asia", label: "Asien", feld: "asiaKunden", name: "Asien-Kunden" }
+  { k: "usa",  label: "USA",  feld: "usaKunden",  name: "USA-Kunden", region: "USA" },
+  { k: "asia", label: "Asien", feld: "asiaKunden", name: "Asien-Kunden", region: "Asien" },
+  { k: "europa", label: "Europa", name: "Europa-Kunden", region: "Europa" } // nur mit Region-Spalte
 ];
 function kundenListe(feld) { return String(state[feld] || "").split(/[;,\n]/).map(x => x.trim().toUpperCase()).filter(Boolean); }
 function isKundeIn(r, feld) { const k = String(r.Kunde ?? "").trim().toUpperCase(); return !!k && kundenListe(feld).includes(k); }
+/* v1.41: Liefert die Abfrage die Region des Kunden (USA / Asien / Europa), zählt sie – die Kürzellisten
+   der Verwaltung sind dann nur noch für SaaS nötig. Ohne Region-Spalte gelten die Kürzellisten weiter. */
+function regionAktiv() { return hatSpalte("Region"); }
+function kundenGruppen() { return KUNDENGRUPPEN.filter(g => !g.region || g.feld || regionAktiv()); }
+function kundeInGruppe(r, g) {
+  if (g.region && regionAktiv()) return regionNorm(r.Region) === g.region;
+  return g.feld ? isKundeIn(r, g.feld) : false;
+}
+function istUsaAsien(r) { return KUNDENGRUPPEN.filter(g => g.region === "USA" || g.region === "Asien").some(g => kundeInGruppe(r, g)); }
 function saasListe() { return kundenListe("saasKunden"); }
 function isSaasKunde(r) { return isKundeIn(r, "saasKunden"); }
 function ruleList(s) { return String(s || "").split(/[;\n]/).map(x => x.trim().toLowerCase()).filter(Boolean); }
@@ -1784,7 +1913,7 @@ function applyFilters(fkey, rows) {
   return rows.filter(r => !fexcl(fkey, "status", r.Status) && !fexcl(fkey, "gruppe", r.Gruppe)
     && !(f.prio ?? []).includes(prioName(r.Prio))
     && !(f.intern && isInternKunde(r))
-    && !KUNDENGRUPPEN.some(g => f[g.k] && isKundeIn(r, g.feld))
+    && !kundenGruppen().some(g => f[g.k] && kundeInGruppe(r, g))
     && !(f.hxmp && bearbeiterExcluded(r)));
 }
 const STATUS_KNOWN = ["Customer Care", "In Bearbeitung", "Pre-Update", "Update", "Wartend"];
@@ -1820,7 +1949,7 @@ function filterPanel(fkey, candidates, opts = {}) {
   const fgOff = g => g.members.every(m => (f.gruppe ?? []).includes(m.toLowerCase()));
   const fgChips = defs.map(g => `<button class="fchip ${fgOff(g) ? "f-off" : ""}" data-fgrp="${fkey}|${esc(g.name)}" title="Enthält: ${esc(g.members.join(", "))}">${esc(g.name)}</button>`).join("");
   const gruppeHidden = defs.filter(fgOff).length + singles.filter(v => fexcl(fkey, "gruppe", v)).length;
-  const hidden = (f.status?.length || 0) + gruppeHidden + (f.prio?.length || 0) + (f.intern ? 1 : 0) + KUNDENGRUPPEN.filter(g => f[g.k]).length + (f.hxmp ? 1 : 0);
+  const hidden = (f.status?.length || 0) + gruppeHidden + (f.prio?.length || 0) + (f.intern ? 1 : 0) + kundenGruppen().filter(g => f[g.k]).length + (f.hxmp ? 1 : 0);
   // Offen, wenn der Nutzer es so gelassen hat; nur ohne eigene Vorgabe: offen, sobald Filter greifen.
   // Früher wurde bei jedem Neuzeichnen (Datenprüfung, ACK-Klick) der Zustand neu berechnet – das war das „zufällige“ Zuklappen.
   const pref = uiPref.fpanel?.[fkey];
@@ -1833,7 +1962,9 @@ function filterPanel(fkey, candidates, opts = {}) {
     <div class="frow"><span class="flabel">Priorität</span>${["Grün", "Blau", "Rot"].map(prioChipHtml).join("")}</div>
     <div class="frow"><span class="flabel">Sonstiges</span>
       <button class="fchip ${f.intern ? "f-off" : ""}" data-fintern="${fkey}" title="Calls des internen Kunden (${esc(state.internKunde || "MPDV")}) ein- oder ausblenden">${esc(state.internKunde || "MPDV")}-Calls</button>
-      ${KUNDENGRUPPEN.map(g => { const l = kundenListe(g.feld); return `<button class="fchip ${f[g.k] ? "f-off" : ""}" data-fkg="${fkey}|${g.k}" title="Calls der ${esc(g.name)} ein- oder ausblenden (Kürzel in der Verwaltung unter „Grundregeln“${l.length ? ": " + esc(l.join(", ")) : " – noch keine eingetragen"})">${esc(g.label)}${l.length ? "" : " (leer)"}</button>`; }).join("")}
+      ${kundenGruppen().map(g => {
+        if (g.region && regionAktiv()) return `<button class="fchip ${f[g.k] ? "f-off" : ""}" data-fkg="${fkey}|${g.k}" title="Calls der ${esc(g.name)} ein- oder ausblenden (Region aus der Abfrage)">${esc(g.label)}</button>`;
+        const l = kundenListe(g.feld); return `<button class="fchip ${f[g.k] ? "f-off" : ""}" data-fkg="${fkey}|${g.k}" title="Calls der ${esc(g.name)} ein- oder ausblenden (Kürzel in der Verwaltung unter „Grundregeln“${l.length ? ": " + esc(l.join(", ")) : " – noch keine eingetragen"})">${esc(g.label)}${l.length ? "" : " (leer)"}</button>`; }).join("")}
       <button class="fchip ${f.hxmp ? "f-off" : ""}" data-fhxmp="${fkey}" title="Calls des Pseudo-Bearbeiters ${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")} ein- oder ausblenden">${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")}</button>
     </div>
     <p class="hint">Klick blendet einen Wert aus bzw. wieder ein. Durchgestrichen = ausgeblendet. Einstellungen bleiben gespeichert. Filtergruppen (z. B. Hotline) pflegt die Verwaltung.</p>
@@ -1933,7 +2064,8 @@ const WF_WATCH = {
   haken:  { label: "Kundenkommunikation/Haken", val: r => `${r.LetzteInfo?.getTime() ?? ""}|${hakenGesetzt(r)}` },
   wartend: { label: "„Wartend bis“-Datum", val: r => r.Wartend_bis?.getTime() ?? "" }
 };
-function ackKey(r, wf) { return `${r.Call}|${wf}`; }
+/* v1.41: Der Prüfhaken der Mittwochsmail ist persönlicher Arbeitsfortschritt – je Benutzer, nicht teamweit. */
+function ackKey(r, wf) { return wf === "mi" ? `${r.Call}|mi|${currentUser().k || "?"}` : `${r.Call}|${wf}`; }
 function watchVal(r, wf) { return String(WF_WATCH[wf] ? WF_WATCH[wf].val(r) : ""); }
 function todayKey() { return new Date().toISOString().slice(0, 10); }
 /* Ohne "bis"-Datum gilt ein ACK dauerhaft (bis es manuell entfernt wird),
@@ -1954,7 +2086,7 @@ function setAck(r, wf, on) {
       ...(alt?.note ? { note: alt.note, noteTs: alt.noteTs, noteBy: alt.noteBy } : {}) };
   } else delete state.acks[ackKey(r, wf)];
   touch("acks|" + ackKey(r, wf));
-  logHist(r.Call, { t: on ? "ack" : "ackoff", wf });
+  if (wf !== "mi") logHist(r.Call, { t: on ? "ack" : "ackoff", wf }); // persönliche Prüfhaken stehen nicht in der Team-Historie
   saveState();
 }
 function setAckMeta(r, wf, field, value) {
@@ -2032,17 +2164,20 @@ function openHistPopover(btn, call) {
   }), 0);
 }
 
-/* WVL-Texte */
-function fillTemplate(tpl, r) {
+/* WVL-Texte – lang "en": englische Platzhalter-Texte (Datum, „fehlt“ …) */
+const fmtDEn = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+function fillTemplate(tpl, r, lang) {
   const u = currentUser();
+  const en = lang === "en";
+  const fD = en ? fmtDEn : fmtD;
   const bName = resolveName(r.Bearbeiter);
   const map = {
     Call: r.Call, Kunde: r.Kunde ?? "–", Titel: r.Titel ?? "–",
     Bearbeiter: r.Bearbeiter ?? "–",
     BearbeiterName: bName ?? r.Bearbeiter ?? "–",
     BearbeiterVorname: vornameOf(bName) ?? r.Bearbeiter ?? "–",
-    LT: r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "kein LT",
-    WartendBis: r.Wartend_bis ? (r.Wartend_bis < todayStart() ? `ist abgelaufen (${fmtD.format(r.Wartend_bis)})` : fmtD.format(r.Wartend_bis)) : "fehlt",
+    LT: r["Lösung_bis"] ? fD.format(r["Lösung_bis"]) : (en ? "no solution date" : "kein LT"),
+    WartendBis: r.Wartend_bis ? (r.Wartend_bis < todayStart() ? (en ? `has expired (${fD.format(r.Wartend_bis)})` : `ist abgelaufen (${fmtD.format(r.Wartend_bis)})`) : fD.format(r.Wartend_bis)) : (en ? "is missing" : "fehlt"),
     Status: r.Status ?? "–",
     Score: r.Score ?? "–",
     TageOhneInfo: tageOhneInfo(r) ?? "–",
@@ -2159,12 +2294,14 @@ function terminStyle(r, mode) {
   if (ov === "gelb" || ov === "rot") return markStyleOf(ov);
   if (ov === "none") return "";
   const lt = r["Lösung_bis"];
-  if (!lt) return statusNorm(r) === "wartend" ? "" : markStyleOf("gelb");
+  if (!lt) return statusNorm(r) === "wartend" || !weiterleitungAelter14(r) ? "" : markStyleOf("gelb"); // v1.41: frisch weitergeleitete Calls dürfen noch ohne LT sein
   if (lt < todayStart()) return markStyleOf("rot");
   if (ltWochenende(r)) return markStyleOf("rot"); // Fußtext: "auf ein Wochenende gelegt"
   if (lt.getTime() === todayStart().getTime()) return markStyleOf("gelb");
   return "";
 }
+/* Letzte Weiterleitung (ersatzweise Eröffnung) liegt mehr als 14 Tage zurück */
+function weiterleitungAelter14(r) { const w = r.Weiterleitung ?? r["Eröffnet"]; return !w || (daysSince(w) ?? 0) > 14; }
 function kommentarStyle(call) {
   const m = state.miMark[call]?.kommentar;
   return m === "gelb" || m === "rot" ? markStyleOf(m) : "";
@@ -2230,12 +2367,12 @@ function buildMittwochMail(quelle, mitVerbleib) {
     : `Info zu Calls mit hoher Dauer in Solution Development - KW ${kw}`;
   const intro = state.intros[quelle === "PD" ? "miPd" : "miSd"];
   const header = ["Callnr.", "Datum", "Gruppe", "Bearbeiter", "Kurzz.", "Titel", "Status", "zul.bearb.", "Termin", "Dauer", "Kommentar SupMan"];
-  if (mitVerbleib) header.push("Verbleib nach Sichtung der Langläufercalls");
+  if (mitVerbleib) { header.splice(1, 0, "Prio"); header.push("Verbleib nach Sichtung der Langläufercalls"); } // Prio nur im Protokoll, nicht in der Mail
   const HDR = MAIL_HDR; // helle Kopfzeile mit schwarzer Schrift: bleibt in jedem Mailprogramm und auch im Dunkelmodus lesbar
   let html = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;">${mitVerbleib ? "" : fmtMarkup(intro) + "<br><br>"}<table style="${mailTableStyle()}"><tr>${header.map(v => th(v, HDR)).join("")}</tr>`;
   rows.forEach((r, i) => {
     const zeb = i % 2 ? "background-color:#f2f2f2;" : "";
-    html += "<tr>" + td(r.Call, zeb) + td(r["Eröffnet"] ? fmtD.format(r["Eröffnet"]) : "", zeb) + td(gruppeKurz(r.Gruppe), zeb, true) + td(r.Bearbeiter, zeb) + td(r.Kunde, zeb)
+    html += "<tr>" + td(r.Call, zeb) + (mitVerbleib ? td(prioText(r), prioRowStyle(r), true) : "") + td(r["Eröffnet"] ? fmtD.format(r["Eröffnet"]) : "", zeb) + td(gruppeKurz(r.Gruppe), zeb, true) + td(r.Bearbeiter, zeb) + td(r.Kunde, zeb)
       + td(r.Titel, zeb) + td(r.Status, zeb, true) + td(r["Letzte_Änderung"] ? fmtD.format(r["Letzte_Änderung"]) : "", zeb)
       + td(r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "", zeb + terminStyle(r))
       + td((Number(r.Dauer) || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), zeb + "text-align:right;")
@@ -2379,10 +2516,34 @@ function buildFreitagMail() {
     plain: state.intros.fr + "\n\n(Tabellen: bitte HTML-Einfügen verwenden)"
   };
 }
-function mailtoHref(subject, mails) {
+function mailtoHref(subject, mails, cc) {
   const to = mails.join(";");
-  const href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`;
+  const q = [`subject=${encodeURIComponent(subject)}`];
+  if (cc && cc.length) q.push(`cc=${encodeURIComponent(cc.join(";"))}`);
+  const href = `mailto:${encodeURIComponent(to)}?${q.join("&")}`;
   return { href, tooLong: href.length > 1900 };
+}
+/* Entwurf als .eml-Datei (v1.41): Outlook (klassisch) öffnet eine Datei mit „X-Unsent: 1“ als neue, noch nicht
+   gesendete Mail – mit Empfängern, Betreff und dem formatierten Text. Der Nutzer prüft und klickt „Senden“. */
+function b64utf8(s) { const b = new TextEncoder().encode(s); let out = ""; for (let i = 0; i < b.length; i += 0x8000) out += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(out); }
+function emlDatei(m, mails) {
+  const zeilen = s => s.replace(/(.{76})/g, "$1\r\n");
+  const html = `<html><head><meta charset="utf-8"></head><body>${m.html}</body></html>`;
+  const kopf = [
+    `To: ${mails.join(", ")}`,
+    m.cc?.length ? `Cc: ${m.cc.join(", ")}` : null,
+    `Subject: =?utf-8?B?${b64utf8(m.subject)}?=`,
+    "X-Unsent: 1",
+    "MIME-Version: 1.0",
+    'Content-Type: text/html; charset="utf-8"',
+    "Content-Transfer-Encoding: base64", ""
+  ].filter(x => x != null).join("\r\n");
+  const blob = new Blob([kopf + "\r\n" + zeilen(b64utf8(html))], { type: "message/rfc822" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (m.subject || "Mail").replace(/[\\/:*?"<>|]+/g, " ").slice(0, 80).trim() + ".eml";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
 /* ================= Personen-Import / Verwaltung ================= */
@@ -2460,7 +2621,7 @@ function loadDemo() {
     const reaktMin = prio.startsWith("1") ? Math.floor(rnd() * 50) : prio.startsWith("2") ? Math.floor(rnd() * 330) : Math.floor(rnd() * 70 * 60);
     const erste = (age > 2 || rnd() < 0.7) ? new Date(er.getTime() + reaktMin * 60000) : null;
     rows.push({
-      ErsteExtReaktion: erste,
+      ErsteExtReaktion: erste, Region: pickW([["Europa", 70], ["USA", 18], ["Asien", 12]]), Geschlossen: null,
       Quelle: quelleOf(gruppe), Prio: prio, Call: 156000 + i * 7 + Math.floor(rnd() * 6),
       "Eröffnet": er, Gruppe: gruppe, Bearbeiter: hx ? "HX-MP-UPDATE" : pick(bearb[gruppe]), Kunde: pick(kunden),
       Titel: pick(titles), SupMan: rnd() < 0.25 ? pick(["MLH", "APA", "RRE", "VKU"]) : "", Status: status, Dauer: dauer,
@@ -2472,9 +2633,36 @@ function loadDemo() {
       Score: mult * pts
     });
   }
+  // v1.41: dazu geschlossene Calls der letzten zwei Jahre – wie sie der Export jetzt mitliefert
+  const offenN = rows.length;
+  for (let i = 0; i < 320; i++) {
+    const gruppe = pickW(GRP_W);
+    const age = Math.floor(rnd() * 730) + 1;
+    const er = new Date(now() - age * DAY + rnd() * 8 * 3600000 + 8 * 3600000);
+    const laufzeit = Math.max(0.05, Math.min(age - 0.6 - rnd() * 25, Math.pow(rnd(), 2) * 120 + rnd() * 2));
+    const zu = new Date(Math.min(now().getTime() - 3600000, er.getTime() + laufzeit * DAY));
+    const prio = pickW([["1 - Rot", 12], ["2 - Blau", 34], ["3 - Grün", 54]]);
+    const reaktMin = prio.startsWith("1") ? Math.floor(rnd() * 45) : prio.startsWith("2") ? Math.floor(rnd() * 300) : Math.floor(rnd() * 60 * 60);
+    const erste = rnd() < 0.9 ? new Date(Math.min(zu.getTime(), er.getTime() + reaktMin * 60000)) : null;
+    rows.push({
+      ErsteExtReaktion: erste, Region: pickW([["Europa", 70], ["USA", 18], ["Asien", 12]]), Geschlossen: zu,
+      Quelle: quelleOf(gruppe), Prio: prio, Call: 140000 + i * 11 + Math.floor(rnd() * 9),
+      "Eröffnet": er, Gruppe: gruppe, Bearbeiter: pick(bearb[gruppe]), Kunde: pick(kunden),
+      Titel: pick(titles), SupMan: rnd() < 0.25 ? pick(["MLH", "APA", "RRE", "VKU"]) : "", Status: rnd() < 0.6 ? "Geschlossen" : "Gelöst",
+      Dauer: Math.round(Math.pow(rnd(), 1.8) * 60 * 100) / 100,
+      Weiterleitung: new Date(er.getTime() + rnd() * (zu - er) * 0.3), "Letzte_Änderung": zu,
+      Wartend_bis: null, "Lösung_bis": rnd() < 0.5 ? new Date(zu.getTime() + (rnd() - 0.3) * 10 * DAY) : null, "Terminänderungen": pickW([[0, 60], [1, 25], [2, 10], [4, 5]]),
+      Haken: rnd() < 0.3 ? "Ja" : "Nein", LetzteInfo: new Date(zu.getTime() - rnd() * 3 * DAY), TageOhneInfo: null, Score: 0
+    });
+  }
   sources.ALL.rows = rows; sources.ALL.cols = Object.keys(rows[0] || {}); sources.ALL.label = "Beispieldaten"; sources.ALL.ts = new Date(); sources.ALL.demo = true;
+  _rowsCache = null;
+  for (const k of Object.keys(callStatusTemp)) delete callStatusTemp[k];
+  for (const k of Object.keys(wfSeenTemp)) delete wfSeenTemp[k];
+  recordCallStatus();
+  recordWfSeen();
   updateChips(); render();
-  toast(`Beispieldaten geladen (${rows.length} Calls über alle Gruppen, fiktive Personen)`);
+  toast(`Beispieldaten geladen (${offenN} offene und ${rows.length - offenN} geschlossene Calls, fiktive Personen)`);
 }
 
 /* ================= Rendering ================= */
@@ -2510,6 +2698,27 @@ function buildMemberMap() {
     memberMap.get(k).push(w.id);
   }
 }
+/* „neu“-Flag (v1.41): Ein Call, der heute zum ersten Mal in einer Tagesliste steht und dort noch nie ein ACK hatte,
+   wird als neu markiert – teamweit, damit jeder sieht, was seit gestern dazugekommen ist. */
+const wfSeenTemp = {};
+function wfSeenStore() { return sources.ALL.demo ? wfSeenTemp : (state.wfSeen ??= {}); }
+function recordWfSeen() {
+  if (!allRows().length) return;
+  const store = wfSeenStore(), heute = todayKey(), demo = !!sources.ALL.demo;
+  const aktuell = new Set();
+  let ch = false;
+  for (const w of WF) for (const r of wfRows(w)) {
+    const k = `${w.id}|${r.Call}`; aktuell.add(k);
+    if (!store[k]) { store[k] = heute; if (!demo) touch("wfSeen|" + k); ch = true; }
+  }
+  const alt = isoDateOf(new Date(todayStart().getTime() - 30 * DAY));
+  for (const [k, d] of Object.entries(store)) if (!aktuell.has(k) && d < alt) { delete store[k]; if (!demo) touch("wfSeen|" + k); ch = true; }
+  if (ch && !demo) saveState();
+}
+function istNeuInListe(r, wfId) {
+  return wfSeenStore()[`${wfId}|${r.Call}`] === todayKey() && !state.acks[ackKey(r, wfId)];
+}
+function neuBadge(r, wfId) { return istNeuInListe(r, wfId) ? ` <span class="new-badge" title="Heute neu in dieser Liste – noch ohne ACK">neu</span>` : ""; }
 function multiWarn(call, curWf) {
   const andere = (memberMap.get(String(call)) ?? []).filter(id => id !== curWf);
   if (!andere.length) return "";
@@ -2575,25 +2784,39 @@ function recordTagesstat() {
   while (keys.length > 45) { const k = keys.shift(); delete state.tagesstat[k]; touch("tagesstat|" + k); }
   saveState();
 }
-/* Reihe der letzten n Tage: neu, geschlossen, offen je Tag (null = kein Schnappschuss) */
+/* Reihe der letzten n Tage: neu, geschlossen, wieder geöffnet, offen je Tag (null = kein Wert).
+   Mit geschlossenen Calls im Export (v1.41) kommen „neu“ und „geschlossen“ direkt aus den Daten –
+   Eröffnungs- und Abschlussdatum –, ohne Vortagsvergleich und damit ab dem ersten Tag genau.
+   Ohne geschlossene Calls bleibt es beim Vergleich der Tages-Schnappschüsse. */
 function tagesstatReihe(n) {
   const out = [];
   const tage = Object.keys(state.tagesstat || {}).sort();
+  const voll = hatGeschlossene();
+  const neuByDay = new Map(), zuByDay = new Map();
+  if (voll) {
+    for (const r of alleZeilen()) if (r["Eröffnet"]) { const k = isoDateOf(r["Eröffnet"]); neuByDay.set(k, (neuByDay.get(k) || 0) + 1); }
+    for (const r of closedRows()) { const g = geschlossenAm(r); if (g) { const k = isoDateOf(g); zuByDay.set(k, (zuByDay.get(k) || 0) + 1); } }
+  }
   for (let i = n - 1; i >= 0; i--) {
     const d = new Date(todayStart().getTime() - i * DAY);
     const key = isoDateOf(d);
     const e = state.tagesstat?.[key];
     const prevKey = tage.filter(t => t < key).pop();
     const prev = prevKey ? state.tagesstat[prevKey] : null;
-    let geschl = null;
-    if (e && prev && Array.isArray(prev.calls) && Array.isArray(e.calls)) {
+    let geschl = null, neu = e ? (e.neu?.length ?? 0) : null;
+    if (voll) { geschl = zuByDay.get(key) || 0; neu = neuByDay.get(key) || 0; }
+    else if (e && prev && Array.isArray(prev.calls) && Array.isArray(e.calls)) {
       const heute = new Set(e.calls);
       geschl = prev.calls.filter(c => !heute.has(c)).length;
     }
-    out.push({ key, d, we: d.getDay() === 0 || d.getDay() === 6, neu: e ? (e.neu?.length ?? 0) : null, geschl, offen: e ? (e.calls?.length ?? null) : null, hatVortag: !!prev });
+    const wieder = wiederGeoeffnetListe(d.getTime(), d.getTime() + DAY).length;
+    const offen = i === 0 && allRows().length ? allRows().length : (e ? (e.calls?.length ?? null) : null);
+    out.push({ key, d, we: d.getDay() === 0 || d.getDay() === 6, neu, geschl, wieder, offen, hatVortag: !!prev });
   }
   return out;
 }
+/* Vorwoche Mo–So als Zeitfenster [von, bis) */
+function vorwoche() { const ws = wocheStart(todayStart()); return { von: new Date(ws.getTime() - 7 * DAY), bis: ws }; }
 /* Top-10-Listen der Startseite */
 function topRows(kind) {
   const rows = allRows();
@@ -2601,36 +2824,90 @@ function topRows(kind) {
     ? [...rows].sort((a, b) => (Number(b.Dauer) || 0) - (Number(a.Dauer) || 0)).slice(0, 10)
     : rows.filter(r => r["Eröffnet"]).sort((a, b) => a["Eröffnet"] - b["Eröffnet"]).slice(0, 10);
 }
-/* Calls, die irgendwann in dieser Top-10-Liste standen und in den letzten 7 Tagen aus dem Datenstand
-   verschwunden sind (geschlossen oder aus dem Auswertungsbereich). Tag des Verschwindens = Tag nach dem
-   letzten Schnappschuss, in dem der Call noch offen war. */
-function topGeschlWoche(kind) {
+/* Calls, die in dieser Top-10-Liste standen und in der Vorwoche (Mo–So) geschlossen wurden.
+   Mit geschlossenen Calls im Export zählt das Abschlussdatum; sonst der Tag, an dem der Call aus dem
+   Datenstand verschwand (Tag nach dem letzten Schnappschuss, in dem er noch offen war).
+   Der Stand wird je Woche eingefroren (teamweit), damit er fürs Protokoll die ganze Woche gleich bleibt. */
+function topGeschlLive(kind) {
   const feld = kind === "dauer" ? "topD" : "topA";
-  const grenze = isoDateOf(new Date(todayStart().getTime() - 7 * DAY));
-  const offen = new Set(allRows().map(r => String(r.Call)));
+  const { von, bis } = vorwoche();
   const warTop = new Set(), zuletzt = new Map();
   for (const d of Object.keys(state.tagesstat || {}).sort()) {
     const e = state.tagesstat[d];
     for (const c of e?.[feld] || []) warTop.add(String(c));
     for (const c of e?.calls || []) zuletzt.set(String(c), d);
   }
-  return [...warTop].filter(c => !offen.has(c) && (zuletzt.get(c) || "") >= grenze).sort();
+  const out = [];
+  if (hatGeschlossene()) {
+    for (const r of closedRows()) {
+      const c = String(r.Call), g = geschlossenAm(r);
+      if (!warTop.has(c) || !g || g < von || g >= bis) continue;
+      out.push({ call: c, kunde: r.Kunde ?? "", titel: r.Titel ?? "", bearbeiter: r.Bearbeiter ?? "", gruppe: gruppeKurz(r.Gruppe), status: r.Status ?? "",
+        wert: kind === "dauer" ? fmtDauer.format(r.Dauer ?? 0) : (r["Eröffnet"] ? fmtD.format(r["Eröffnet"]) : ""), geschlossen: g.getTime() });
+    }
+  } else {
+    const offen = new Set(allRows().map(r => String(r.Call)));
+    const vonK = isoDateOf(new Date(von.getTime() - DAY)), bisK = isoDateOf(new Date(bis.getTime() - DAY));
+    for (const c of warTop) {
+      const z = zuletzt.get(c) || "";
+      if (offen.has(c) || z < vonK || z >= bisK) continue; // verschwunden am Tag nach dem letzten Schnappschuss
+      out.push({ call: c, kunde: "", titel: "", bearbeiter: "", gruppe: "", status: "", wert: "", geschlossen: new Date(z).getTime() + DAY });
+    }
+  }
+  return out.sort((a, b) => a.geschlossen - b.geschlossen);
 }
-/* Tabelle einer Top-10-Liste zum Einfügen ins Supportmanager-Protokoll (OneNote/Outlook) */
+function topGeschlWoche(kind) {
+  const wk = weekKey(todayStart());
+  state.topGeschl ??= {};
+  const live = topGeschlLive(kind);
+  if (sources.ALL.demo) return live;
+  const e = state.topGeschl[wk] ??= {};
+  let ch = false;
+  if (!Array.isArray(e[kind])) { e[kind] = live; ch = true; }
+  else { // eingefroren – nur ergänzen, was neu dazukommt (z. B. Abschluss erst nach dem Einfrieren im Export)
+    const seen = new Set(e[kind].map(x => x.call));
+    for (const x of live) if (!seen.has(x.call)) { e[kind].push(x); ch = true; }
+  }
+  if (ch) {
+    touch("topGeschl|" + wk);
+    for (const k of Object.keys(state.topGeschl).sort().slice(0, -3)) { delete state.topGeschl[k]; touch("topGeschl|" + k); }
+    saveState();
+  }
+  return e[kind];
+}
+/* Tabelle „in der Vorwoche geschlossen“ zum Kopieren ins Protokoll */
+function topGeschlTabelleHtml(kind) {
+  const rows = topGeschlWoche(kind);
+  const { von, bis } = vorwoche();
+  const titel = `${kind === "dauer" ? "Top 10 nach Dauer" : "Top 10 am längsten offen"} – in der Vorwoche geschlossen (${fmtD.format(von)} – ${fmtD.format(new Date(bis.getTime() - DAY))})`;
+  const header = ["Call", "Kunde", "Titel", "Bearbeiter", "Gruppe", kind === "dauer" ? "Dauer (h)" : "Eröffnet", "Geschlossen am"];
+  let html = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><b>${esc(titel)}</b><br><table style="${mailTableStyle()}"><tr>${header.map(v => th(v, MAIL_HDR)).join("")}</tr>`;
+  const plain = [titel, header.join("\t")];
+  rows.forEach((x, i) => {
+    const zeb = i % 2 ? "background-color:#f2f2f2;" : "";
+    const vals = [x.call, x.kunde, x.titel, x.bearbeiter, x.gruppe, x.wert, fmtD.format(new Date(x.geschlossen))];
+    html += "<tr>" + vals.map((v, j) => td(v, zeb + (j === 5 && kind === "dauer" ? "text-align:right;" : ""), j !== 2)).join("") + "</tr>";
+    plain.push(vals.join("\t"));
+  });
+  if (!rows.length) { html += `<tr><td colspan="${header.length}" style="border:1px solid #999;padding:2px 6px;"><i>Keine.</i></td></tr>`; plain.push("Keine."); }
+  return { html: html + "</table></div>", plain: plain.join("\n") };
+}
+/* Tabelle einer Top-10-Liste zum Einfügen ins Supportmanager-Protokoll (OneNote/Outlook) – mit den gewählten Spalten */
 function topTabelleHtml(kind) {
   const rows = topRows(kind);
   const titel = kind === "dauer" ? "Top 10 nach Dauer" : "Top 10 am längsten offen";
   const kopf = kind === "dauer" ? "Dauer (h)" : "Offen seit";
-  const header = ["#", kopf, "Call", "Gruppe", "Bearbeiter", "Kunde", "Titel", "Status", "LT"];
+  const cols = wfCols("top_" + kind);
+  const header = ["#", kopf, ...cols.map(k => COLS[k].label)];
   const wert = r => kind === "dauer" ? fmtDauer.format(r.Dauer ?? 0) : `${fmtD.format(r["Eröffnet"])} (${fmtN.format(daysSince(r["Eröffnet"]))} T.)`;
   let html = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><b>${esc(titel)}</b> – Stand ${esc(fmtDT.format(new Date()))}<br><table style="${mailTableStyle()}"><tr>${header.map(v => th(v, MAIL_HDR)).join("")}</tr>`;
   const plain = [titel, header.join("\t")];
   rows.forEach((r, i) => {
     const zeb = i % 2 ? "background-color:#f2f2f2;" : "";
-    const lt = r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "";
-    html += "<tr>" + td(i + 1, zeb + "text-align:right;") + td(wert(r), zeb + (kind === "dauer" ? "text-align:right;" : ""), true) + td(r.Call, zeb) + td(gruppeKurz(r.Gruppe), zeb, true)
-      + td(r.Bearbeiter, zeb) + td(r.Kunde, zeb) + td(r.Titel, zeb) + td(r.Status, zeb, true) + td(lt, zeb) + "</tr>";
-    plain.push([i + 1, wert(r), r.Call, gruppeKurz(r.Gruppe), r.Bearbeiter, r.Kunde, r.Titel, r.Status, lt].join("\t"));
+    const vals = cols.map(k => COLS[k].txt ? COLS[k].txt(r) : "");
+    html += "<tr>" + td(i + 1, zeb + "text-align:right;") + td(wert(r), zeb + (kind === "dauer" ? "text-align:right;" : ""), true)
+      + cols.map((k, j) => td(vals[j], zeb + (COLS[k].align === "r" ? "text-align:right;" : ""), k !== "titel")).join("") + "</tr>";
+    plain.push([i + 1, wert(r), ...vals].join("\t"));
   });
   html += "</table></div>";
   return { html, plain: plain.join("\n") };
@@ -2695,43 +2972,53 @@ function tUI(id) { return tableUI[id] ??= { sortKey: null, sortDir: 1, quick: {}
 /* Spalten-Register: alles, was eine Tagesliste zeigen kann. quick = Trichter-Filter.
    Sichtbare Spalten je Liste stehen in state.cols (Team-weit geteilt), Standard unten. */
 const smBadge = r => r.SupMan ? ` <span class="sm-badge" title="Für diesen Kunden ist ein Supportmanager zuständig: ${esc(r.SupMan)}">${esc(r.SupMan)}</span>` : "";
+/* Hinweis am Call: wurde nach Gelöst/Geschlossen wieder geöffnet (Statusgedächtnis, v1.41) */
+function reopenBadge(r) {
+  const e = wiederGeoeffnet(r);
+  return e ? ` <span class="re-badge" title="Wieder geöffnet${e.rt ? " am " + fmtD.format(new Date(e.rt)) : ""}${e.c ? " – war geschlossen seit " + fmtD.format(new Date(e.c)) : ""}${e.r > 1 ? " · " + e.r + "-mal" : ""}">wieder offen</span>` : "";
+}
+const prioText = r => { const n = prioName(r.Prio); return n ? n[0].toUpperCase() + n.slice(1) : String(r.Prio ?? ""); };
 const COLS = {
-  score:  { label: "Score", align: "r", sort: r => r.Score ?? 0,
+  score:  { label: "Score", align: "r", sort: r => r.Score ?? 0, txt: r => fmtN.format(r.Score ?? 0),
             cell: r => `<td class="ta-r tnum"><span class="pill ${SEVCLS[severity(r.Score)]}">${fmtN.format(r.Score ?? 0)}</span></td>` },
-  prio:   { label: "Prio", sort: r => parseInt(String(r.Prio ?? "9").charAt(0), 10) || 9, quick: r => prioName(r.Prio),
-            cell: r => { const n = prioName(r.Prio); return `<td class="nowrap"><span class="pd-dot" style="background:${prioColor(r.Prio)};margin-right:6px"></span>${esc(n ? n[0].toUpperCase() + n.slice(1) : (r.Prio ?? "–"))}</td>`; } },
-  call:   { label: "Call", sort: r => Number(r.Call) || 0, quick: r => r.Call, cell: r => `<td class="tnum nowrap">${esc(r.Call)}</td>` },
-  quelle: { label: "Bereich", sort: r => String(r.Quelle ?? ""), quick: r => r.Quelle, cell: r => `<td class="nowrap">${esc(r.Quelle || "–")}</td>` },
-  gruppe: { label: "Gruppe", sort: r => String(r.Gruppe ?? ""), quick: r => r.Gruppe, cell: r => `<td class="nowrap">${esc(gruppeKurz(r.Gruppe) || "–")}</td>` },
-  bearbeiter: { label: "Bearbeiter", sort: r => String(r.Bearbeiter ?? ""), quick: r => r.Bearbeiter,
+  prio:   { label: "Prio", sort: r => parseInt(String(r.Prio ?? "9").charAt(0), 10) || 9, quick: r => prioName(r.Prio), txt: prioText,
+            cell: r => `<td class="nowrap"><span class="pd-dot" style="background:${prioColor(r.Prio)};margin-right:6px"></span>${esc(prioText(r) || "–")}</td>` },
+  call:   { label: "Call", sort: r => Number(r.Call) || 0, quick: r => r.Call, txt: r => String(r.Call ?? ""), cell: r => `<td class="tnum nowrap">${esc(r.Call)}${reopenBadge(r)}</td>` },
+  quelle: { label: "Bereich", sort: r => String(r.Quelle ?? ""), quick: r => r.Quelle, txt: r => r.Quelle || "", cell: r => `<td class="nowrap">${esc(r.Quelle || "–")}</td>` },
+  gruppe: { label: "Gruppe", sort: r => String(r.Gruppe ?? ""), quick: r => r.Gruppe, txt: r => gruppeKurz(r.Gruppe), cell: r => `<td class="nowrap">${esc(gruppeKurz(r.Gruppe) || "–")}</td>` },
+  bearbeiter: { label: "Bearbeiter", sort: r => String(r.Bearbeiter ?? ""), quick: r => r.Bearbeiter, txt: r => r.Bearbeiter ?? "",
             cell: r => `<td class="nowrap" title="${esc(resolveName(r.Bearbeiter) ?? "")}">${esc(r.Bearbeiter ?? "–")}</td>` },
-  kunde:  { label: "Kunde", sort: r => String(r.Kunde ?? ""), quick: r => r.Kunde,
+  kunde:  { label: "Kunde", sort: r => String(r.Kunde ?? ""), quick: r => r.Kunde, txt: r => r.Kunde ?? "",
             cell: r => `<td class="nowrap">${esc(r.Kunde ?? "–")}${smBadge(r)}</td>` },
-  supman: { label: "SupMan", sort: r => String(r.SupMan ?? ""), quick: r => r.SupMan, cell: r => `<td class="nowrap">${esc(r.SupMan ?? "–")}</td>` },
-  titel:  { label: "Titel", sort: r => String(r.Titel ?? ""), quick: r => r.Titel, cell: r => `<td class="titlecell">${esc(r.Titel ?? "–")}</td>` },
-  status: { label: "Status", sort: r => String(r.Status ?? ""), quick: r => r.Status, cell: r => `<td class="nowrap">${esc(r.Status ?? "–")}</td>` },
-  eroeffnet: { label: "Eröffnet", sort: r => r["Eröffnet"]?.getTime() ?? 0, cell: r => `<td class="tnum nowrap">${r["Eröffnet"] ? fmtD.format(r["Eröffnet"]) : "–"}</td>` },
-  lt:     { label: "LT", sort: r => r["Lösung_bis"]?.getTime() ?? Infinity,
+  region: { label: "Region", sort: r => String(r.Region ?? ""), quick: r => r.Region, txt: r => r.Region ?? "", cell: r => `<td class="nowrap">${esc(r.Region || "–")}</td>` },
+  supman: { label: "SupMan", sort: r => String(r.SupMan ?? ""), quick: r => r.SupMan, txt: r => r.SupMan ?? "", cell: r => `<td class="nowrap">${esc(r.SupMan ?? "–")}</td>` },
+  titel:  { label: "Titel", sort: r => String(r.Titel ?? ""), quick: r => r.Titel, txt: r => r.Titel ?? "", cell: r => `<td class="titlecell">${esc(r.Titel ?? "–")}</td>` },
+  status: { label: "Status", sort: r => String(r.Status ?? ""), quick: r => r.Status, txt: r => r.Status ?? "", cell: r => `<td class="nowrap">${esc(r.Status ?? "–")}</td>` },
+  eroeffnet: { label: "Eröffnet", sort: r => r["Eröffnet"]?.getTime() ?? 0, txt: r => r["Eröffnet"] ? fmtD.format(r["Eröffnet"]) : "", cell: r => `<td class="tnum nowrap">${r["Eröffnet"] ? fmtD.format(r["Eröffnet"]) : "–"}</td>` },
+  lt:     { label: "LT", sort: r => r["Lösung_bis"]?.getTime() ?? Infinity, txt: r => r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "",
             cell: r => { const cls = r["Lösung_bis"] ? (r["Lösung_bis"] < todayStart() ? "c-crit" : "") : (statusNorm(r) === "wartend" ? "" : "c-warn");
               const flag = ltFlagCls(r), tip = ltFlagTitle(r);
               return `<td class="tnum nowrap ${cls}${flag}"${tip ? ` title="${esc(tip)}"` : ""}>${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "fehlt"}</td>`; } },
-  wartbis: { label: "Wartend bis", sort: r => r.Wartend_bis?.getTime() ?? 0,
+  wartbis: { label: "Wartend bis", sort: r => r.Wartend_bis?.getTime() ?? 0, txt: r => r.Wartend_bis ? fmtD.format(r.Wartend_bis) : "",
             cell: r => { const bad = !r.Wartend_bis || r.Wartend_bis < todayStart();
               return `<td class="tnum nowrap ${bad ? "c-crit" : ""}">${r.Wartend_bis ? fmtD.format(r.Wartend_bis) : "fehlt"}</td>`; } },
-  aend:   { label: "Letzte Änd.", sort: r => r["Letzte_Änderung"]?.getTime() ?? 0,
+  aend:   { label: "Letzte Änd.", sort: r => r["Letzte_Änderung"]?.getTime() ?? 0, txt: r => r["Letzte_Änderung"] ? fmtD.format(r["Letzte_Änderung"]) : "",
             cell: r => { const d = daysSince(r["Letzte_Änderung"]); return `<td class="tnum nowrap ${d >= 30 ? "c-crit" : d >= 14 ? "c-warn" : ""}">${r["Letzte_Änderung"] ? fmtD.format(r["Letzte_Änderung"]) : "–"}</td>`; } },
-  letzteinfo: { label: "Letzte Info an Kd.", sort: r => r.LetzteInfo?.getTime() ?? 0,
+  letzteinfo: { label: "Letzte Info an Kd.", sort: r => r.LetzteInfo?.getTime() ?? 0, txt: r => r.LetzteInfo ? fmtD.format(r.LetzteInfo) : "",
             cell: r => `<td class="tnum nowrap"${r.LetzteInfo ? "" : ' title="Die Quelle liefert für diesen Call kein Datum der letzten Kundeninfo"'}>${r.LetzteInfo ? fmtD.format(r.LetzteInfo) : "–"}</td>` },
-  info:   { label: "o. Info", align: "r", sort: r => tageOhneInfo(r) ?? -1, cell: r => `<td class="ta-r tnum">${tageOhneInfo(r) ?? "–"}</td>` },
-  termaend: { label: "Term.-Änd.", align: "r", sort: r => Number(r["Terminänderungen"]) || 0, cell: r => `<td class="ta-r tnum">${esc(r["Terminänderungen"] ?? "–")}</td>` },
-  dauer:  { label: "Dauer", align: "r", sort: r => Number(r.Dauer) || 0, cell: r => `<td class="ta-r tnum">${fmtDauer.format(r.Dauer ?? 0)}</td>` }
+  info:   { label: "o. Info", align: "r", sort: r => tageOhneInfo(r) ?? -1, txt: r => String(tageOhneInfo(r) ?? ""), cell: r => `<td class="ta-r tnum">${tageOhneInfo(r) ?? "–"}</td>` },
+  termaend: { label: "Term.-Änd.", align: "r", sort: r => Number(r["Terminänderungen"]) || 0, txt: r => String(r["Terminänderungen"] ?? ""), cell: r => `<td class="ta-r tnum">${esc(r["Terminänderungen"] ?? "–")}</td>` },
+  dauer:  { label: "Dauer", align: "r", sort: r => Number(r.Dauer) || 0, txt: r => fmtDauer.format(r.Dauer ?? 0), cell: r => `<td class="ta-r tnum">${fmtDauer.format(r.Dauer ?? 0)}</td>` }
 };
-const COL_ORDER = ["score", "prio", "call", "quelle", "gruppe", "bearbeiter", "kunde", "supman", "titel", "status", "eroeffnet", "lt", "wartbis", "aend", "letzteinfo", "info", "termaend", "dauer"];
+const COL_ORDER = ["score", "prio", "call", "quelle", "gruppe", "bearbeiter", "kunde", "region", "supman", "titel", "status", "eroeffnet", "lt", "wartbis", "aend", "letzteinfo", "info", "termaend", "dauer"];
 const WF_DEFAULT_COLS = ["score", "prio", "call", "gruppe", "bearbeiter", "kunde", "titel", "status", "lt", "aend", "info", "dauer"];
 const WF_DEFAULT_COLS_BY = { // abweichende Standards je Liste
   kdkomm: ["score", "prio", "call", "gruppe", "bearbeiter", "kunde", "titel", "status", "lt", "aend", "letzteinfo", "info", "dauer"],
   krit: ["score", "prio", "call", "quelle", "gruppe", "bearbeiter", "kunde", "titel", "status", "lt", "aend", "info", "dauer"],
-  wartend: ["score", "prio", "call", "gruppe", "bearbeiter", "kunde", "titel", "wartbis", "aend", "dauer"]
+  wartend: ["score", "prio", "call", "gruppe", "bearbeiter", "kunde", "titel", "wartbis", "aend", "dauer"],
+  // Top-10-Listen der Startseite (v1.41: Spalten wählbar, der Kennwert steht immer vorn)
+  top_dauer: ["prio", "call", "gruppe", "bearbeiter", "kunde", "titel", "status", "lt"],
+  top_alt: ["prio", "call", "gruppe", "bearbeiter", "kunde", "titel", "status", "lt"]
 };
 function wfCols(wfId) {
   const sel = state.cols?.[wfId];
@@ -2801,10 +3088,12 @@ function wfRowHtml(r, wf) {
   const xHtml = otherAcks(r, wf.id).map(({ w, a: xa }) =>
     `<div class="ack-x" title="In der Liste „${esc(w.title)}“ per ACK bestätigt${xa.by ? " von " + esc(xa.by) : ""}${xa.until ? ", gilt bis " + esc(fmtD.format(new Date(xa.until))) : ""}">ACK in „${esc(w.title)}“${xa.note ? `: <b>„${esc(xa.note)}“</b>` : ""}</div>`).join("");
   return `<tr data-call="${esc(r.Call)}" class="${a.done ? "acked" : ""}">
-    <td class="nowrap"><input type="checkbox" data-ack="${esc(r.Call)}" ${a.done ? "checked" : ""} title="ACK (acknowledged) – ohne Datum dauerhaft, mit „bis“-Datum bis einschließlich">${histBtn(r.Call)}${multiWarn(r.Call, wf.id)}${changed}${ackDetails}${altHtml}${xHtml}</td>
+    <td class="nowrap"><input type="checkbox" data-ack="${esc(r.Call)}" ${a.done ? "checked" : ""} title="ACK (acknowledged) – ohne Datum dauerhaft, mit „bis“-Datum bis einschließlich">${neuBadge(r, wf.id)}${histBtn(r.Call)}${multiWarn(r.Call, wf.id)}${changed}${ackDetails}${altHtml}${xHtml}</td>
     ${wfCols(wf.id).map(k => COLS[k].cell(r)).join("")}
-    <td class="nowrap"><button class="small" data-teams="${esc(r.Call)}" title="Teams-Nachricht kopieren">Teams</button>
-        <button class="small" data-wvl="${esc(r.Call)}" title="Wiedervorlage-Text kopieren">WVL</button></td>
+    <td class="nowrap"><button class="small" data-teams="${esc(r.Call)}" title="Teams-Nachricht kopieren (deutsch)">Teams</button>
+        <button class="small" data-wvl="${esc(r.Call)}" title="Wiedervorlage-Text kopieren (deutsch)">WVL</button><br>
+        <button class="small" data-teamsen="${esc(r.Call)}" title="Teams message – English">Teams EN</button>
+        <button class="small" data-wvlen="${esc(r.Call)}" title="Follow-up text – English">WVL EN</button></td>
   </tr>`;
 }
 const FUNNEL = '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true"><path d="M3 4h18l-7 8v6l-4-2v-4L3 4z"/></svg>';
@@ -2874,7 +3163,7 @@ function openColsChooser(btn, wfId) {
   });
   setTimeout(() => document.addEventListener("click", function h(e) {
     if (!colPopEl) { document.removeEventListener("click", h); return; }
-    if (!colPopEl.contains(e.target) && !e.target.closest("#btnCols")) { closeColPopover(); document.removeEventListener("click", h); }
+    if (!colPopEl.contains(e.target) && !e.target.closest("#btnCols,[data-colsbtn]")) { closeColPopover(); document.removeEventListener("click", h); }
   }), 0);
 }
 /* Spaltenfilter-Popover (eines zur Zeit, schließt bei Klick daneben) */
@@ -2951,6 +3240,14 @@ function bindWfRowEvents(container, rows, wf) {
     const r = rowOf(btn.dataset.wvl);
     if (r) copyText(fillTemplate(state.templates.wvl[wf.tpl], r), btn);
   }));
+  container.querySelectorAll("[data-teamsen]").forEach(btn => btn.addEventListener("click", () => {
+    const r = rowOf(btn.dataset.teamsen);
+    if (r) copyText(fillTemplate(state.templates.teamsEn?.[wf.tpl] ?? "", r, "en"), btn);
+  }));
+  container.querySelectorAll("[data-wvlen]").forEach(btn => btn.addEventListener("click", () => {
+    const r = rowOf(btn.dataset.wvlen);
+    if (r) copyText(fillTemplate(state.templates.wvlEn?.[wf.tpl] ?? "", r, "en"), btn);
+  }));
 }
 function bindWfEvents(container, rows, wf) {
   bindWfRowEvents(container, rows, wf);
@@ -2985,6 +3282,9 @@ function renderHeute(view) {
   view.innerHTML = kpis + (rows.length ? list : `<div class="card"><p class="empty">Keine Daten. Dashboard-Datei in der Verwaltung verknüpfen, Datei hierher ziehen — oder <button class="small" id="btnDemo">Beispieldaten anzeigen</button>.</p></div>`);
   view.querySelectorAll("[data-goto]").forEach(el => el.addEventListener("click", () => { const id = el.dataset.goto; if (id !== "heute") { activeTab = id; render(); } }));
   view.querySelectorAll("[data-copytop]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); const t = topTabelleHtml(b.dataset.copytop); copyHtml(t.html, t.plain, b); }));
+  view.querySelectorAll("[data-copytopgeschl]").forEach(b => b.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); const t = topGeschlTabelleHtml(b.dataset.copytopgeschl); copyHtml(t.html, t.plain, b); }));
+  view.querySelectorAll("[data-colsbtn]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); openColsChooser(b, b.dataset.colsbtn); }));
+  view.querySelectorAll("details[data-topgeschl]").forEach(d => d.addEventListener("toggle", () => { (uiPref.topGeschlOffen ??= {})[d.dataset.topgeschl] = d.open; saveUiPref(); }));
   const bd = view.querySelector("#btnDemo"); if (bd) bd.addEventListener("click", loadDemo);
 }
 
@@ -3023,15 +3323,24 @@ function trendKarten(rows) {
   const heute = reihe[reihe.length - 1];
   const vortag = tagesstatVortag();
   const kalender = reihe.map(x => `<span class="bk${x.we ? " we" : ""}">${fmtD.format(x.d).slice(0, 5)}</span>`).join("");
+  const voll = hatGeschlossene();
+  const wiederHeute = wiederGeoeffnetListe(todayStart().getTime(), todayStart().getTime() + DAY);
+  const vw = vorwoche();
+  const wocheZu = voll ? closedRows().filter(r => { const g = geschlossenAm(r); return g && g >= vw.von && g < vw.bis; }).length : null;
   const stat = `<div class="card"><h2>Tagesstatistik <span class="hint" style="font-weight:400;margin-left:6px">letzte 14 Tage</span></h2>
-    <p class="sub">Neu = an dem Tag eröffnet. Geschlossen = am Vortag im Datenstand, heute nicht mehr (dazu zählen auch Calls, die aus dem Auswertungsbereich gewandert sind). Der Export enthält nur offene Calls, deshalb entsteht die Statistik aus den täglichen Datenständen aller Boards – ab dem zweiten Tag mit Daten.</p>
+    <p class="sub">${voll
+      ? `Neu = an dem Tag eröffnet, geschlossen = an dem Tag abgeschlossen (Status „zu“ laut Verwaltung, Abschlussdatum aus dem Export). Wieder geöffnet = stand auf Gelöst/Geschlossen und ist wieder in Bearbeitung – erkannt aus dem Statusgedächtnis des Boards; das zählt nicht als neuer Call.`
+      : `Neu = an dem Tag eröffnet. Geschlossen = am Vortag im Datenstand, heute nicht mehr (dazu zählen auch Calls, die aus dem Auswertungsbereich gewandert sind). Sobald der Export geschlossene Calls mitliefert, rechnet die Statistik direkt mit Abschlussdatum und Status.`}</p>
     <div class="statgrid">
       <div class="statbox"><div class="k-label">Heute neu</div><div class="k-value">${heute.neu ?? "–"}</div></div>
-      <div class="statbox"><div class="k-label">Heute geschlossen</div><div class="k-value">${heute.geschl ?? "–"}</div>${heute.hatVortag ? "" : `<div class="k-note">ab morgen, wenn ein Vortag vorliegt</div>`}</div>
+      <div class="statbox"><div class="k-label">Heute geschlossen</div><div class="k-value">${heute.geschl ?? "–"}</div>${voll || heute.hatVortag ? "" : `<div class="k-note">ab morgen, wenn ein Vortag vorliegt</div>`}</div>
+      <div class="statbox" title="${esc(wiederHeute.map(x => x.call).join(", "))}"><div class="k-label">Heute wieder geöffnet</div><div class="k-value">${voll ? wiederHeute.length : "–"}</div>${voll ? "" : `<div class="k-note">braucht geschlossene Calls im Export</div>`}</div>
       <div class="statbox"><div class="k-label">Offen gesamt</div><div class="k-value">${fmtN.format(rows.length)}${vortag?.calls ? trendHtml.raw(rows.length - vortag.calls.length, "Vortag: " + vortag.calls.length) : ""}</div></div>
+      ${wocheZu != null ? `<div class="statbox"><div class="k-label">Vorwoche geschlossen</div><div class="k-value">${fmtN.format(wocheZu)}</div><div class="k-note">Mo ${fmtD.format(vw.von).slice(0, 6)} – So ${fmtD.format(new Date(vw.bis.getTime() - DAY)).slice(0, 6)}</div></div>` : ""}
     </div>
     <div class="barrow"><span class="blabel">Neu</span>${miniBars(reihe, "neu", "b-neu", "Neu eröffnete Calls je Tag")}</div>
     <div class="barrow"><span class="blabel">Geschl.</span>${miniBars(reihe, "geschl", "b-geschl", "Geschlossene Calls je Tag")}</div>
+    ${voll ? `<div class="barrow"><span class="blabel">Wieder</span>${miniBars(reihe, "wieder", "b-wieder", "Wieder geöffnete Calls je Tag")}</div>` : ""}
     <div class="barrow"><span class="blabel">Offen</span>${miniBars(reihe, "offen", "b-offen", "Offene Calls je Tag")}</div>
     <div class="barrow"><span class="blabel"></span><div class="bars bkal">${kalender}</div></div>
   </div>`;
@@ -3056,22 +3365,28 @@ function trendKarten(rows) {
       <td class="ta-r tnum">${fmtDauer.format(d.dauer)}</td><td class="ta-r tnum">${d.krit ? `<span class="pill s-crit">${d.krit}</span>` : "0"}</td></tr>`).join("")}
     </tbody></table></div>` : `<p class="empty">Keine Calls in den 2nd-Level-Gruppen im aktuellen Datenstand.</p>`}
   </div>`;
-  // Top-Listen
-  const topZeile = (r, wert) => `<tr><td class="ta-r tnum">${wert}</td><td class="tnum nowrap">${esc(r.Call)}</td>
-      <td class="nowrap"><span class="pd-dot" style="background:${prioColor(r.Prio)};margin-right:6px"></span>${esc(gruppeKurz(r.Gruppe) || "–")}</td>
-      <td class="nowrap" title="${esc(resolveName(r.Bearbeiter) ?? "")}">${esc(r.Bearbeiter ?? "–")}</td><td class="nowrap">${esc(r.Kunde ?? "–")}${smBadge(r)}</td>
-      <td class="titlecell" title="${esc(r.Titel ?? "")}">${esc(r.Titel ?? "–")}</td><td class="nowrap">${esc(r.Status ?? "–")}</td></tr>`;
+  // Top-Listen: Spalten wählbar (Team-weit), Kennwert immer vorn; darunter die in der Vorwoche (Mo–So) geschlossenen
+  const topZeile = (kind, r, wert) => `<tr><td class="ta-r tnum">${wert}</td>${wfCols("top_" + kind).map(k => COLS[k].cell(r)).join("")}</tr>`;
   const topTab = (kind, titel, sub, kopf, zeilen) => {
     const geschl = topGeschlWoche(kind);
-    const pill = `<span class="pill ${geschl.length ? "s-ok" : ""}" title="${geschl.length ? "Calls: " + esc(geschl.join(", ")) : "Zählt Calls, die in dieser Liste standen und in den letzten 7 Tagen aus dem Datenstand verschwunden sind – braucht Tages-Schnappschüsse, füllt sich ab dem zweiten Tag"}">${geschl.length} in 7 Tagen geschlossen</span>`;
+    const vwText = `${fmtD.format(vw.von).slice(0, 6)} – ${fmtD.format(new Date(vw.bis.getTime() - DAY)).slice(0, 6)}`;
+    const pill = `<span class="pill ${geschl.length ? "s-ok" : ""}" title="Calls, die in dieser Liste standen und in der Vorwoche (Mo ${vwText} So) geschlossen wurden – der Stand bleibt die ganze Woche gleich, damit er fürs Protokoll passt">${geschl.length} in der Vorwoche geschlossen</span>`;
+    const offen = uiPref.topGeschlOffen?.[kind];
     return `<div class="card"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">${titel} ${pill}
-      <button class="small" data-copytop="${kind}" style="margin-left:auto" title="Als Tabelle kopieren – zum Einfügen ins Supportmanager-Protokoll (OneNote) oder in eine Mail">Tabelle kopieren</button></h2><p class="sub">${sub}</p>
-    <div class="tscroll"><table class="list"><thead><tr><th class="ta-r">${kopf}</th><th>Call</th><th>Gruppe</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th></tr></thead><tbody>${zeilen}</tbody></table></div></div>`;
+      <span style="margin-left:auto;display:flex;gap:6px"><button class="small" data-colsbtn="top_${kind}" title="Spalten dieser Liste wählen – gilt für Anzeige und kopierte Tabelle, teamweit">Spalten …</button>
+      <button class="small" data-copytop="${kind}" title="Als Tabelle kopieren – zum Einfügen ins Supportmanager-Protokoll (OneNote) oder in eine Mail">Tabelle kopieren</button></span></h2><p class="sub">${sub}</p>
+    <div class="tscroll"><table class="list"><thead><tr><th class="ta-r">${kopf}</th>${wfCols("top_" + kind).map(k => `<th${COLS[k].align === "r" ? ' class="ta-r"' : ""}>${esc(COLS[k].label)}</th>`).join("")}</tr></thead><tbody>${zeilen}</tbody></table></div>
+    <details class="fpanel" data-topgeschl="${kind}" style="margin-top:8px"${offen ? " open" : ""}><summary>In der Vorwoche geschlossen (Mo ${vwText} So) <span class="fcount">${geschl.length}</span>
+      <button class="small" data-copytopgeschl="${kind}" style="margin-left:8px" title="Als Tabelle fürs Protokoll kopieren">Tabelle kopieren</button></summary>
+      ${geschl.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Call</th><th>Kunde</th><th>Titel</th><th>Bearbeiter</th><th>Gruppe</th><th${kind === "dauer" ? ' class="ta-r"' : ""}>${kind === "dauer" ? "Dauer (h)" : "Eröffnet"}</th><th>Geschlossen</th></tr></thead><tbody>
+      ${geschl.map(x => `<tr><td class="tnum nowrap">${esc(x.call)}</td><td class="nowrap">${esc(x.kunde || "–")}</td><td class="titlecell">${esc(x.titel || "–")}</td><td class="nowrap">${esc(x.bearbeiter || "–")}</td><td class="nowrap">${esc(x.gruppe || "–")}</td><td class="tnum nowrap${kind === "dauer" ? " ta-r" : ""}">${esc(x.wert || "–")}</td><td class="tnum nowrap">${fmtD.format(new Date(x.geschlossen))}</td></tr>`).join("")}
+      </tbody></table></div>` : `<p class="hint" style="margin:6px 0 0">Keine – ${voll ? "kein Call dieser Liste wurde in der Vorwoche abgeschlossen." : "gezählt wird ab dem zweiten Tag mit Datenständen; mit geschlossenen Calls im Export kommt das Abschlussdatum direkt aus den Daten."}</p>`}
+    </details></div>`;
   };
   const topDauer = topRows("dauer"), topAlt = topRows("alt");
   const tops = `<div class="topgrid">
-    ${topTab("dauer", "Top 10 nach Dauer", "Die zehn offenen Calls mit der höchsten Gesamtdauer. „Geschlossen“ = stand in dieser Liste und ist seit höchstens 7 Tagen nicht mehr im Datenstand.", "Dauer (h)", topDauer.map(r => topZeile(r, fmtDauer.format(r.Dauer ?? 0))).join(""))}
-    ${topTab("alt", "Top 10 am längsten offen", "Die zehn offenen Calls mit dem ältesten Eröffnungsdatum. „Geschlossen“ wie links.", "Offen seit", topAlt.map(r => topZeile(r, `${fmtD.format(r["Eröffnet"])} <span class="hint">(${fmtN.format(daysSince(r["Eröffnet"]))} T.)</span>`)).join(""))}
+    ${topTab("dauer", "Top 10 nach Dauer", "Die zehn offenen Calls mit der höchsten Gesamtdauer.", "Dauer (h)", topDauer.map(r => topZeile("dauer", r, fmtDauer.format(r.Dauer ?? 0))).join(""))}
+    ${topTab("alt", "Top 10 am längsten offen", "Die zehn offenen Calls mit dem ältesten Eröffnungsdatum.", "Offen seit", topAlt.map(r => topZeile("alt", r, `${fmtD.format(r["Eröffnet"])} <span class="hint">(${fmtN.format(daysSince(r["Eröffnet"]))} T.)</span>`)).join(""))}
   </div>`;
   return slaKarte() + stat + last + tops;
 }
@@ -3105,23 +3420,48 @@ function mailMetaBlock(m, anLabel) {
   </div>`;
 }
 function mailButtons(m, mails) {
-  const mt = mailtoHref(m.subject, mails);
+  const mt = mailtoHref(m.subject, mails, m.cc);
+  const mtOhneCc = mailtoHref(m.subject, mails);
+  const link = mt.tooLong ? (mtOhneCc.tooLong ? null : mtOhneCc.href) : mt.href;
   return `<div class="btnrow">
-    <button class="primary" id="btnCopyBody">1 · Mail-Text kopieren</button>
-    <button id="btnCopyAn">2 · Empfänger (An) kopieren</button>
-    <button id="btnCopyCc">3 · CC kopieren</button>
-    <a href="${mt.tooLong ? "#" : esc(mt.href)}"><button ${mt.tooLong ? 'title="Zu viele Empfänger für einen Direktlink – bitte Empfänger kopieren und in Outlook einfügen" disabled' : ""}>Outlook-Entwurf öffnen (An + Betreff)</button></a>
+    <button class="primary" id="btnMailOne" ${link ? "" : 'title="Zu viele Empfänger für einen Direktlink – Outlook lässt sich so nicht öffnen; Einzelschritte unten verwenden" disabled'}>Mail erstellen – Outlook öffnen${mt.tooLong && link ? " (An + Betreff)" : " (An, CC, Betreff)"} und Text kopieren</button>
+    <button id="btnEml" title="Lädt die fertige Mail als .eml-Datei herunter. Öffnen mit Outlook (klassisch): Empfänger, Betreff und Text stehen drin, nur noch „Senden“. Klappt nicht in jeder Outlook-Ausgabe – dann den blauen Knopf nehmen.">Entwurf als Datei (.eml)</button>
   </div>
-  <p class="hint">Neue Mail: Empfänger, Betreff und Text nacheinander einfügen (Strg+V).</p>`;
+  <p class="hint">Blauer Knopf: Outlook öffnet die neue Mail mit Empfängern und Betreff, der Text liegt in der Zwischenablage – einmal <b>Strg+V</b> im Textbereich, prüfen, senden.${mt.tooLong && link ? " CC passt nicht mehr in den Direktlink und muss aus den Einzelschritten kommen." : ""}</p>
+  <details class="fpanel" style="margin-top:6px"><summary>Einzelschritte (Text, An, CC getrennt)</summary>
+    <div class="btnrow" style="margin-top:8px">
+      <button id="btnCopyBody">Mail-Text kopieren</button>
+      <button id="btnCopyAn">Empfänger (An) kopieren</button>
+      <button id="btnCopyCc">CC kopieren</button>
+      <a href="${mtOhneCc.tooLong ? "#" : esc(mtOhneCc.href)}"><button ${mtOhneCc.tooLong ? 'title="Zu viele Empfänger für einen Direktlink – bitte Empfänger kopieren und in Outlook einfügen" disabled' : ""}>Outlook-Entwurf öffnen (An + Betreff)</button></a>
+    </div>
+    <p class="hint">Neue Mail: Empfänger, Betreff und Text nacheinander einfügen (Strg+V).</p>
+  </details>`;
 }
 function bindMailButtons(view, build, mailsOf) {
   // build() liefert bei jedem Klick den frischen Stand (Kommentare, Daten)
-  view.querySelector("#btnCopyBody").addEventListener("click", e => {
-    const m = build(); copyHtml(m.html, m.plain, e.target);
+  const kopieren = async (btn) => {
+    const m = build(); const ok = await copyHtml(m.html, m.plain, btn);
     if (activeTab === "mi") archiveMiWeek(); // Kommentar-Archiv für den Vorwochen-Hinweis
-  });
+    return { m, ok };
+  };
+  view.querySelector("#btnCopyBody").addEventListener("click", e => kopieren(e.target));
   view.querySelector("#btnCopyAn").addEventListener("click", e => copyText(mailsOf(build()).join("; "), e.target));
   view.querySelector("#btnCopyCc").addEventListener("click", e => copyText(build().cc.join("; "), e.target));
+  const one = view.querySelector("#btnMailOne");
+  if (one && !one.disabled) one.addEventListener("click", async e => {
+    const { m } = await kopieren(e.target);
+    const mails = mailsOf(m);
+    const mt = mailtoHref(m.subject, mails, m.cc), mt2 = mailtoHref(m.subject, mails);
+    const href = mt.tooLong ? (mt2.tooLong ? null : mt2.href) : mt.href;
+    if (href) setTimeout(() => { window.location.href = href; }, 150); // erst kopieren, dann Outlook öffnen
+  });
+  view.querySelector("#btnEml").addEventListener("click", e => {
+    const m = build();
+    emlDatei(m, mailsOf(m));
+    if (activeTab === "mi") archiveMiWeek();
+    flashCopied(e.target, "Datei erstellt ✓");
+  });
 }
 
 /* Markier-Punkte einer Zelle: gelb / rot / bewusst ohne Farbe.
@@ -3154,16 +3494,17 @@ function renderMi(view) {
       <button id="btnOneNote" title="Gleiche Tabelle plus leere Spalte „Verbleib nach Sichtung der Langläufercalls“ – zum Einfügen ins OneNote-Besprechungsprotokoll, ausgefüllt wird dort">OneNote-Tabelle kopieren (mit Verbleib-Spalte)</button>
     </div>
     <h2 style="margin-top:16px">Vorbereitung: Kommentare je Call</h2>
-    <p class="sub">Farbpunkte in der Termin- und Kommentarspalte färben die Zelle sofort (gelb, rot, ohne Farbe) – erneuter Klick auf denselben Punkt schaltet zurück auf automatisch. Die Spalte „ACK“ ganz rechts hakt geprüfte Calls ab; sie ist rein intern und steht in keiner Mail.</p>
+    <p class="sub">Farbpunkte in der Termin- und Kommentarspalte färben die Zelle sofort (gelb, rot, ohne Farbe) – erneuter Klick auf denselben Punkt schaltet zurück auf automatisch. Fehlende Termine werden nur dann automatisch gelb, wenn die letzte Weiterleitung mehr als zwei Wochen zurückliegt. Die Spalte „ACK“ ganz rechts ist dein persönlicher Prüffortschritt (nur für dich sichtbar, steht in keiner Mail). „neu“ = Call war in keiner früheren Mittwochsmail.</p>
     <div class="mifocus">
-      <span class="mi-prog" id="miProg" title="Geprüfte Calls (ACK) dieser Mail">${miGeprueft} von ${m.rows.length} geprüft</span>
+      <span class="mi-prog" id="miProg" title="Von dir geprüfte Calls (ACK) dieser Mail">${miGeprueft} von ${m.rows.length} geprüft</span>
       <button class="mifchip ${miFocus === "alle" ? "on" : ""}" data-mifocus="alle">Alle (${m.rows.length})</button>
       <button class="mifchip ${miFocus === "offen" ? "on" : ""}" data-mifocus="offen" title="Nur Calls ohne ACK – zum Abarbeiten">Noch zu prüfen (${m.rows.length - miGeprueft})</button>
       <button class="mifchip ${miFocus === "leer" ? "on" : ""}" data-mifocus="leer" title="Calls, für die noch kein Kommentar in der Mail steht">Ohne Kommentar (${miOhneKommentar})</button>
+      <span style="margin-left:auto;display:flex;gap:6px"><button class="small" id="btnMiAckAll" title="Alle Calls dieser Mail als geprüft markieren (nur für dich)">Alle ACK setzen</button><button class="small" id="btnMiAckNone" title="Alle deine Prüfhaken dieser Mail entfernen">Alle ACK entfernen</button></span>
     </div>
-    <p class="sub">Flag „aus KW …“ = Kommentar der Vorwoche; beim Bearbeiten gilt er als aktuell. Die Spalte „Verbleib“ hängt die OneNote-Tabelle leer an – ausgefüllt wird sie direkt in OneNote.</p>
-    <div class="tscroll"><table class="list"><thead><tr><th>Call</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th class="ta-r">Dauer</th><th>Termin</th><th>Kommentar SupMan</th><th class="ta-c">ACK</th></tr></thead><tbody>
-    ${zeigeRows.length ? "" : `<tr><td colspan="8" class="sub" style="padding:14px">${miFocus === "offen" ? "Alles geprüft – für diese Mail steht nichts mehr offen." : "Kein Call ohne Kommentar."}</td></tr>`}
+    <p class="sub">Flag „aus KW …“ = Kommentar der Vorwoche; beim Bearbeiten gilt er als aktuell. Die Spalte „Verbleib“ hängt die OneNote-Tabelle leer an – ausgefüllt wird sie direkt in OneNote. Die Prio steht hier und in der OneNote-Tabelle, nicht in der Mail.</p>
+    <div class="tscroll"><table class="list"><thead><tr><th>Call</th><th>Prio</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th class="ta-r">Dauer</th><th>Termin</th><th>Kommentar SupMan</th><th class="ta-c">ACK</th></tr></thead><tbody>
+    ${zeigeRows.length ? "" : `<tr><td colspan="9" class="sub" style="padding:14px">${miFocus === "offen" ? "Alles geprüft – für diese Mail steht nichts mehr offen." : "Kein Call ohne Kommentar."}</td></tr>`}
     ${zeigeRows.map(r => {
       const pw = prevWeekInfo(r.Call);
       const mk = state.miMark[r.Call] || {};
@@ -3173,7 +3514,8 @@ function renderMi(view) {
       const txt = state.comments[r.Call] ?? "";
       const lang = txt.length > 90 || txt.includes("\n"); // lange Kommentare starten zugeklappt
       const ai = ackInfo(r, "mi");
-      return `<tr class="${ai.done ? "mi-done" : ""}"><td class="tnum nowrap">${esc(r.Call)}${pw ? ` <span class="pw-badge" title="War bereits in KW ${esc(pw.week)} in der Mittwochsmail">KW ${esc(pw.week)}</span>` : ""}</td>
+      return `<tr class="${ai.done ? "mi-done" : ""}"><td class="tnum nowrap">${esc(r.Call)}${pw ? ` <span class="pw-badge" title="War bereits in KW ${esc(pw.week)} in der Mittwochsmail">KW ${esc(pw.week)}</span>` : (Object.keys(state.miHistory || {}).length ? ` <span class="new-badge" title="In keiner früheren Mittwochsmail (Archiv der letzten Wochen)">neu</span>` : "")}${reopenBadge(r)}</td>
+      <td class="nowrap"><span class="pd-dot" style="background:${prioColor(r.Prio)};margin-right:6px"></span>${esc(prioText(r) || "–")}</td>
       <td class="nowrap">${esc(r.Bearbeiter ?? "–")}</td><td class="nowrap">${esc(r.Kunde ?? "–")}${smBadge(r)}</td>
       <td class="titlecell">${esc(r.Titel ?? "–")}</td><td class="ta-r tnum">${fmtDauer.format(r.Dauer ?? 0)}</td>
       <td class="tnum nowrap markcell mk-${mk.termin ?? "auto"}${ltFlagCls(r)}"${ltFlagTitle(r) ? ` title="${esc(ltFlagTitle(r))}"` : ""}>${r["Lösung_bis"] ? fmtD.format(r["Lösung_bis"]) : "fehlt"}${mkBar(r.Call, "termin", mk.termin)}</td>
@@ -3215,6 +3557,8 @@ function renderMi(view) {
   view.querySelectorAll("[data-mifocus]").forEach(b => b.addEventListener("click", () => {
     miFocus = b.dataset.mifocus; render();
   }));
+  view.querySelector("#btnMiAckAll").addEventListener("click", () => { for (const r of m.rows) if (!ackInfo(r, "mi").done) setAck(r, "mi", true); render(); });
+  view.querySelector("#btnMiAckNone").addEventListener("click", () => { for (const r of m.rows) if (state.acks[ackKey(r, "mi")]) setAck(r, "mi", false); render(); });
   // ACK: geprüfte Calls abhaken – ohne Kommentarfeld, rein intern, nicht in der Mail
   view.querySelectorAll("[data-miack]").forEach(cb => cb.addEventListener("change", () => {
     const r = m.rows.find(x => String(x.Call) === cb.dataset.miack);
@@ -3332,7 +3676,19 @@ function slaKundeAus(kunde) {
   return !!k && ruleList(state.filters.sla?.kunden).some(x => k.includes(x));
 }
 function slaRowOk(r) { return applyFilters("sla", [r]).length === 1 && !slaKundeAus(r.Kunde); }
-function slaRecOk(rec) { return slaRowOk({ Gruppe: rec.g ?? "", Kunde: rec.k ?? "", Bearbeiter: rec.b ?? "", Status: "", Prio: rec.p ?? "" }); }
+function slaRecOk(rec) { return slaRowOk({ Gruppe: rec.g ?? "", Kunde: rec.k ?? "", Bearbeiter: rec.b ?? "", Status: "", Prio: rec.p ?? "", Region: rec.rg ?? "" }); }
+/* v1.41 „Vollmodus“: Liefert der Export auch die geschlossenen Calls (zwei Jahre), stehen Eröffnung und erste Reaktion
+   für jeden Call direkt in den Daten – auch für Calls, die zwischen zwei Exporten aufgingen, beantwortet und geschlossen
+   wurden. Dann wird live aus dem Export gerechnet; das Gedächtnis und die eingefrorenen Summen dienen nur noch als
+   Ersatz für Zeiträume, die der Export nicht mehr abdeckt. */
+function slaVollmodus() { return hatGeschlossene(); }
+function csvErsterMonat() { // ältester Eröffnungsmonat im Export (Vollmodus): ab hier zählt nur der Export
+  if (!slaVollmodus()) return null;
+  let min = null;
+  for (const r of alleZeilen()) if (r["Eröffnet"] && (!min || r["Eröffnet"] < min)) min = r["Eröffnet"];
+  return min ? monatKey(new Date(min.getTime() + 35 * DAY)) : null; // erster VOLL abgedeckter Monat
+}
+function perAusExport(per) { const m = csvErsterMonat(); return !!m && per.art !== "vorjahr" && monatKey(per.von) >= m; }
 function recordReakt() {
   if (sources.ALL.demo || !hatSpalte("ErsteExtReaktion")) return;
   state.reakt ??= {};
@@ -3349,10 +3705,10 @@ function recordReakt() {
     if (!slaRowOk(r)) { if (state.reakt[mk]?.[call]) { delete state.reakt[mk][call]; touched.add(mk); } continue; } // ausgefiltert: nicht aufzeichnen, ggf. wieder entfernen
     if (r.ErsteExtReaktion && wocheStart(r["Eröffnet"]).getTime() < heuteWs && !state.reakt[mk]?.[call]) continue;
     const rec = { e: r["Eröffnet"].getTime(), r: r.ErsteExtReaktion ? r.ErsteExtReaktion.getTime() : 0, p: prioName(r.Prio),
-      k: String(r.Kunde ?? ""), g: String(r.Gruppe ?? ""), b: String(r.Bearbeiter ?? "") };
+      k: String(r.Kunde ?? ""), g: String(r.Gruppe ?? ""), b: String(r.Bearbeiter ?? ""), rg: String(r.Region ?? "") };
     const m = state.reakt[mk] ??= {};
     const alt = m[call];
-    if (!alt || ["e", "r", "p", "k", "g", "b"].some(f => alt[f] !== rec[f])) { m[call] = rec; touched.add(mk); }
+    if (!alt || ["e", "r", "p", "k", "g", "b", "rg"].some(f => alt[f] !== rec[f])) { m[call] = rec; touched.add(mk); }
   }
   for (const k of Object.keys(state.reakt)) if (k < grenze) { delete state.reakt[k]; touched.add(k); }
   const eingefroren = freezeReakt();
@@ -3369,7 +3725,7 @@ function aggAdd(a, x) {
   }
 }
 function freezeReakt() {
-  if (sources.ALL.demo || !hatSpalte("ErsteExtReaktion")) return false;
+  if (sources.ALL.demo || !hatSpalte("ErsteExtReaktion") || slaVollmodus()) return false; // Vollmodus: nichts einfrieren, der Export trägt alles
   const offen = new Set(allRows().map(r => String(r.Call)));
   const heuteWs = wocheStart(todayStart()).getTime();
   const touched = new Set();
@@ -3442,8 +3798,25 @@ function aggMerge(ziel, a) { for (const p of ["rot", "blau", "grün", "ges"]) fo
 function reaktEintraege() {
   const offen = new Map(allRows().map(r => [String(r.Call), r]));
   const out = [];
+  const imExport = new Set();
+  if (slaVollmodus()) { // live aus dem Export: offene und geschlossene Calls der letzten 13 Monate
+    const grenze = todayStart().getTime() - 400 * DAY;
+    for (const r of alleZeilen()) {
+      if (!r["Eröffnet"] || r["Eröffnet"].getTime() < grenze) continue;
+      const call = String(r.Call); imExport.add(call);
+      if (!slaRowOk(r)) continue;
+      const e = r["Eröffnet"].getTime(), rz = r.ErsteExtReaktion ? r.ErsteExtReaktion.getTime() : 0, p = prioName(r.Prio), lim = slaLimit(p);
+      const zu = istGeschlossen(r), row = zu ? null : r;
+      const dauer = rz ? geschaeftszeit(e, rz) : null;
+      let art;
+      if (rz) art = dauer <= lim ? "ok" : "spaet";
+      else if (!zu) art = geschaeftszeit(e, now()) > lim ? "offenUeber" : "offenInnen";
+      else art = "unbekannt";
+      out.push({ call, e, r: rz, p, lim, art, dauer, row, k: String(r.Kunde ?? ""), g: gruppeKurz(r.Gruppe ?? ""), b: String(r.Bearbeiter ?? ""), rg: String(r.Region ?? "") });
+    }
+  }
   for (const m of Object.values(state.reakt || {})) for (const [call, rec] of Object.entries(m)) {
-    if (!slaRecOk(rec)) continue;
+    if (imExport.has(call) || !slaRecOk(rec)) continue;
     const e = rec.e, r = rec.r || 0, p = rec.p || "", lim = slaLimit(p), row = offen.get(call) || null;
     let art;
     const dauer = r ? geschaeftszeit(e, r) : null;
@@ -3466,6 +3839,7 @@ function slaFinish(agg) {
 /* Eingefrorene Summen zu einer Periode: Woche/Monat direkt, Jahr = alle Monate des Jahres */
 function slaFrozen(per) {
   const agg = leerAgg(), ra = state.reaktAgg || {};
+  if (perAusExport(per)) return agg; // Vollmodus: der Export deckt den Zeitraum ab – eingefrorene Summen würden doppelt zählen
   if (per.art === "jahr") { const pre = `M${per.von.getFullYear()}-`; for (const [k, a] of Object.entries(ra)) if (k.startsWith(pre)) aggMerge(agg, a); }
   else if (ra[per.id]) aggMerge(agg, ra[per.id]);
   return agg;
@@ -3520,7 +3894,7 @@ function slaStat(per, list) {
 }
 function slaGebrochen(per, list) {
   const live = list.filter(x => inPeriode(x, per) && (x.art === "spaet" || x.art === "offenUeber"));
-  const frozen = per.art === "woche" ? (state.reaktAgg?.[per.id]?.liste || []).map(x => ({ ...x, art: "spaet", row: null, lim: slaLimit(x.p), r: x.e + (x.dauer || 0) })) : [];
+  const frozen = per.art === "woche" && !perAusExport(per) ? (state.reaktAgg?.[per.id]?.liste || []).map(x => ({ ...x, art: "spaet", row: null, lim: slaLimit(x.p), r: x.e + (x.dauer || 0) })) : [];
   const seen = new Set(live.map(x => x.call));
   return live.concat(frozen.filter(x => !seen.has(x.call)))
     .sort((a, b) => (PRIO_ORD[a.p] ?? 9) - (PRIO_ORD[b.p] ?? 9) || a.e - b.e);
@@ -3590,7 +3964,7 @@ function renderSla(view) {
       <button class="kpi" data-goto="stat"><div class="k-label">Ø Reaktionszeit ${esc(wochen[wochen.length - 1].label)}</div><div class="k-value" style="font-size:26px">${fmtDur(kw.ges.avg)}</div><div class="k-note">${kw.ges.n} Calls mit Reaktion</div></button>
     </div>
     <div class="card"><h2>Filter <span class="hint" style="font-weight:400;margin-left:6px">gilt für alle Zahlen dieses Reiters, teamweit</span></h2>
-      <p class="sub">Ausgeblendete Gruppen, Prioritäten und Kunden werden weder gezählt noch gelistet. Ab Werk ohne ${esc(state.internKunde || "MPDV")}-Calls. Wirkt auf neue Aufzeichnungen; bereits eingefrorene Wochen bleiben, wie sie sind.</p>
+      <p class="sub">Ausgeblendete Gruppen, Prioritäten, Regionen (Europa, USA, Asien – unter „Sonstiges“) und Kunden werden weder gezählt noch gelistet. Ab Werk ohne ${esc(state.internKunde || "MPDV")}-, USA- und Asien-Calls. ${slaVollmodus() ? "Wirkt sofort auf alle Zeiträume, die der Export abdeckt." : "Wirkt auf neue Aufzeichnungen; bereits eingefrorene Wochen bleiben, wie sie sind."}</p>
       ${filterPanel("sla", allRows(), { text: "kunden", textLabel: "Kunden ausschließen", textHint: "Kürzel oder Namensteile, mit Semikolon – z. B. ASIA; USA" })}
     </div>
     <div class="card" id="slaOhne"><h2>Ohne erste externe Reaktion <span class="pill ${ueber.length ? "s-crit" : "s-ok"}" style="margin-left:6px">${ueber.length} überfällig</span></h2>
@@ -3601,7 +3975,9 @@ function renderSla(view) {
     </div>
     <div class="card" id="slaStat"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Erste ext. Reaktion (Durchschnitt)
       <button class="small" id="btnSlaStatCopy" style="margin-left:auto" title="Als Tabelle fürs Supportmanager-Protokoll kopieren – mit leerer SupMan-Spalte">Tabelle kopieren</button></h2>
-      <p class="sub">Durchschnittliche Zeit bis zur ersten externen Reaktion je Priorität, nach Eröffnungsdatum: Jahr bisher, Monate, letzte 8 Kalenderwochen. Die Zahlen bauen sich ab jetzt auf. Nach Ablauf einer Woche bleiben nur die Zeiten und Zähler der Woche und des Monats erhalten, die einzelnen Calls werden vergessen; Brüche bleiben 8 Wochen lang sichtbar. SLA = eingehaltene Fristen geteilt durch bewertete (eingehalten + gebrochen, offene innerhalb der Frist zählen noch nicht).</p>
+      <p class="sub">Durchschnittliche Zeit bis zur ersten externen Reaktion je Priorität, nach Eröffnungsdatum: Jahr bisher, Monate, letzte 8 Kalenderwochen. ${slaVollmodus()
+        ? "Der Export liefert auch die geschlossenen Calls – gerechnet wird direkt aus den Daten, einschließlich Calls, die zwischen zwei Exporten aufgingen, beantwortet und geschlossen wurden. Zeiträume vor dem Export-Fenster kommen aus dem Gedächtnis des Boards, Vorgabewerte gelten für ihren Zeitraum weiter."
+        : "Die Zahlen bauen sich ab jetzt auf. Nach Ablauf einer Woche bleiben nur die Zeiten und Zähler der Woche und des Monats erhalten, die einzelnen Calls werden vergessen; Brüche bleiben 8 Wochen lang sichtbar."} SLA = eingehaltene Fristen geteilt durch bewertete (eingehalten + gebrochen, offene innerhalb der Frist zählen noch nicht).</p>
       <div class="tscroll"><table class="list slatab"><thead><tr><th>Zeitraum</th><th class="ta-r">Rot</th><th class="ta-r">Blau</th><th class="ta-r">Grün</th><th class="ta-r">Gesamt</th><th class="ta-r">Calls</th><th class="ta-r">SLA</th></tr></thead><tbody>${statZeilen}</tbody></table></div>
     </div>
     <div class="card" id="slaBruch"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">SLA gebrochen <span class="pill ${brk.length ? "s-crit" : "s-ok"}">${brk.length} Calls</span>
@@ -3748,8 +4124,8 @@ function isoDateOf(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).pa
 function fmtIsoD(iso) { const m = String(iso).split("-"); return m.length === 3 ? `${m[2]}.${m[1]}.${m[0]}` : iso; }
 /* Interne Calls (Kunde MPDV) und der Pseudo-Bearbeiter gehören nicht ins Protokoll. */
 function protoRelevant(r) { return !isInternKunde(r) && !bearbeiterExcluded(r); }
-function protoCallCandidates() {
-  return allRows().filter(r => protoRelevant(r) && r.Quelle === "2nd" && !String(r.SupMan ?? "").trim() && (Number(r.Dauer) || 0) > 10);
+function protoCallCandidates() { // v1.41: Kunden aus USA und Asien bleiben hier außen vor
+  return allRows().filter(r => protoRelevant(r) && !istUsaAsien(r) && r.Quelle === "2nd" && !String(r.SupMan ?? "").trim() && (Number(r.Dauer) || 0) > 10);
 }
 function kundeKey(v) { return String(v ?? "").trim().toUpperCase(); }
 function kundenRowsMap() {
@@ -3927,7 +4303,7 @@ function renderProto(view) {
   view.innerHTML = `<div class="card">
       <h2>Supportmanager Protokoll <span class="pill s-ok" style="margin-left:6px">Meeting ${fmtD.format(protoMeetingDate())}</span></h2>
       <p class="sub">Für das Montagsmeeting. Neue Wochenzeilen enthalten nur das Datum – Inhalte werden im Meeting ergänzt und teamweit geteilt.
-      Automatisch aufgenommen: 2nd-Level-Calls ohne Supportmanager mit Dauer über 10 h sowie Kunden ab ${min} offenen Calls, bei denen der Supportmanager nicht durchgängig eingetragen ist. Interne Calls (${esc(state.internKunde || "MPDV")}) bleiben außen vor.</p>
+      Automatisch aufgenommen: 2nd-Level-Calls ohne Supportmanager mit Dauer über 10 h (ohne Kunden aus USA und Asien) sowie Kunden ab ${min} offenen Calls, bei denen der Supportmanager nicht durchgängig eingetragen ist. Interne Calls (${esc(state.internKunde || "MPDV")}) bleiben außen vor.</p>
       <div class="btnrow"><button class="primary" id="btnProtoCopy">Protokoll kopieren (für OneNote)</button></div>
       <h2 style="margin-top:14px">Kunden ab ${min} offenen Calls <span class="pill ${luecken.length ? "s-warn" : "s-ok"}" style="margin-left:6px">${luecken.length} ohne durchgängigen SupMan</span></h2>
       <p class="sub">Rot markiert: Kunden ohne Supportmanager in allen zugehörigen Calls – mit Vorschlag, falls in einzelnen Calls schon jemand eingetragen ist.
@@ -4017,17 +4393,17 @@ function exampleRow() {
     "Letzte_Änderung": new Date(now().getTime() - 16 * DAY), TageOhneInfo: 9
   };
 }
-function previewHtml(tplText) {
-  const filled = fillTemplate(tplText, exampleRow());
+function previewHtml(tplText, lang) {
+  const filled = fillTemplate(tplText, exampleRow(), lang);
   return fmtMarkup(filled).replace(/\{(\w+)\}/g, '<span style="color:var(--crit);font-weight:650">{$1}</span>');
 }
 const FORMAT_CHIPS = ["[gelb]…[/gelb]", "[rot]…[/rot]", "[rottext]…[/rottext]", "[fett]…[/fett]", "[kursiv]…[/kursiv]", "[link=https://…]Text[/link]"];
-function tplEditorCard(label, getVal, setVal, rows, chips, extern) {
-  return `<div class="card tpl-editor">
+function tplEditorCard(label, getVal, setVal, rows, chips, lang) {
+  return `<div class="card tpl-editor" data-lang="${lang === "en" ? "en" : ""}">
     <h2>${esc(label)} <span class="pill s-ok save-pill hidden">Gespeichert ✓</span></h2>
     <div class="ph-row">${(chips ?? PLACEHOLDERS).map(p => `<button class="small ph" data-ph="${esc(p)}" title="An Cursorposition einfügen">${esc(p)}</button>`).join("")}</div>
     <textarea class="tpl-text" rows="${rows || 5}">${esc(getVal())}</textarea>
-    <div class="hint preview"><b>Vorschau (Beispiel-Call):</b><br><span class="pv">${previewHtml(getVal())}</span></div>
+    <div class="hint preview"><b>Vorschau (Beispiel-Call):</b><br><span class="pv">${previewHtml(getVal(), lang)}</span></div>
   </div>`;
 }
 function bindTplEditor(cardEl, getVal, setVal) {
@@ -4036,7 +4412,7 @@ function bindTplEditor(cardEl, getVal, setVal) {
   const pill = cardEl.querySelector(".save-pill");
   ta.addEventListener("input", () => {
     setVal(ta.value); touch("cfg|templates"); touch("cfg|intros"); saveState();
-    pv.innerHTML = previewHtml(ta.value);
+    pv.innerHTML = previewHtml(ta.value, cardEl.dataset.lang || undefined);
     pill.classList.remove("hidden");
     clearTimeout(pill._t); pill._t = setTimeout(() => pill.classList.add("hidden"), 1500);
   });
@@ -4049,7 +4425,7 @@ function renderTpl(view) {
   const wfLabels = { krit: "Kritische Calls", lt: "Überschrittener LT", kdkomm: "Ohne Kundenkommunikation", aender: "Ohne Änderung", haken: "Haken-Prüfung", wartend: "Wartend ohne Datum" };
   view.innerHTML = `<div class="card">
     <h2>Textbausteine</h2>
-    <p class="sub">Platzhalter per Klick einfügen; unbekannte erscheinen in der Vorschau rot.</p>
+    <p class="sub">Platzhalter per Klick einfügen; unbekannte erscheinen in der Vorschau rot. Je Tagesaufgabe gibt es die Texte auf Deutsch und Englisch – in den Listen stehen dafür die Knöpfe „Teams“/„WVL“ und „Teams EN“/„WVL EN“.</p>
     <div class="seg">${WF.map(w => `<button class="chip segbtn ${tplWf === w.tpl ? "seg-on" : ""}" data-wf="${w.tpl}">${esc(wfLabels[w.tpl])}</button>`).join("")}</div>
     <div class="tpl-grid" id="tplGrid"></div>
   </div>
@@ -4064,12 +4440,9 @@ function renderTpl(view) {
     <div class="tpl-grid" id="udGrid"></div>
   </div>`;
   const grid = view.querySelector("#tplGrid");
-  grid.innerHTML =
-    tplEditorCard("Teams-Nachricht", () => state.templates.teams[tplWf], v => state.templates.teams[tplWf] = v, 5, null, true) +
-    tplEditorCard("WVL Omnitracker", () => state.templates.wvl[tplWf], v => state.templates.wvl[tplWf] = v, 7, null, true);
-  const [c1, c2] = grid.querySelectorAll(".tpl-editor");
-  bindTplEditor(c1, () => state.templates.teams[tplWf], v => state.templates.teams[tplWf] = v);
-  bindTplEditor(c2, () => state.templates.wvl[tplWf], v => state.templates.wvl[tplWf] = v);
+  const arten = [["Teams-Nachricht (DE)", "teams", 5], ["WVL Omnitracker (DE)", "wvl", 7], ["Teams message (EN)", "teamsEn", 5], ["WVL Omnitracker (EN)", "wvlEn", 7]];
+  grid.innerHTML = arten.map(([lab, art, rows]) => tplEditorCard(lab, () => state.templates[art]?.[tplWf] ?? "", v => (state.templates[art] ??= {})[tplWf] = v, rows, null, art.endsWith("En") ? "en" : undefined)).join("");
+  grid.querySelectorAll(".tpl-editor").forEach((el, i) => { const art = arten[i][1]; bindTplEditor(el, () => state.templates[art]?.[tplWf] ?? "", v => (state.templates[art] ??= {})[tplWf] = v); });
   view.querySelectorAll(".segbtn").forEach(b => b.addEventListener("click", () => { tplWf = b.dataset.wf; render(); }));
   const ig = view.querySelector("#introGrid");
   const intros = [["Einleitung Mittwochsmail PD", "miPd"], ["Einleitung Mittwochsmail SD", "miSd"], ["Einleitung Freitagsmail", "fr"], ["Fußtext Mittwochsmail PD", "miPdFuss"], ["Fußtext Mittwochsmail SD", "miSdFuss"], ["Fußtext Freitagsmail", "frFuss"]];
@@ -4165,7 +4538,10 @@ function renderAdmin(view) {
       <p class="sub">Sichtbarkeits-Filter stehen direkt in den jeweiligen Ansichten („Filter“) – dort lassen sich unter „Sonstiges“ auch ${esc(state.internKunde || "MPDV")}-Calls und ${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")} ein- und ausblenden.</p>
       <table class="grid"><tbody>
         <tr><td style="width:230px">Warnung „Datei unverändert“ ab (Min.)</td><td><input data-cfg="staleWarnMin" value="${esc(state.staleWarnMin)}" type="number" min="5" style="width:90px"></td></tr>
-        ${KUNDENGRUPPEN.map(g => `<tr><td>${esc(g.name)} (Kürzel)</td><td><input data-cfg="${g.feld}" value="${esc(state[g.feld] ?? "")}" placeholder="Kürzel mit Semikolon, z. B. ACME; NOVA" style="width:100%"><div class="hint">Ausblenden je Liste über den Filter „Sonstiges“ → Chip „${esc(g.label)}“.</div></td></tr>`).join("")}
+        <tr><td>Status „zu“ (geschlossene Calls)</td><td><input data-cfg="rules.closedStatus" value="${esc(state.rules.closedStatus ?? "")}" placeholder="Gelöst; Geschlossen" style="width:100%"><div class="hint">Calls mit diesen Status liefert der Export als geschlossen mit – sie stehen in keiner Tagesliste, zählen aber in Tagesstatistik, Top-10-Abschlüssen und Reaktionszeit.</div></td></tr>
+        ${KUNDENGRUPPEN.filter(g => g.feld).map(g => g.region && regionAktiv()
+          ? `<tr><td>${esc(g.name)}</td><td><div class="hint">Kommen aus der Spalte „Region“ der Abfrage (${esc(g.region)}) – Kürzel sind nicht mehr nötig. Ein- und Ausblenden je Liste über den Filter „Sonstiges“ → Chip „${esc(g.label)}“.</div></td></tr>`
+          : `<tr><td>${esc(g.name)} (Kürzel)</td><td><input data-cfg="${g.feld}" value="${esc(state[g.feld] ?? "")}" placeholder="Kürzel mit Semikolon, z. B. ACME; NOVA" style="width:100%"><div class="hint">Ausblenden je Liste über den Filter „Sonstiges“ → Chip „${esc(g.label)}“.${g.region ? " Sobald die Abfrage die Spalte „Region“ liefert, entfällt diese Liste." : ""}</div></td></tr>`).join("")}
       </tbody></table>
       <h2 style="margin-top:18px">Filtergruppen (Bearbeitergruppen)</h2>
       <p class="sub">Bündeln mehrere Bearbeitergruppen zu einem Filter-Chip in den Listen (z. B. Hotline = Hotline + 1st_Level). Mitglieder mit Semikolon trennen.</p>
@@ -4200,7 +4576,12 @@ function renderAdmin(view) {
   }));
   view.querySelectorAll("[data-tmdel]").forEach(b => b.addEventListener("click", () => { state.team.splice(+b.dataset.tmdel, 1); touch("cfg|team"); saveState(); render(); }));
   view.querySelector("#btnTeamAdd").addEventListener("click", () => { state.team.push({ k: "", name: "" }); touch("cfg|team"); saveState(); render(); });
-  view.querySelectorAll("[data-cfg]").forEach(inp => inp.addEventListener("change", () => { state[inp.dataset.cfg] = inp.value.trim(); touch("cfg|" + inp.dataset.cfg); saveState(); render(); }));
+  view.querySelectorAll("[data-cfg]").forEach(inp => inp.addEventListener("change", () => {
+    const k = inp.dataset.cfg;
+    if (k.startsWith("rules.")) { state.rules[k.slice(6)] = inp.value.trim() || DEFAULT_STATE.rules[k.slice(6)]; touch("cfg|rules"); _rowsCache = null; }
+    else { state[k] = inp.value.trim(); touch("cfg|" + k); }
+    saveState(); render();
+  }));
   view.querySelectorAll("[data-udf]").forEach(inp => inp.addEventListener("change", () => {
     const [i, f] = inp.dataset.udf.split("|");
     (state.udienste ??= [])[+i][f] = f === "intro" || f === "fuss" ? inp.value : inp.value.trim();

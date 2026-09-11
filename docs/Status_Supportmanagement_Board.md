@@ -1,6 +1,6 @@
 # Status: Supportmanagement Board
 
-**Stand:** v1.40 · funktional komplett · Parallelbetrieb SQL-Test läuft (Skript per Aufgabenplanung alle 15 Min.) · 2026-09-03
+**Stand:** v1.41 · funktional komplett · Export läuft auf dem OT-Testserver (Aufgabenplanung, SYSTEM) · 2026-09-11
 
 ## Was ist das?
 
@@ -61,6 +61,8 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 | v1.40 | Spalte „Letzte Info an Kd.“ (Datum der letzten Kundeninfo) in den Tageslisten, sortierbar; Standard in „Ohne Kd.-Komm.“ links neben „o. Info“, in bereits gespeicherte Spaltenauswahlen dieser Liste einmalig ergänzt (`state.cols.v40`); Beispieldaten mit passendem Datum |
 | tools | Server-Fassung des Exports `SupportBoard-Export-Server.ps1` (-Install/-Status/-Uninstall, Dienstkonto, rechnergebundenes Passwort, Log im Zielordner, Fehler ins Ereignisprotokoll) + `docs/Anleitung_Serverbetrieb.md` |
 | v1.40 (Testserver) | `SupportBoard-Testserver.html`: Ausgabe der Testversion mit Beschriftung „Testserver-Version“ / „TEST · TESTSERVER“, technisch derselbe Kanal `sqltest` |
+| v1.41 | Geschlossene Calls im Export (zwei Jahre): `allRows()` = nur offene, `closedRows()`/`alleZeilen()` für Statistiken; Status „zu“ in der Verwaltung (`state.rules.closedStatus`); Statusgedächtnis `state.callStatus` (je Eröffnungsmonat, teamweit) erkennt Wiedereröffnungen („wieder offen“-Hinweis am Call, Zähler in der Tagesstatistik); Tagesstatistik aus Eröffnungs- und Abschlussdatum statt Vortagsvergleich; Top 10 mit wählbaren Spalten (`state.cols.top_dauer/top_alt`, COLS mit `txt` fürs Kopieren) und Liste „in der Vorwoche (Mo–So) geschlossen“, je Woche eingefroren (`state.topGeschl`), kopierbar; Reaktionszeit im Vollmodus live aus dem Export inkl. geschlossener Calls (kein Einfrieren, `perAusExport()`), Filter nach Region; Spalte `Region` (USA/Asien/Europa) ersetzt die Kürzellisten USA/Asien, Chip „Europa“ neu, Protokoll-Calls > 10 h ohne USA/Asien; Mittwochsmail: Prio in Vorbereitung und OneNote-Tabelle (nicht in der Mail), fehlender LT nur gelb bei Weiterleitung > 14 Tage, Prüfhaken je Benutzer (`ackKey` → `call|mi|KÜRZEL`, keine Historie), „Alle ACK setzen/entfernen“, „neu“-Flag (kein Vorwochen-Archiv); „neu“-Flag in den Tageslisten (`state.wfSeen`, heute erstmals in der Liste und ohne ACK); Textvorlagen DE und EN (`templates.teamsEn/wvlEn`, Knöpfe „Teams EN“/„WVL EN“); Mails auf einen Knopf (Text kopieren + `mailto:` mit An, CC, Betreff) plus Entwurf als `.eml` mit `X-Unsent: 1`; Einzelschritte eingeklappt |
+| tools | Server-Export: optionale zweite Abfrage `SupportBoard-Abfrage-Reaktion.sql` (Call + Wert), eigene Verbindung, Verknüpfung über Call-Nummer, Ausfall = WARNUNG statt Fehler; Reaktion aus `SupportBoard-Abfrage.sql` herausgelöst; `build.py` + `board.html` als Quelle wiederhergestellt (drei Ausgaben aus einer Datei) |
 
 ## Feste Regeln
 
@@ -77,7 +79,12 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 - Reaktionszeit wird in Geschäftszeit gemessen (Mo–Do 08:00–17:30, Fr 08:00–16:30, Sa/So nichts; Feiertage nicht berücksichtigt). Ein Call von Mittwoch 17:30 hat Donnerstag 08:00 null Minuten. Die Fristen (Rot 30 Min., Blau 4 h, Grün 48 h) laufen ebenfalls in Geschäftszeit. Kundengruppen SaaS/USA/Asien: Kürzellisten in der Verwaltung („Grundregeln“), teamweit; Chips unter „Sonstiges“ je Liste, in der Reaktionszeit sind USA und Asien ab Werk ausgeblendet (einmalige Umstellung `filters.sla.v37`)
 - Unterstützungsdienste: Gruppen der Dienste müssen in der WHERE-Liste der Abfrage enthalten sein, sonst bleibt die Liste leer (Hinweis im Reiter)
 - Kanal-Trennung (ab v1.27): Produktiv- und Testversion nutzen getrennte Speicherschlüssel (`smbState_v1` vs. `smbState_v1_sqltest`, IndexedDB `smbHandles` vs. `smbHandles_sqltest`). Die Team-Datei trägt `kanal`; Dateien ohne Kennung gelten als Produktivdateien. Eine Datei des anderen Kanals wird weder gemischt noch geschrieben
-- „Geschlossen“ in der Tagesstatistik ist abgeleitet: Der Export enthält nur offene Calls, gezählt wird, was im Vortags-Schnappschuss stand und heute fehlt (auch Calls, die den Auswertungsbereich verlassen haben). „Neu“ = Eröffnungsdatum am Tag, als Menge über den Tag gesammelt. Beispieldaten schreiben keinen Schnappschuss
+- „Geschlossen“ in der Tagesstatistik ist abgeleitet: Der Export enthält nur offene Calls, gezählt wird, was im Vortags-Schnappschuss stand und heute fehlt (auch Calls, die den Auswertungsbereich verlassen haben). „Neu“ = Eröffnungsdatum am Tag, als Menge über den Tag gesammelt. Beispieldaten schreiben keinen Schnappschuss — gilt nur noch ohne geschlossene Calls im Export. Ab v1.41 (Export mit geschlossenen Calls): „geschlossen“ = Abschlussdatum (Spalte `Geschlossen`, sonst `Letzte_Änderung`) bei Status „zu“; „neu“ = Eröffnungsdatum über alle Calls; „wieder geöffnet“ aus dem Statusgedächtnis (zählt nicht als neu). Ein Wechsel zu→offen→zu ohne Laden dazwischen bleibt unsichtbar
+- Geschlossene Calls stehen in keiner Tagesliste und keiner Mail. Sie zählen in Tagesstatistik, Top-10-Abschlüssen (Vorwoche Mo–So, je Woche eingefroren) und Reaktionszeit (Vollmodus: live aus dem Export, eingefrorene Summen nur für Zeiträume vor dem Export-Fenster; Vorgabewerte gelten weiter)
+- Prüfhaken der Mittwochsmail sind persönlich (je Benutzer) und stehen nicht in der Team-Historie; alte teamweite Haken wurden mit v1.41 einmalig verworfen (`state.v41`)
+- Mittwochsmail: fehlender Lösungstermin wird nur automatisch gelb, wenn die letzte Weiterleitung mehr als 14 Tage zurückliegt (Wartend nie). Prio steht in der Vorbereitung und in der OneNote-Tabelle, nie in der Mail
+- Region (USA/Asien/Europa) kommt aus der Abfrage (Spalte `Region`); nur ohne diese Spalte gelten die Kürzellisten USA/Asien der Verwaltung. Protokoll-Calls > 10 h schließen USA und Asien aus
+- Der Cache der geladenen Calls fällt bei Platznot im Browser auf die offenen Calls zurück; die geschlossenen kommen mit dem nächsten Lesen der Datei wieder
 - Die Liste „Kritische Calls“ ist eine Sammelliste und löst kein ⚠ „steht auch in …“ in anderen Listen aus
 - Das Export-Skript liest ausschließlich (Prüfung vor dem Start, Transaktion mit Rollback, ReadUncommitted). Es darf nichts kaputt machen
 
@@ -87,7 +94,7 @@ Die Dashboards sind Omnitracker-Abfragetabellen mit „Daten vor dem Speichern e
 
 ## Offene Punkte
 
-0. Parallelbetrieb SQL-Test läuft (Abfrage passt zum Schema, Aufgabenplanung lokal auf VKUs Notebook). Nächster Schritt: Skript auf den (Test-)Server; danach Vergleich Test vs. Produktiv nach Checkliste. Auslastung Dispatcher folgt, sobald die Abfrage Daten dafür liefert.
+0. Export läuft auf dem OT-Testserver. Offen: neue SQL von VKU (geschlossene Calls, Region) mit den erwarteten Spaltennamen abgleichen (`Region`, optional `Geschlossen`; Status-„zu“-Werte in der Verwaltung prüfen), `SupportBoard-Abfrage-Reaktion.sql` auf dem Server ablegen, `-Preview` und `-Status` prüfen; Kollegen auf die Testserver-Version umstellen; Handbuch (docx/pdf) auf v1.41 nachziehen. Auslastung Dispatcher folgt, sobald die Abfrage Daten dafür liefert.
 1. OneNote-Link im PD-Fußtext ersetzen (Platzhalter-URL `https://LINK-ZUM-ONENOTE-HIER-EINFUEGEN`)
 2. Team-Rollout: gemeinsame JSON auf dem Share einrichten, Kollegen verknüpfen
 3. Optional: Gelb-Schwelle Terminänderungen in der Freitagsmail evtl. ≥5 statt >6 (unbestätigt)

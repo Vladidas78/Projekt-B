@@ -161,6 +161,16 @@ Set-ScheduledTask -TaskName "Supportboard Datenexport (Server)" -Action $a
 
 Zurück auf die direkte Aktion geht es jederzeit mit `-Install`.
 
+## Zweite Abfrage: externe Reaktion (ab v1.41)
+
+Die externe Reaktion kommt aus einer eigenen Datei `SupportBoard-Abfrage-Reaktion.sql` im Skriptordner (zwei Spalten: `Call`, `Externe Reaktion`). Das Skript führt sie in einer eigenen Verbindung aus (gleiche Absicherung: Prüfung, Rollback, keine Sperren) und hängt den Wert über die Call-Nummer an die Zeilen der Hauptabfrage an. Ergebnis bleibt eine CSV.
+
+- Datei fehlt oder ist leer: nichts wird angehängt, kein Fehler.
+- Abfrage scheitert (Tabelle abgestellt, Timeout): CSV wird trotzdem geschrieben, Spalte bleibt leer, Log zeigt `WARNUNG Reaktionsabfrage uebersprungen`.
+- `-Preview` zeigt die Spaltenliste mit der angehängten Spalte und für wie viele Zeilen ein Wert gefunden wurde.
+
+Am Skript sind dafür keine Einstellungen nötig; die Datei einfach neben die Hauptabfrage legen.
+
 ## Was sich für das Board ändert
 
 Nichts. Es liest weiter `SupportBoard-Daten.csv` aus dem Ordner, den es überwacht. Weil der Server auch nachts und am Wochenende läuft, ist die CSV morgens bereits frisch. „Jetzt synchronisieren“ liest wie bisher die aktuelle Datei ein; ein Lauf des Skripts von Hand ist mit dem 10-Minuten-Takt praktisch nie nötig. Wer ihn trotzdem braucht, startet auf dem Server `.\SupportBoard-Export-Server.ps1 -Jetzt`.

@@ -9,6 +9,7 @@ Für die Erprobung neben dem laufenden Betrieb (eigener Testordner, Testversion 
 |---|---|
 | `SupportBoard-Export.ps1` | Das Skript. Hier oben die Einstellungen eintragen. |
 | `SupportBoard-Abfrage.sql` | Deine Abfrage. Änderungen wirken sofort beim nächsten Lauf. |
+| `SupportBoard-Abfrage-Reaktion.sql` | Optional (ab v1.41): zweite Abfrage mit zwei Spalten `Call` und `Externe Reaktion`. Das Skript hängt den Wert über die Call-Nummer an – es bleibt **eine** CSV. Fehlt die Datei oder scheitert die Abfrage, wird die CSV trotzdem geschrieben (Spalte leer, WARNUNG im Log). |
 | `SupportBoard-Export.log` | Entsteht automatisch, protokolliert jeden Lauf. |
 | `SupportBoard-Export-leise.vbs` | Optionaler Starter für die Aufgabenplanung, damit kein Fenster aufblitzt. |
 | `SupportBoard-Export-Server.ps1` | Server-Fassung: gleiche Abfrage, gleiche CSV, läuft rund um die Uhr unter einem Dienstkonto. Anleitung: `docs/Anleitung_Serverbetrieb.md`. |
@@ -89,6 +90,19 @@ Nicht `schtasks /Create` aus PowerShell heraus mit `\"`-Anführungszeichen verwe
 Im Board: Verwaltung → **„Dashboard überwachen …“** → die neue `SupportBoard-Daten.csv` auswählen. Fertig – ab jetzt kommen die Daten automatisch. In der Erprobungsphase ist das die Testversion `SupportBoard-SQLTest.html`, die Produktivversion bleibt bei der Excel-Liste.
 
 ## Was neu dazukommt
+
+### Ab v1.41: geschlossene Calls, Region, zweite Abfrage
+
+Die Hauptabfrage liefert jetzt auch die **geschlossenen Calls der letzten zwei Jahre** und die **Region** des Kunden. Das Board erwartet dafür diese Spaltennamen (`AS …`):
+
+| Spalte | Inhalt |
+|---|---|
+| `Status` | Echter Status, auch `Gelöst` / `Geschlossen`. Welche Werte als „zu“ gelten, steht im Board unter Verwaltung → Grundregeln (ab Werk: Gelöst; Geschlossen; Closed; Resolved; Solved). |
+| `Region` | `USA`, `Asien` oder `Europa` (auch `Asia`, `Europe`, `US` werden erkannt). Ersetzt die Kürzellisten USA/Asien in der Verwaltung; neuer Filter-Chip „Europa“. |
+| `Geschlossen` | Optional: Abschlussdatum. Fehlt die Spalte, gilt bei geschlossenen Calls die letzte Änderung als Abschluss. |
+| `Externe Reaktion` | Kommt aus der zweiten Datei `SupportBoard-Abfrage-Reaktion.sql` (Spalten `Call`, `Externe Reaktion`). Liefert die Hauptabfrage die Spalte selbst, wird nichts angehängt. |
+
+Geschlossene Calls stehen in keiner Tagesliste und keiner Mail. Sie zählen in der Tagesstatistik (neu/geschlossen/wieder geöffnet), bei den Top 10 („in der Vorwoche Mo–So geschlossen“) und in der Reaktionszeit – dort auch Calls, die zwischen zwei Exporten aufgingen, beantwortet und geschlossen wurden.
 
 Die Abfrage enthält eine zusätzliche Spalte **„Letzte externe Reaktion“** (mit Uhrzeit). Damit wird die Ansicht *„Keine ext. Reaktion“* im Board scharf geschaltet: Rot ab 30 Minuten, Blau ab 4 Stunden, Grün ab 48 Stunden.
 
