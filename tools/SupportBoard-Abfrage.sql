@@ -22,6 +22,7 @@ SELECT
     o.WAKI_bis                                          AS Wartend_bis,
     o.loesung_bis                                       AS [Lösung_bis],
     o.Anzahl_LT_Verschiebungen                          AS [Terminänderungen],
+    o.primaere_kundenbetreuung                          AS Kundenbetreuung,  -- MPDV_Europe / MPDV_USA / MPDV_Asia -> Region im Board
     /* "Externe Reaktion" (Kalendertage bis zur ersten externen Aktion) kommt seit v1.41 aus der
        getrennten Datei SupportBoard-Abfrage-Reaktion.sql; das Exportskript haengt den Wert ueber
        die Call-Nummer an. So laesst sich diese Abfrage abstellen oder in einem anderen Takt fahren,
@@ -98,16 +99,38 @@ OUTER APPLY (
    (Filter-Chips je Liste, Bereich "Sonst." fuer unbekannte Gruppen). */
 
 /* =========================================================================
-   Erwartete Spaltennamen fuer die Erweiterungen ab Board v1.41 (AS ...):
-     [Region]        Primaere Kundenbetreuung: 'USA', 'Asien' oder 'Europa'
-                     (das Board erkennt auch Schreibweisen wie 'Asia', 'Europe', 'US').
-                     Ersetzt die Kuerzellisten USA/Asien in der Verwaltung.
-     Status          Geschlossene Calls der letzten zwei Jahre kommen mit dem echten
-                     Status ('Geloest', 'Geschlossen'); welche Status als "zu" gelten,
-                     steht in der Verwaltung unter Grundregeln.
-     [Geschlossen]   Optional: Abschlussdatum. Fehlt die Spalte, gilt bei geschlossenen
-                     Calls [Letzte_Änderung] als Abschluss.
-   Zweijahresgrenze bitte in der Abfrage setzen, z. B.
-     WHERE o.status NOT IN ('Geloest','Geschlossen')
-        OR o.letzte_aenderung >= DATEADD(YEAR, -2, GETDATE())
+   VORSCHLAG (v1.41): geschlossene Calls der letzten zwei Jahre mitliefern.
+   Grundlage fuer Tagesstatistik (neu/geschlossen/wieder geoeffnet), die in
+   der Vorwoche geschlossenen Top-10-Calls und die Reaktionszeit. Geschlossene
+   Calls stehen im Board in keiner Tagesliste und keiner Mail.
+   BITTE PRUEFEN: Spaltennamen von closed_calls (hier wie open_calls angenommen).
+   Gibt es ein Abschlussdatum (z. B. cc.geschlossen_am), bitte als
+   "AS Geschlossen" mitgeben; sonst nimmt das Board [Letzte_Änderung].
+   Score, letzte Kundeninfo und Tage ohne Info bleiben bei geschlossenen leer.
    ========================================================================= */
+UNION ALL
+SELECT
+    cc.prioritaet                                       AS Prio,
+    cc.callnr                                           AS Call,
+    cc.erstellt                                         AS [Eröffnet],
+    cc.verantwortliche_gruppe                           AS Gruppe,
+    UPPER(cc.verantwortlicher_benutzer)                 AS Bearbeiter,
+    cc.meldende_firma_kurzz                             AS Kunde,
+    cc.titel                                            AS Titel,
+    cc.zugeordneter_supman                              AS SupMan,
+    cc.status                                           AS Status,
+    cc.dauer                                            AS Dauer,
+    cc.letzte_Weiterleitung                             AS Weiterleitung,
+    cc.letzte_aenderung                                 AS [Letzte_Änderung],
+    cc.WAKI_bis                                         AS Wartend_bis,
+    cc.loesung_bis                                      AS [Lösung_bis],
+    cc.Anzahl_LT_Verschiebungen                         AS [Terminänderungen],
+    cc.primaere_kundenbetreuung                         AS Kundenbetreuung,
+    CASE WHEN cc.nicht_auswerten_fuer_kd_kommunikation = 1 THEN 'Ja' ELSE 'Nein' END
+                                                        AS [nicht werten für Kd.Komm.],
+    NULL                                                AS [Letzte Info an Kd.],
+    NULL                                                AS [Tage ohne Info an Kd.],
+    NULL                                                AS [Letzte externe Reaktion],
+    0                                                   AS Score
+FROM closed_calls AS cc
+WHERE cc.erstellt >= DATEADD(YEAR, -2, GETDATE())

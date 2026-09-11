@@ -100,7 +100,7 @@ Die Hauptabfrage liefert jetzt auch die **geschlossenen Calls der letzten zwei J
 | `Status` | Echter Status, auch `Gelöst` / `Geschlossen`. Welche Werte als „zu“ gelten, steht im Board unter Verwaltung → Grundregeln (ab Werk: Gelöst; Geschlossen; Closed; Resolved; Solved). |
 | `Region` | `USA`, `Asien` oder `Europa` (auch `Asia`, `Europe`, `US` werden erkannt). Ersetzt die Kürzellisten USA/Asien in der Verwaltung; neuer Filter-Chip „Europa“. |
 | `Geschlossen` | Optional: Abschlussdatum. Fehlt die Spalte, gilt bei geschlossenen Calls die letzte Änderung als Abschluss. |
-| `Externe Reaktion` | Kommt aus der zweiten Datei `SupportBoard-Abfrage-Reaktion.sql` (Spalten `Call`, `Externe Reaktion`). Liefert die Hauptabfrage die Spalte selbst, wird nichts angehängt. |
+| `Externe Reaktion` | Kommt aus der zweiten Datei `SupportBoard-Abfrage-Reaktion.sql` (Spalte 1 Call, Spalte 2 Wert; weitere Spalten werden ignoriert). Diese Abfrage legt die Grundgesamtheit der Reaktionszeit fest: Calls ohne Zeile werden nicht bewertet, Wert 0 heißt „noch keine Reaktion“. Deshalb ohne Filter auf `erste_ext_aktion_kalender > 0`, `e_bestaetigung_kalender > 0` und ohne Regionsfilter (die Region filtert das Board). |
 
 Geschlossene Calls stehen in keiner Tagesliste und keiner Mail. Sie zählen in der Tagesstatistik (neu/geschlossen/wieder geöffnet), bei den Top 10 („in der Vorwoche Mo–So geschlossen“) und in der Reaktionszeit – dort auch Calls, die zwischen zwei Exporten aufgingen, beantwortet und geschlossen wurden.
 

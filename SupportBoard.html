@@ -929,7 +929,7 @@ const COLMAP = {
   "letzte info an kd.": "LetzteInfo", "tage ohne info an kd.": "TageOhneInfo",
   "letzte externe reaktion": "LetzteExtReaktion", "letzte ext. reaktion": "LetzteExtReaktion",
   // „Externe Reaktion“ aus der Abfrage: Kalenderzeit von der Eröffnung bis zur ersten externen Aktion in Tagen (0 = noch keine)
-  "externe reaktion": "ExtReaktionTage", "externe reaktion (tage)": "ExtReaktionTage",
+  "externe reaktion": "ExtReaktionTage", "externe reaktion (tage)": "ExtReaktionTage", "erste ext. aktion kalender": "ExtReaktionTage", "erste ext. aktion": "ExtReaktionTage", "erste externe aktion": "ExtReaktionTage",
   "erste externe reaktion": "ErsteExtReaktion", "erste ext. reaktion": "ErsteExtReaktion", "erste_externe_reaktion": "ErsteExtReaktion", "erste reaktion": "ErsteExtReaktion",
   // v1.41: Region des Kunden (USA / Asien / Europa) aus der Abfrage – ersetzt die Kürzellisten der Verwaltung
   "region": "Region", "kundenregion": "Region", "primäre kundenbetreuung": "Region", "primaere kundenbetreuung": "Region", "kundenbetreuung": "Region", "betreuung": "Region",
@@ -941,8 +941,8 @@ const DATECOLS = ["Eröffnet", "Weiterleitung", "Letzte_Änderung", "Wartend_bis
 /* Region des Kunden aus der Abfrage, auf drei Werte gebracht */
 function regionNorm(v) {
   const t = String(v ?? "").trim(); if (!t) return "";
-  const l = t.toLowerCase();
-  if (/\busa?\b|amerika|america|north am|nordam/.test(l)) return "USA";
+  const l = t.toLowerCase().replace(/^mpdv[_ -]*/, ""); // Werte der Abfrage: MPDV_Europe, MPDV_USA, MPDV_Asia …
+  if (/usa|amerika|america|north am|nordam|^us$/.test(l)) return "USA";
   if (/asi|apac|china|japan|singap/.test(l)) return "Asien";
   if (/eur|emea|deutschland|germany/.test(l)) return "Europa";
   return t;
@@ -2620,10 +2620,12 @@ function loadDemo() {
     // erste externe Reaktion: meist innerhalb der Frist, ein Teil darüber, wenige noch ohne
     const reaktMin = prio.startsWith("1") ? Math.floor(rnd() * 50) : prio.startsWith("2") ? Math.floor(rnd() * 330) : Math.floor(rnd() * 70 * 60);
     const erste = (age > 2 || rnd() < 0.7) ? new Date(er.getTime() + reaktMin * 60000) : null;
+    const kunde = pick(kunden);
     rows.push({
-      ErsteExtReaktion: erste, Region: pickW([["Europa", 70], ["USA", 18], ["Asien", 12]]), Geschlossen: null,
+      ErsteExtReaktion: erste, ExtReaktionTage: kunde === "MPDV" ? null : (erste ? (erste - er) / DAY : 0),
+      Region: pickW([["Europa", 70], ["USA", 18], ["Asien", 12]]), Geschlossen: null,
       Quelle: quelleOf(gruppe), Prio: prio, Call: 156000 + i * 7 + Math.floor(rnd() * 6),
-      "Eröffnet": er, Gruppe: gruppe, Bearbeiter: hx ? "HX-MP-UPDATE" : pick(bearb[gruppe]), Kunde: pick(kunden),
+      "Eröffnet": er, Gruppe: gruppe, Bearbeiter: hx ? "HX-MP-UPDATE" : pick(bearb[gruppe]), Kunde: kunde,
       Titel: pick(titles), SupMan: rnd() < 0.25 ? pick(["MLH", "APA", "RRE", "VKU"]) : "", Status: status, Dauer: dauer,
       Weiterleitung: new Date(er.getTime() + rnd() * (now() - er) * 0.5),
       "Letzte_Änderung": new Date(now() - ch * DAY),
@@ -2645,7 +2647,7 @@ function loadDemo() {
     const reaktMin = prio.startsWith("1") ? Math.floor(rnd() * 45) : prio.startsWith("2") ? Math.floor(rnd() * 300) : Math.floor(rnd() * 60 * 60);
     const erste = rnd() < 0.9 ? new Date(Math.min(zu.getTime(), er.getTime() + reaktMin * 60000)) : null;
     rows.push({
-      ErsteExtReaktion: erste, Region: pickW([["Europa", 70], ["USA", 18], ["Asien", 12]]), Geschlossen: zu,
+      ErsteExtReaktion: erste, ExtReaktionTage: erste ? (erste - er) / DAY : 0, Region: pickW([["Europa", 70], ["USA", 18], ["Asien", 12]]), Geschlossen: zu,
       Quelle: quelleOf(gruppe), Prio: prio, Call: 140000 + i * 11 + Math.floor(rnd() * 9),
       "Eröffnet": er, Gruppe: gruppe, Bearbeiter: pick(bearb[gruppe]), Kunde: pick(kunden),
       Titel: pick(titles), SupMan: rnd() < 0.25 ? pick(["MLH", "APA", "RRE", "VKU"]) : "", Status: rnd() < 0.6 ? "Geschlossen" : "Gelöst",
@@ -3308,7 +3310,7 @@ function slaKarte() {
   const list = reaktEintraege();
   const wochen = slaPerioden().filter(x => x.art === "woche"), akt = wochen[wochen.length - 1];
   const kw = slaStat(akt, list);
-  const ohne = allRows().filter(r => !r.ErsteExtReaktion && r["Eröffnet"] && slaRowOk(r));
+  const ohne = allRows().filter(r => slaBewertet(r) && !r.ErsteExtReaktion && r["Eröffnet"] && slaRowOk(r));
   const ueber = ohne.filter(r => geschaeftszeit(r["Eröffnet"], now()) > slaLimit(prioName(r.Prio))).length;
   return `<div class="card"><h2>Erste externe Reaktion <span class="hint" style="font-weight:400;margin-left:6px">Rot 30 Min. · Blau 4 Std. · Grün 48 Std. · in Geschäftszeit</span></h2>
     <div class="kpis" style="margin-bottom:0">
@@ -3676,6 +3678,10 @@ function slaKundeAus(kunde) {
   return !!k && ruleList(state.filters.sla?.kunden).some(x => k.includes(x));
 }
 function slaRowOk(r) { return applyFilters("sla", [r]).length === 1 && !slaKundeAus(r.Kunde); }
+/* v1.41: Die Reaktionsabfrage legt die Grundgesamtheit fest (Kunden, Kategorien, SLA-Vertrag). Ein Call ohne Wert
+   (leere Spalte) gehört nicht dazu und wird nicht bewertet; 0 heißt „noch keine Reaktion“. Ein gelieferter
+   Zeitstempel zählt immer. */
+function slaBewertet(r) { return r.ExtReaktionTage != null || r.ErsteExtReaktion instanceof Date; }
 function slaRecOk(rec) { return slaRowOk({ Gruppe: rec.g ?? "", Kunde: rec.k ?? "", Bearbeiter: rec.b ?? "", Status: "", Prio: rec.p ?? "", Region: rec.rg ?? "" }); }
 /* v1.41 „Vollmodus“: Liefert der Export auch die geschlossenen Calls (zwei Jahre), stehen Eröffnung und erste Reaktion
    für jeden Call direkt in den Daten – auch für Calls, die zwischen zwei Exporten aufgingen, beantwortet und geschlossen
@@ -3696,7 +3702,7 @@ function recordReakt() {
   const grenze = monatKey(new Date(todayStart().getTime() - 400 * DAY)); // 13 Monate behalten
   const heuteWs = wocheStart(todayStart()).getTime();
   for (const r of allRows()) {
-    if (!r["Eröffnet"]) continue;
+    if (!r["Eröffnet"] || !slaBewertet(r)) continue;
     const mk = monatKey(r["Eröffnet"]), call = String(r.Call);
     if (mk < grenze) continue; // ältere Calls gar nicht erst aufnehmen (sonst würden sie bei jedem Lauf neu angelegt und gelöscht)
     // Eröffnungswoche vorbei und Reaktion vorhanden: Der Call ist entweder schon in den Wochensummen (dann darf er
@@ -3804,7 +3810,7 @@ function reaktEintraege() {
     for (const r of alleZeilen()) {
       if (!r["Eröffnet"] || r["Eröffnet"].getTime() < grenze) continue;
       const call = String(r.Call); imExport.add(call);
-      if (!slaRowOk(r)) continue;
+      if (!slaBewertet(r) || !slaRowOk(r)) continue;
       const e = r["Eröffnet"].getTime(), rz = r.ErsteExtReaktion ? r.ErsteExtReaktion.getTime() : 0, p = prioName(r.Prio), lim = slaLimit(p);
       const zu = istGeschlossen(r), row = zu ? null : r;
       const dauer = rz ? geschaeftszeit(e, rz) : null;
@@ -3901,7 +3907,7 @@ function slaGebrochen(per, list) {
 }
 /* Offene Calls ohne erste Reaktion – aus dem aktuellen Datenstand */
 function ohneReaktionRows() {
-  return applyFilters("sla", allRows().filter(r => !r.ErsteExtReaktion && r["Eröffnet"] && !slaKundeAus(r.Kunde)))
+  return applyFilters("sla", allRows().filter(r => slaBewertet(r) && !r.ErsteExtReaktion && r["Eröffnet"] && !slaKundeAus(r.Kunde)))
     .map(r => { const p = prioName(r.Prio), lim = slaLimit(p), alter = geschaeftszeit(r["Eröffnet"], now()); return { r, p, lim, alter, ueber: alter - lim }; })
     .sort((a, b) => b.ueber - a.ueber);
 }
@@ -3968,7 +3974,7 @@ function renderSla(view) {
       ${filterPanel("sla", allRows(), { text: "kunden", textLabel: "Kunden ausschließen", textHint: "Kürzel oder Namensteile, mit Semikolon – z. B. ASIA; USA" })}
     </div>
     <div class="card" id="slaOhne"><h2>Ohne erste externe Reaktion <span class="pill ${ueber.length ? "s-crit" : "s-ok"}" style="margin-left:6px">${ueber.length} überfällig</span></h2>
-      <p class="sub">${regeln} Sortiert nach Überfälligkeit; Calls innerhalb der Frist stehen unten.</p>
+      <p class="sub">${regeln} Sortiert nach Überfälligkeit; Calls innerhalb der Frist stehen unten. Bewertet werden nur Calls, für die die Reaktionsabfrage eine Zeile liefert (Kunden, Kategorien und SLA-Vertrag legt die Abfrage fest).</p>
       ${ohne.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Gruppe</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th><th>Eröffnet</th><th class="ta-r" title="in Geschäftszeit">Alter (GZ)</th><th class="ta-r">Frist</th><th class="ta-r">Rest / überfällig</th></tr></thead><tbody>
       ${ohne.map(x => `<tr><td class="nowrap">${prioZelle(x.p)}</td><td class="tnum nowrap">${esc(x.r.Call)}</td><td class="nowrap">${esc(gruppeKurz(x.r.Gruppe) || "–")}</td><td class="nowrap" title="${esc(resolveName(x.r.Bearbeiter) ?? "")}">${esc(x.r.Bearbeiter ?? "–")}</td><td class="nowrap">${esc(x.r.Kunde ?? "–")}${smBadge(x.r)}</td><td class="titlecell">${esc(x.r.Titel ?? "–")}</td><td class="nowrap">${esc(x.r.Status ?? "–")}</td><td class="tnum nowrap">${fmtDT.format(x.r["Eröffnet"])}</td><td class="ta-r tnum">${fmtAgo(x.alter)}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td><td class="ta-r tnum nowrap ${x.ueber > 0 ? "c-crit" : "c-warn"}">${x.ueber > 0 ? "überfällig seit " + fmtAgo(x.ueber) : "noch " + fmtAgo(-x.ueber)}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="empty"><b>Alles beantwortet.</b> Jeder offene Call hat eine erste externe Reaktion.</p>`}
