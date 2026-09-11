@@ -1623,7 +1623,17 @@ async function mergeSharedReadOnly(h) {
 /* Geschlossene Calls (v1.41): Der Export liefert auch die in den letzten zwei Jahren geschlossenen Calls.
    Für alle Tageslisten und Mails zählen nur offene Calls (allRows); Statistiken greifen zusätzlich auf
    die geschlossenen zu (closedRows, alleZeilen). Welche Status als „zu“ gelten, steht in der Verwaltung. */
-function istGeschlossen(r) { return ruleList(state.rules?.closedStatus ?? DEFAULT_STATE.rules.closedStatus).includes(statusNorm(r)); }
+function istGeschlossen(r) {
+  const s = statusNorm(r); if (!s) return false;
+  for (const z of ruleList(state.rules?.closedStatus ?? DEFAULT_STATE.rules.closedStatus)) if (s === z || s.startsWith(z + " ") || s.startsWith(z + "/") || s.startsWith(z + "-") || s.startsWith(z + "(")) return true;
+  return false;
+}
+/* Statuswerte im Datenstand mit Anzahl und Einstufung (offen / zu) – für die Verwaltung */
+function statusRohwerte() {
+  const m = new Map();
+  for (const r of alleZeilen()) { const raw = String(r.Status ?? "").trim() || "(leer)"; const e = m.get(raw) ?? { raw, zu: istGeschlossen(r), n: 0 }; e.n++; m.set(raw, e); }
+  return [...m.values()].sort((a, b) => Number(a.zu) - Number(b.zu) || b.n - a.n);
+}
 function alleZeilen() {
   const seen = new Map();
   for (const r of sources.ALL.rows) {
@@ -4527,7 +4537,10 @@ function renderAdmin(view) {
       <p class="sub">Sichtbarkeits-Filter stehen direkt in den jeweiligen Ansichten („Filter“) – dort lassen sich unter „Sonstiges“ auch ${esc(state.internKunde || "MPDV")}-Calls und ${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")} ein- und ausblenden.</p>
       <table class="grid"><tbody>
         <tr><td style="width:230px">Warnung „Datei unverändert“ ab (Min.)</td><td><input data-cfg="staleWarnMin" value="${esc(state.staleWarnMin)}" type="number" min="5" style="width:90px"></td></tr>
-        <tr><td>Status „zu“ (geschlossene Calls)</td><td><input data-cfg="rules.closedStatus" value="${esc(state.rules.closedStatus ?? "")}" placeholder="Gelöst; Geschlossen" style="width:100%"><div class="hint">Calls mit diesen Status liefert der Export als geschlossen mit – sie stehen in keiner Tagesliste, zählen aber in Tagesstatistik, Top-10-Abschlüssen und Reaktionszeit.</div></td></tr>
+        <tr><td>Status „zu“ (geschlossene Calls)</td><td><input data-cfg="rules.closedStatus" value="${esc(state.rules.closedStatus ?? "")}" placeholder="Gelöst; Geschlossen" style="width:100%"><div class="hint">Calls mit diesen Status liefert der Export als geschlossen mit – sie stehen in keiner Tagesliste, zählen aber in Tagesstatistik, Top-10-Abschlüssen und Reaktionszeit. Zusätze wie „Reviewer (intern)“ zählen mit.</div>
+          ${alleZeilen().length ? `<div class="hint" style="margin-top:6px">Statuswerte im aktuellen Datenstand (${fmtN.format(allRows().length)} offen, ${fmtN.format(closedRows().length)} zu):</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin:4px 0">${statusRohwerte().map(x => `<span class="pill ${x.zu ? "s-ok" : "s-warn"}" title="${x.zu ? "zählt als zu" : "zählt als offen"}">${esc(x.raw)} · ${fmtN.format(x.n)}${x.zu ? " · zu" : ""}</span>`).join("")}</div>
+          <div class="hint">Gelb = zählt als offen. Soll ein gelber Status als zu gelten, oben in die Liste aufnehmen.</div>` : ""}</td></tr>
         ${regionAktiv() ? `<tr><td>Region: Werte der Abfrage</td><td><div class="hint">Spalte „Kundenbetreuung“ und ihre Zuordnung im aktuellen Datenstand:</div>
           <div style="display:flex;flex-wrap:wrap;gap:4px;margin:4px 0">${regionRohwerte().map(x => `<span class="pill ${REGIONEN.includes(x.zu) ? "s-ok" : "s-warn"}" title="${x.n} Calls">${esc(x.raw)} → ${esc(REGIONEN.includes(x.zu) ? x.zu : "nicht zugeordnet")}</span>`).join("") || "<span class=\"hint\">keine Werte</span>"}</div>
           <div class="frow" style="margin:4px 0"><span class="flabel" style="width:auto">Zusätzlich Asien</span><input data-cfg="rules.regionAsien" value="${esc(state.rules.regionAsien ?? "")}" placeholder="Werte mit Semikolon, z. B. MPDV_Korea" style="min-width:260px"></div>
