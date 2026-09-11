@@ -777,8 +777,11 @@ function normalizeState() {
     for (const k of Object.keys(state.acks || {})) if (/\|mi$/.test(k)) { delete state.acks[k]; touch("acks|" + k); }
     state.v41 = 1;
   }
-  state.rules.closedStatus ??= DEFAULT_STATE.rules.closedStatus;
-  if (state.rules.closedStatus === "Gelöst; Geschlossen; Closed; Resolved; Solved") state.rules.closedStatus = DEFAULT_STATE.rules.closedStatus; // v1.41: Reviewer/Abgeschlossen ergänzt
+  // Status „zu“: Die Vorgabewerte (Gelöst, Geschlossen, Abgeschlossen, Reviewer …) sind immer enthalten – egal, was ein
+  // älterer Stand oder die Team-Datei mitbringt. Eigene Werte aus der Verwaltung kommen dazu.
+  { const eigene = ruleList(state.rules.closedStatus), std = DEFAULT_STATE.rules.closedStatus.split(/;\s*/);
+    const fehlt = std.filter(x => !eigene.includes(x.toLowerCase()));
+    if (fehlt.length) { state.rules.closedStatus = [...(state.rules.closedStatus ? [String(state.rules.closedStatus).trim().replace(/;\s*$/, "")] : []), ...fehlt].filter(Boolean).join("; "); _rowsCache = null; } }
   state.rules.regionAsien ??= ""; state.rules.regionUsa ??= "";
   if (!state.filters.sla.v35) { state.filters.sla.intern = true; state.filters.sla.v35 = 1; } // v1.35: interner Kunde ab Werk ausgeschlossen
   if (state.filters.extreakt) delete state.filters.extreakt;
