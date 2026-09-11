@@ -103,7 +103,9 @@ OUTER APPLY (
    Grundlage fuer Tagesstatistik (neu/geschlossen/wieder geoeffnet), die in
    der Vorwoche geschlossenen Top-10-Calls und die Reaktionszeit. Geschlossene
    Calls stehen im Board in keiner Tagesliste und keiner Mail.
-   BITTE PRUEFEN: Spaltennamen von closed_calls (hier wie open_calls angenommen).
+   closed_calls hat keine Spalten zugeordneter_supman, letzte_Weiterleitung,
+   Anzahl_LT_Verschiebungen und nicht_auswerten_fuer_kd_kommunikation (Lauf vom
+   2026-09-11); dafuer stehen hier Leerwerte.
    Gibt es ein Abschlussdatum (z. B. cc.geschlossen_am), bitte als
    "AS Geschlossen" mitgeben; sonst nimmt das Board [Letzte_Änderung].
    Score, letzte Kundeninfo und Tage ohne Info bleiben bei geschlossenen leer.
@@ -117,17 +119,16 @@ SELECT
     UPPER(cc.verantwortlicher_benutzer)                 AS Bearbeiter,
     cc.meldende_firma_kurzz                             AS Kunde,
     cc.titel                                            AS Titel,
-    cc.zugeordneter_supman                              AS SupMan,
+    NULL                                                AS SupMan,               -- gibt es in closed_calls nicht
     cc.status                                           AS Status,
     cc.dauer                                            AS Dauer,
-    cc.letzte_Weiterleitung                             AS Weiterleitung,
+    NULL                                                AS Weiterleitung,        -- gibt es in closed_calls nicht
     cc.letzte_aenderung                                 AS [Letzte_Änderung],
     cc.WAKI_bis                                         AS Wartend_bis,
     cc.loesung_bis                                      AS [Lösung_bis],
-    cc.Anzahl_LT_Verschiebungen                         AS [Terminänderungen],
+    NULL                                                AS [Terminänderungen],   -- gibt es in closed_calls nicht
     cc.primaere_kundenbetreuung                         AS Kundenbetreuung,
-    CASE WHEN cc.nicht_auswerten_fuer_kd_kommunikation = 1 THEN 'Ja' ELSE 'Nein' END
-                                                        AS [nicht werten für Kd.Komm.],
+    'Nein'                                              AS [nicht werten für Kd.Komm.],  -- gibt es in closed_calls nicht
     NULL                                                AS [Letzte Info an Kd.],
     NULL                                                AS [Tage ohne Info an Kd.],
     NULL                                                AS [Letzte externe Reaktion],
