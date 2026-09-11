@@ -84,7 +84,8 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 - Geschlossene Calls stehen in keiner Tagesliste und keiner Mail. Sie zählen in Tagesstatistik, Top-10-Abschlüssen (Vorwoche Mo–So, je Woche eingefroren) und Reaktionszeit (Vollmodus: live aus dem Export, eingefrorene Summen nur für Zeiträume vor dem Export-Fenster; Vorgabewerte gelten weiter)
 - Prüfhaken der Mittwochsmail sind persönlich (je Benutzer) und stehen nicht in der Team-Historie; alte teamweite Haken wurden mit v1.41 einmalig verworfen (`state.v41`)
 - Mittwochsmail: fehlender Lösungstermin wird nur automatisch gelb, wenn die letzte Weiterleitung mehr als 14 Tage zurückliegt (Wartend nie). Prio steht in der Vorbereitung und in der OneNote-Tabelle, nie in der Mail
-- Region (USA/Asien/Europa) kommt aus der Abfrage (Spalte `Region`); nur ohne diese Spalte gelten die Kürzellisten USA/Asien der Verwaltung. Protokoll-Calls > 10 h schließen USA und Asien aus
+- Region (USA/Asien/Europa) kommt aus der Abfrage (Spalte `Kundenbetreuung`/`Region`, Werte wie `MPDV_Europe`, `MPDV_USA`, `MPDV_Asia`, auch `MPAS/MPCN/MPMY/MPFE`); nur ohne diese Spalte gelten die Kürzellisten USA/Asien der Verwaltung. Nicht erkannte Werte zeigt die Verwaltung gelb; `rules.regionAsien`/`rules.regionUsa` ordnen sie zu. Das gesamte Supportmanager-Protokoll (Calls > 10 h und Kundenliste) schließt USA und Asien aus (`protoRelevant`)
+- Status „zu“ ab Werk: Gelöst, Geschlossen, Abgeschlossen, Reviewer, Closed, Resolved, Solved (`rules.closedStatus`, alte Vorgabe wird einmalig angehoben)
 - Der Cache der geladenen Calls fällt bei Platznot im Browser auf die offenen Calls zurück; die geschlossenen kommen mit dem nächsten Lesen der Datei wieder
 - Die Liste „Kritische Calls“ ist eine Sammelliste und löst kein ⚠ „steht auch in …“ in anderen Listen aus
 - Das Export-Skript liest ausschließlich (Prüfung vor dem Start, Transaktion mit Rollback, ReadUncommitted). Es darf nichts kaputt machen

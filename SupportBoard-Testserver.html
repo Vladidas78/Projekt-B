@@ -618,7 +618,8 @@ const DEFAULT_STATE = {
   asiaKunden: "",
   internKunde: "MPDV", // internes Kunden-Kürzel – Ausblenden über den Filter „Sonstiges" je Liste
   rules: { exclBearbeiter: "HX-MP-UPDATE", // Pseudo-Bearbeiter – Ausblenden über den Filter „Sonstiges" je Liste
-           closedStatus: "Gelöst; Geschlossen; Closed; Resolved; Solved" }, // Status, die als „zu“ gelten (v1.41: der Export liefert auch geschlossene Calls)
+           closedStatus: "Gelöst; Geschlossen; Abgeschlossen; Reviewer; Closed; Resolved; Solved", // Status, die als „zu“ gelten (v1.41: der Export liefert auch geschlossene Calls)
+           regionAsien: "", regionUsa: "" }, // zusätzliche Werte der Spalte Kundenbetreuung, die als Asien bzw. USA gelten (Semikolon-getrennt)
   udienste: [ // Unterstützungsdienste: Tagesaufgabe „Mail an eingeplanten Kollegen“ (Verwaltung)
     { k: "IMP", name: "Implementation Services", gruppen: "ImplementationServices; Implementation Services; IMP",
       intro: "Hallo,\n\nhier die Calls sortiert nach letzter Aktion zum Kunden, sollten noch weitere Calls reinkommen, melden wir uns:",
@@ -777,6 +778,8 @@ function normalizeState() {
     state.v41 = 1;
   }
   state.rules.closedStatus ??= DEFAULT_STATE.rules.closedStatus;
+  if (state.rules.closedStatus === "Gelöst; Geschlossen; Closed; Resolved; Solved") state.rules.closedStatus = DEFAULT_STATE.rules.closedStatus; // v1.41: Reviewer/Abgeschlossen ergänzt
+  state.rules.regionAsien ??= ""; state.rules.regionUsa ??= "";
   if (!state.filters.sla.v35) { state.filters.sla.intern = true; state.filters.sla.v35 = 1; } // v1.35: interner Kunde ab Werk ausgeschlossen
   if (state.filters.extreakt) delete state.filters.extreakt;
   if (!state.filters.sla.v37) { state.filters.sla.usa = true; state.filters.sla.asia = true; state.filters.sla.v37 = 1; } // v1.37: USA/Asien ab Werk ausgeschlossen
@@ -941,11 +944,20 @@ const DATECOLS = ["Eröffnet", "Weiterleitung", "Letzte_Änderung", "Wartend_bis
 /* Region des Kunden aus der Abfrage, auf drei Werte gebracht */
 function regionNorm(v) {
   const t = String(v ?? "").trim(); if (!t) return "";
-  const l = t.toLowerCase().replace(/^mpdv[_ -]*/, ""); // Werte der Abfrage: MPDV_Europe, MPDV_USA, MPDV_Asia …
-  if (/usa|amerika|america|north am|nordam|^us$/.test(l)) return "USA";
-  if (/asi|apac|china|japan|singap/.test(l)) return "Asien";
+  const tl = t.toLowerCase();
+  if (ruleList(state?.rules?.regionAsien).includes(tl)) return "Asien"; // eigene Zuordnung aus der Verwaltung gewinnt
+  if (ruleList(state?.rules?.regionUsa).includes(tl)) return "USA";
+  const l = tl.replace(/^mpdv[_ -]*/, ""); // Werte der Abfrage: MPDV_Europe, MPDV_USA, MPDV_Asia …
+  if (/usa|amerika|america|north am|nordam|^us$|^mpus$/.test(l)) return "USA";
+  if (/asi|apac|china|japan|singap|malay|korea|india|far ?east|^mpas$|^mpcn$|^mpmy$|^mpfe$/.test(l)) return "Asien";
   if (/eur|emea|deutschland|germany/.test(l)) return "Europa";
   return t;
+}
+/* Welche Rohwerte liefert die Spalte Kundenbetreuung, und wie werden sie zugeordnet? (für die Verwaltung) */
+function regionRohwerte() {
+  const m = new Map();
+  for (const r of alleZeilen()) { const raw = String(r.RegionRoh ?? r.Region ?? "").trim(); if (!raw) continue; const e = m.get(raw) ?? { raw, zu: regionNorm(raw), n: 0 }; e.n++; m.set(raw, e); }
+  return [...m.values()].sort((a, b) => b.n - a.n);
 }
 const REGIONEN = ["Europa", "USA", "Asien"];
 /* Bereich (PD/SD/2nd/1st) aus der Bearbeitergruppe ableiten – seit v1.11 kommt
@@ -985,7 +997,8 @@ function normalizeRows(raw) {
     r.Score = Number.isFinite(sc) ? sc : null;
     r.TageOhneInfo = (r.TageOhneInfo == null || r.TageOhneInfo === "") ? null : Number(r.TageOhneInfo);
     r.Quelle = quelleOf(r.Gruppe);
-    r.Region = regionNorm(r.Region);
+    r.RegionRoh = String(r.Region ?? "").trim();
+    r.Region = regionNorm(r.RegionRoh);
     return r;
   }).filter(r => r.Call != null || r.Titel);
 }
@@ -4129,9 +4142,9 @@ function protoMeetingDate() { const d = todayStart(); return new Date(d.getTime(
 function isoDateOf(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 function fmtIsoD(iso) { const m = String(iso).split("-"); return m.length === 3 ? `${m[2]}.${m[1]}.${m[0]}` : iso; }
 /* Interne Calls (Kunde MPDV) und der Pseudo-Bearbeiter gehören nicht ins Protokoll. */
-function protoRelevant(r) { return !isInternKunde(r) && !bearbeiterExcluded(r); }
-function protoCallCandidates() { // v1.41: Kunden aus USA und Asien bleiben hier außen vor
-  return allRows().filter(r => protoRelevant(r) && !istUsaAsien(r) && r.Quelle === "2nd" && !String(r.SupMan ?? "").trim() && (Number(r.Dauer) || 0) > 10);
+function protoRelevant(r) { return !isInternKunde(r) && !bearbeiterExcluded(r) && !istUsaAsien(r); } // v1.41: Kunden aus USA und Asien gehören nicht ins Protokoll
+function protoCallCandidates() {
+  return allRows().filter(r => protoRelevant(r) && r.Quelle === "2nd" && !String(r.SupMan ?? "").trim() && (Number(r.Dauer) || 0) > 10);
 }
 function kundeKey(v) { return String(v ?? "").trim().toUpperCase(); }
 function kundenRowsMap() {
@@ -4309,7 +4322,7 @@ function renderProto(view) {
   view.innerHTML = `<div class="card">
       <h2>Supportmanager Protokoll <span class="pill s-ok" style="margin-left:6px">Meeting ${fmtD.format(protoMeetingDate())}</span></h2>
       <p class="sub">Für das Montagsmeeting. Neue Wochenzeilen enthalten nur das Datum – Inhalte werden im Meeting ergänzt und teamweit geteilt.
-      Automatisch aufgenommen: 2nd-Level-Calls ohne Supportmanager mit Dauer über 10 h (ohne Kunden aus USA und Asien) sowie Kunden ab ${min} offenen Calls, bei denen der Supportmanager nicht durchgängig eingetragen ist. Interne Calls (${esc(state.internKunde || "MPDV")}) bleiben außen vor.</p>
+      Automatisch aufgenommen: 2nd-Level-Calls ohne Supportmanager mit Dauer über 10 h sowie Kunden ab ${min} offenen Calls, bei denen der Supportmanager nicht durchgängig eingetragen ist. Interne Calls (${esc(state.internKunde || "MPDV")}) und Kunden aus USA und Asien bleiben außen vor.</p>
       <div class="btnrow"><button class="primary" id="btnProtoCopy">Protokoll kopieren (für OneNote)</button></div>
       <h2 style="margin-top:14px">Kunden ab ${min} offenen Calls <span class="pill ${luecken.length ? "s-warn" : "s-ok"}" style="margin-left:6px">${luecken.length} ohne durchgängigen SupMan</span></h2>
       <p class="sub">Rot markiert: Kunden ohne Supportmanager in allen zugehörigen Calls – mit Vorschlag, falls in einzelnen Calls schon jemand eingetragen ist.
@@ -4545,6 +4558,11 @@ function renderAdmin(view) {
       <table class="grid"><tbody>
         <tr><td style="width:230px">Warnung „Datei unverändert“ ab (Min.)</td><td><input data-cfg="staleWarnMin" value="${esc(state.staleWarnMin)}" type="number" min="5" style="width:90px"></td></tr>
         <tr><td>Status „zu“ (geschlossene Calls)</td><td><input data-cfg="rules.closedStatus" value="${esc(state.rules.closedStatus ?? "")}" placeholder="Gelöst; Geschlossen" style="width:100%"><div class="hint">Calls mit diesen Status liefert der Export als geschlossen mit – sie stehen in keiner Tagesliste, zählen aber in Tagesstatistik, Top-10-Abschlüssen und Reaktionszeit.</div></td></tr>
+        ${regionAktiv() ? `<tr><td>Region: Werte der Abfrage</td><td><div class="hint">Spalte „Kundenbetreuung“ und ihre Zuordnung im aktuellen Datenstand:</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin:4px 0">${regionRohwerte().map(x => `<span class="pill ${REGIONEN.includes(x.zu) ? "s-ok" : "s-warn"}" title="${x.n} Calls">${esc(x.raw)} → ${esc(REGIONEN.includes(x.zu) ? x.zu : "nicht zugeordnet")}</span>`).join("") || "<span class=\"hint\">keine Werte</span>"}</div>
+          <div class="frow" style="margin:4px 0"><span class="flabel" style="width:auto">Zusätzlich Asien</span><input data-cfg="rules.regionAsien" value="${esc(state.rules.regionAsien ?? "")}" placeholder="Werte mit Semikolon, z. B. MPDV_Korea" style="min-width:260px"></div>
+          <div class="frow" style="margin:4px 0"><span class="flabel" style="width:auto">Zusätzlich USA</span><input data-cfg="rules.regionUsa" value="${esc(state.rules.regionUsa ?? "")}" placeholder="Werte mit Semikolon" style="min-width:260px"></div>
+          <div class="hint">Gelb = Wert wird keiner Region zugeordnet; hier eintragen, dann greifen die Filter und der Protokoll-Ausschluss auch dafür.</div></td></tr>` : ""}
         ${KUNDENGRUPPEN.filter(g => g.feld).map(g => g.region && regionAktiv()
           ? `<tr><td>${esc(g.name)}</td><td><div class="hint">Kommen aus der Spalte „Region“ der Abfrage (${esc(g.region)}) – Kürzel sind nicht mehr nötig. Ein- und Ausblenden je Liste über den Filter „Sonstiges“ → Chip „${esc(g.label)}“.</div></td></tr>`
           : `<tr><td>${esc(g.name)} (Kürzel)</td><td><input data-cfg="${g.feld}" value="${esc(state[g.feld] ?? "")}" placeholder="Kürzel mit Semikolon, z. B. ACME; NOVA" style="width:100%"><div class="hint">Ausblenden je Liste über den Filter „Sonstiges“ → Chip „${esc(g.label)}“.${g.region ? " Sobald die Abfrage die Spalte „Region“ liefert, entfällt diese Liste." : ""}</div></td></tr>`).join("")}
@@ -4584,7 +4602,10 @@ function renderAdmin(view) {
   view.querySelector("#btnTeamAdd").addEventListener("click", () => { state.team.push({ k: "", name: "" }); touch("cfg|team"); saveState(); render(); });
   view.querySelectorAll("[data-cfg]").forEach(inp => inp.addEventListener("change", () => {
     const k = inp.dataset.cfg;
-    if (k.startsWith("rules.")) { state.rules[k.slice(6)] = inp.value.trim() || DEFAULT_STATE.rules[k.slice(6)]; touch("cfg|rules"); _rowsCache = null; }
+    if (k.startsWith("rules.")) {
+      const f = k.slice(6); state.rules[f] = inp.value.trim() || (f === "closedStatus" ? DEFAULT_STATE.rules.closedStatus : ""); touch("cfg|rules"); _rowsCache = null;
+      if (f.startsWith("region")) for (const r of sources.ALL.rows) r.Region = regionNorm(r.RegionRoh ?? r.Region);
+    }
     else { state[k] = inp.value.trim(); touch("cfg|" + k); }
     saveState(); render();
   }));
