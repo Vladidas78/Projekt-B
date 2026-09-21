@@ -2772,11 +2772,11 @@ function recordTagesstat() {
   for (const r of rows) { const k = String(r.Bearbeiter ?? "").trim().toUpperCase(); if (k) bearb[k] = (bearb[k] || 0) + 1; }
   const calls = [...new Set(rows.map(r => String(r.Call)))];
   const alt = state.tagesstat[day];
-  const gleich = alt && Array.isArray(alt.topD) && alt.calls?.length === calls.length && alt.neu?.length === neu.size && alt.calls.every((c, i) => c === calls[i]);
+  const gleich = alt && Array.isArray(alt.topDi) && alt.calls?.length === calls.length && alt.neu?.length === neu.size && alt.calls.every((c, i) => c === calls[i]);
   if (gleich) return; // nichts Neues – kein Schreiben in die Team-Datei nötig
-  // Wer stand heute in den Top 10? Grundlage für „diese Woche geschlossen“ auf der Startseite
-  const topD = topRows("dauer").map(r => String(r.Call)), topA = topRows("alt").map(r => String(r.Call));
-  state.tagesstat[day] = { neu: [...neu], calls, bearb, topD, topA, ts: Date.now() };
+  // Wer stand heute in den Top 10? Grundlage für „in der Vorwoche geschlossen“ – Kunden (topD/topA) und MPDV intern (topDi/topAi) getrennt
+  const ids = (kind, scope) => topRows(kind, scope).map(r => String(r.Call));
+  state.tagesstat[day] = { neu: [...neu], calls, bearb, topD: ids("dauer", "kunde"), topA: ids("alt", "kunde"), topDi: ids("dauer", "intern"), topAi: ids("alt", "intern"), ts: Date.now() };
   touch("tagesstat|" + day);
   const keys = Object.keys(state.tagesstat).sort();
   while (keys.length > 45) { const k = keys.shift(); delete state.tagesstat[k]; touch("tagesstat|" + k); }
@@ -2816,8 +2816,10 @@ function tagesstatReihe(n) {
 /* Vorwoche Mo–So als Zeitfenster [von, bis) */
 function vorwoche() { const ws = wocheStart(todayStart()); return { von: new Date(ws.getTime() - 7 * DAY), bis: ws }; }
 /* Top-10-Listen der Startseite */
-function topRows(kind) {
-  const rows = allRows();
+/* Top 10 getrennt nach Kunden und MPDV intern (Montagsmeeting: Kunden, Donnerstagsrunde: intern). Auswahl je Gerät. */
+function topScope(kind) { return uiPref.topScope?.[kind] === "intern" ? "intern" : "kunde"; }
+function topRows(kind, scope = topScope(kind)) {
+  const rows = allRows().filter(r => scope === "intern" ? isInternKunde(r) : !isInternKunde(r));
   return kind === "dauer"
     ? [...rows].sort((a, b) => (Number(b.Dauer) || 0) - (Number(a.Dauer) || 0)).slice(0, 10)
     : rows.filter(r => r["Eröffnet"]).sort((a, b) => a["Eröffnet"] - b["Eröffnet"]).slice(0, 10);
@@ -2826,65 +2828,69 @@ function topRows(kind) {
    Mit geschlossenen Calls im Export zählt das Abschlussdatum; sonst der Tag, an dem der Call aus dem
    Datenstand verschwand (Tag nach dem letzten Schnappschuss, in dem er noch offen war).
    Der Stand wird je Woche eingefroren (teamweit), damit er fürs Protokoll die ganze Woche gleich bleibt. */
-function topGeschlLive(kind) {
-  const feld = kind === "dauer" ? "topD" : "topA";
+function topGeschlLive(kind, scope = topScope(kind)) {
+  const feld = (kind === "dauer" ? "topD" : "topA") + (scope === "intern" ? "i" : "");
   const { von, bis } = vorwoche();
+  // Zählt nur, wer in der Vorwoche selbst (oder im letzten Schnappschuss davor) in der Liste stand –
+  // nicht, wer irgendwann in den letzten Wochen einmal drin war.
+  const tage = Object.keys(state.tagesstat || {}).sort();
+  const vonK = isoDateOf(von), bisK = isoDateOf(bis);
+  const letzterDavor = tage.filter(d => d < vonK).pop();
+  const relevant = tage.filter(d => (d >= vonK && d < bisK) || d === letzterDavor);
   const warTop = new Set(), zuletzt = new Map();
-  for (const d of Object.keys(state.tagesstat || {}).sort()) {
-    const e = state.tagesstat[d];
-    for (const c of e?.[feld] || []) warTop.add(String(c));
-    for (const c of e?.calls || []) zuletzt.set(String(c), d);
-  }
+  for (const d of relevant) for (const c of state.tagesstat[d]?.[feld] || []) warTop.add(String(c));
+  for (const d of tage) for (const c of state.tagesstat[d]?.calls || []) zuletzt.set(String(c), d);
   const out = [];
   if (hatGeschlossene()) {
     for (const r of closedRows()) {
       const c = String(r.Call), g = geschlossenAm(r);
       if (!warTop.has(c) || !g || g < von || g >= bis) continue;
-      out.push({ call: c, kunde: r.Kunde ?? "", titel: r.Titel ?? "", bearbeiter: r.Bearbeiter ?? "", gruppe: gruppeKurz(r.Gruppe), status: r.Status ?? "",
-        wert: kind === "dauer" ? fmtDauer.format(r.Dauer ?? 0) : (r["Eröffnet"] ? fmtD.format(r["Eröffnet"]) : ""), geschlossen: g.getTime() });
+      out.push({ call: c, kunde: r.Kunde ?? "", wert: kind === "dauer" ? fmtDauer.format(r.Dauer ?? 0) : (r["Eröffnet"] ? fmtD.format(r["Eröffnet"]) : ""), geschlossen: g.getTime() });
     }
   } else {
     const offen = new Set(allRows().map(r => String(r.Call)));
-    const vonK = isoDateOf(new Date(von.getTime() - DAY)), bisK = isoDateOf(new Date(bis.getTime() - DAY));
+    const vonK2 = isoDateOf(new Date(von.getTime() - DAY)), bisK2 = isoDateOf(new Date(bis.getTime() - DAY));
     for (const c of warTop) {
       const z = zuletzt.get(c) || "";
-      if (offen.has(c) || z < vonK || z >= bisK) continue; // verschwunden am Tag nach dem letzten Schnappschuss
-      out.push({ call: c, kunde: "", titel: "", bearbeiter: "", gruppe: "", status: "", wert: "", geschlossen: new Date(z).getTime() + DAY });
+      if (offen.has(c) || z < vonK2 || z >= bisK2) continue; // verschwunden am Tag nach dem letzten Schnappschuss
+      out.push({ call: c, kunde: "", wert: "", geschlossen: new Date(z).getTime() + DAY });
     }
   }
   return out.sort((a, b) => a.geschlossen - b.geschlossen);
 }
-function topGeschlWoche(kind) {
+function topGeschlWoche(kind, scope = topScope(kind)) {
   const wk = weekKey(todayStart());
   state.topGeschl ??= {};
-  const live = topGeschlLive(kind);
+  const live = topGeschlLive(kind, scope);
   if (sources.ALL.demo) return live;
   const e = state.topGeschl[wk] ??= {};
+  const key = `${kind}_${scope}`; // ältere Schlüssel („dauer“/„alt“ ohne Trennung) werden nicht mehr gelesen
   let ch = false;
-  if (!Array.isArray(e[kind])) { e[kind] = live; ch = true; }
+  if (!Array.isArray(e[key])) { e[key] = live; ch = true; }
   else { // eingefroren – nur ergänzen, was neu dazukommt (z. B. Abschluss erst nach dem Einfrieren im Export)
-    const seen = new Set(e[kind].map(x => x.call));
-    for (const x of live) if (!seen.has(x.call)) { e[kind].push(x); ch = true; }
+    const seen = new Set(e[key].map(x => x.call));
+    for (const x of live) if (!seen.has(x.call)) { e[key].push(x); ch = true; }
   }
   if (ch) {
     touch("topGeschl|" + wk);
     for (const k of Object.keys(state.topGeschl).sort().slice(0, -3)) { delete state.topGeschl[k]; touch("topGeschl|" + k); }
     saveState();
   }
-  return e[kind];
+  return e[key];
 }
-/* Tabelle „in der Vorwoche geschlossen“ zum Kopieren ins Protokoll */
+function topTitel(kind, scope = topScope(kind)) { return `${kind === "dauer" ? "Top 10 nach Dauer" : "Top 10 am längsten offen"} – ${scope === "intern" ? (state.internKunde || "MPDV") + " intern" : "Kunden"}`; }
+/* Tabelle „in der Vorwoche geschlossen“ zum Kopieren ins Protokoll: Call, Kunde, Eröffnet bzw. Aufwand, geschlossen am */
 function topGeschlTabelleHtml(kind) {
   const rows = topGeschlWoche(kind);
   const { von, bis } = vorwoche();
-  const titel = `${kind === "dauer" ? "Top 10 nach Dauer" : "Top 10 am längsten offen"} – in der Vorwoche geschlossen (${fmtD.format(von)} – ${fmtD.format(new Date(bis.getTime() - DAY))})`;
-  const header = ["Call", "Kunde", "Titel", "Bearbeiter", "Gruppe", kind === "dauer" ? "Dauer (h)" : "Eröffnet", "Geschlossen am"];
+  const titel = `${topTitel(kind)} – in der Vorwoche geschlossen (${fmtD.format(von)} – ${fmtD.format(new Date(bis.getTime() - DAY))})`;
+  const header = ["Call", "Kunde", kind === "dauer" ? "Aufwand (h)" : "Eröffnet am", "Geschlossen am"];
   let html = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><b>${esc(titel)}</b><br><table style="${mailTableStyle()}"><tr>${header.map(v => th(v, MAIL_HDR)).join("")}</tr>`;
   const plain = [titel, header.join("\t")];
   rows.forEach((x, i) => {
     const zeb = i % 2 ? "background-color:#f2f2f2;" : "";
-    const vals = [x.call, x.kunde, x.titel, x.bearbeiter, x.gruppe, x.wert, fmtD.format(new Date(x.geschlossen))];
-    html += "<tr>" + vals.map((v, j) => td(v, zeb + (j === 5 && kind === "dauer" ? "text-align:right;" : ""), j !== 2)).join("") + "</tr>";
+    const vals = [x.call, x.kunde, x.wert, fmtD.format(new Date(x.geschlossen))];
+    html += "<tr>" + vals.map((v, j) => td(v, zeb + (j === 2 && kind === "dauer" ? "text-align:right;" : ""), true)).join("") + "</tr>";
     plain.push(vals.join("\t"));
   });
   if (!rows.length) { html += `<tr><td colspan="${header.length}" style="border:1px solid #999;padding:2px 6px;"><i>Keine.</i></td></tr>`; plain.push("Keine."); }
@@ -2893,7 +2899,7 @@ function topGeschlTabelleHtml(kind) {
 /* Tabelle einer Top-10-Liste zum Einfügen ins Supportmanager-Protokoll (OneNote/Outlook) – mit den gewählten Spalten */
 function topTabelleHtml(kind) {
   const rows = topRows(kind);
-  const titel = kind === "dauer" ? "Top 10 nach Dauer" : "Top 10 am längsten offen";
+  const titel = topTitel(kind);
   const kopf = kind === "dauer" ? "Dauer (h)" : "Offen seit";
   const cols = wfCols("top_" + kind);
   const header = ["#", kopf, ...cols.map(k => COLS[k].label)];
@@ -3283,6 +3289,7 @@ function renderHeute(view) {
   view.querySelectorAll("[data-copytopgeschl]").forEach(b => b.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); const t = topGeschlTabelleHtml(b.dataset.copytopgeschl); copyHtml(t.html, t.plain, b); }));
   view.querySelectorAll("[data-colsbtn]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); openColsChooser(b, b.dataset.colsbtn); }));
   view.querySelectorAll("details[data-topgeschl]").forEach(d => d.addEventListener("toggle", () => { (uiPref.topGeschlOffen ??= {})[d.dataset.topgeschl] = d.open; saveUiPref(); }));
+  view.querySelectorAll("[data-topscope]").forEach(b => b.addEventListener("click", () => { const [kind, scope] = b.dataset.topscope.split("|"); (uiPref.topScope ??= {})[kind] = scope; saveUiPref(); render(); }));
   const bd = view.querySelector("#btnDemo"); if (bd) bd.addEventListener("click", loadDemo);
 }
 
@@ -3366,19 +3373,23 @@ function trendKarten(rows) {
   // Top-Listen: Spalten wählbar (Team-weit), Kennwert immer vorn; darunter die in der Vorwoche (Mo–So) geschlossenen
   const topZeile = (kind, r, wert) => `<tr><td class="ta-r tnum">${wert}</td>${wfCols("top_" + kind).map(k => COLS[k].cell(r)).join("")}</tr>`;
   const topTab = (kind, titel, sub, kopf, zeilen) => {
+    const scope = topScope(kind);
     const geschl = topGeschlWoche(kind);
     const vwText = `${fmtD.format(vw.von).slice(0, 6)} – ${fmtD.format(new Date(vw.bis.getTime() - DAY)).slice(0, 6)}`;
-    const pill = `<span class="pill ${geschl.length ? "s-ok" : ""}" title="Calls, die in dieser Liste standen und in der Vorwoche (Mo ${vwText} So) geschlossen wurden – der Stand bleibt die ganze Woche gleich, damit er fürs Protokoll passt">${geschl.length} in der Vorwoche geschlossen</span>`;
+    const pill = `<span class="pill ${geschl.length ? "s-ok" : ""}" title="Calls, die in der Vorwoche in dieser Liste standen und in der Vorwoche (Mo ${vwText} So) geschlossen wurden – der Stand bleibt die ganze Woche gleich, damit er fürs Protokoll passt">${geschl.length} in der Vorwoche geschlossen</span>`;
     const offen = uiPref.topGeschlOffen?.[kind];
+    const intern = esc(state.internKunde || "MPDV");
     return `<div class="card"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">${titel} ${pill}
       <span style="margin-left:auto;display:flex;gap:6px"><button class="small" data-colsbtn="top_${kind}" title="Spalten dieser Liste wählen – gilt für Anzeige und kopierte Tabelle, teamweit">Spalten …</button>
-      <button class="small" data-copytop="${kind}" title="Als Tabelle kopieren – zum Einfügen ins Supportmanager-Protokoll (OneNote) oder in eine Mail">Tabelle kopieren</button></span></h2><p class="sub">${sub}</p>
+      <button class="small" data-copytop="${kind}" title="Als Tabelle kopieren – zum Einfügen ins Supportmanager-Protokoll (OneNote) oder in eine Mail">Tabelle kopieren</button></span></h2>
+    <div class="seg" style="margin:6px 0 8px"><button class="segbtn small${scope === "kunde" ? " seg-on" : ""}" data-topscope="${kind}|kunde" title="Nur Kundencalls – für das Montagsmeeting">Kunden</button><button class="segbtn small${scope === "intern" ? " seg-on" : ""}" data-topscope="${kind}|intern" title="Nur interne Calls (Kunde ${intern}) – für die Donnerstagsrunde">${intern} intern</button></div>
+    <p class="sub">${sub} ${scope === "intern" ? `Nur interne Calls (Kunde ${intern}).` : `Ohne interne Calls (Kunde ${intern}).`} Die Auswahl gilt auch für die kopierte Tabelle und die Geschlossen-Liste.</p>
     <div class="tscroll"><table class="list"><thead><tr><th class="ta-r">${kopf}</th>${wfCols("top_" + kind).map(k => `<th${COLS[k].align === "r" ? ' class="ta-r"' : ""}>${esc(COLS[k].label)}</th>`).join("")}</tr></thead><tbody>${zeilen}</tbody></table></div>
     <details class="fpanel" data-topgeschl="${kind}" style="margin-top:8px"${offen ? " open" : ""}><summary>In der Vorwoche geschlossen (Mo ${vwText} So) <span class="fcount">${geschl.length}</span>
       <button class="small" data-copytopgeschl="${kind}" style="margin-left:8px" title="Als Tabelle fürs Protokoll kopieren">Tabelle kopieren</button></summary>
-      ${geschl.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Call</th><th>Kunde</th><th>Titel</th><th>Bearbeiter</th><th>Gruppe</th><th${kind === "dauer" ? ' class="ta-r"' : ""}>${kind === "dauer" ? "Dauer (h)" : "Eröffnet"}</th><th>Geschlossen</th></tr></thead><tbody>
-      ${geschl.map(x => `<tr><td class="tnum nowrap">${esc(x.call)}</td><td class="nowrap">${esc(x.kunde || "–")}</td><td class="titlecell">${esc(x.titel || "–")}</td><td class="nowrap">${esc(x.bearbeiter || "–")}</td><td class="nowrap">${esc(x.gruppe || "–")}</td><td class="tnum nowrap${kind === "dauer" ? " ta-r" : ""}">${esc(x.wert || "–")}</td><td class="tnum nowrap">${fmtD.format(new Date(x.geschlossen))}</td></tr>`).join("")}
-      </tbody></table></div>` : `<p class="hint" style="margin:6px 0 0">Keine – ${voll ? "kein Call dieser Liste wurde in der Vorwoche abgeschlossen." : "gezählt wird ab dem zweiten Tag mit Datenständen; mit geschlossenen Calls im Export kommt das Abschlussdatum direkt aus den Daten."}</p>`}
+      ${geschl.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Call</th><th>Kunde</th><th${kind === "dauer" ? ' class="ta-r"' : ""}>${kind === "dauer" ? "Aufwand (h)" : "Eröffnet am"}</th><th>Geschlossen am</th></tr></thead><tbody>
+      ${geschl.map(x => `<tr><td class="tnum nowrap">${esc(x.call)}</td><td class="nowrap">${esc(x.kunde || "–")}</td><td class="tnum nowrap${kind === "dauer" ? " ta-r" : ""}">${esc(x.wert || "–")}</td><td class="tnum nowrap">${fmtD.format(new Date(x.geschlossen))}</td></tr>`).join("")}
+      </tbody></table></div>` : `<p class="hint" style="margin:6px 0 0">Keine – ${voll ? "kein Call, der in der Vorwoche in dieser Liste stand, wurde in der Vorwoche abgeschlossen." : "gezählt wird ab dem zweiten Tag mit Datenständen; mit geschlossenen Calls im Export kommt das Abschlussdatum direkt aus den Daten."}</p>`}
     </details></div>`;
   };
   const topDauer = topRows("dauer"), topAlt = topRows("alt");
