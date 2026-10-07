@@ -1,6 +1,6 @@
 # Supportmanagement-Board – Handbuch
 
-Für alle, die im Dispatch und Supportmanagement mit dem Board arbeiten. Ziel: Auch ohne VKU ist jeder handlungsfähig – im Alltag und wenn etwas klemmt.
+Für alle, die im Dispatch und Supportmanagement mit dem Board arbeiten. Ziel: Auch ohne den Tool-Verantwortlichen ist jeder handlungsfähig – im Alltag und wenn etwas klemmt.
 
 Reihenfolge zum Lesen: Kapitel 1 bis 4 einmal komplett, der Rest bei Bedarf. Kapitel 9 ist die Störungshilfe.
 
@@ -16,7 +16,7 @@ Reihenfolge zum Lesen: Kapitel 1 bis 4 einmal komplett, der Rest bei Bedarf. Kap
 | Log des Exports | im selben Ordner wie die CSV: `SupportBoard-Export.log` |
 | Export-Server | `………………` , Skriptordner `………………` |
 | Aufgabe auf dem Server | „Supportboard Datenexport (Server)“, läuft alle 10 Minuten |
-| Zuständig | VKU · Vertretung: `………………` · IT-Ansprechpartner: `………………` |
+| Zuständig | `………………` · Vertretung: `………………` · IT-Ansprechpartner: `………………` |
 
 ---
 
@@ -189,7 +189,7 @@ Der Blick unten links in die Seitenleiste beantwortet das fast immer.
 | Dashboard rot, Datei nicht erreichbar | Freigabe weg oder Berechtigung erloschen | Verwaltung → „Dashboard überwachen …“ neu setzen; sonst IT |
 | Team-Speicher rot | Team-Datei nicht erreichbar oder nur lesbar | Verwaltung → „Team-Speicher …“ neu verbinden |
 | gelber Punkt „Beispieldaten“ | Es sind Demo-Daten geladen, keine echten | Verwaltung → „Dashboard überwachen …“ mit der echten CSV |
-| Banner oben rot | Team-Sync gestört | Nichts erzwingen. Meldung lesen, im Zweifel VKU oder Vertretung |
+| Banner oben rot | Team-Sync gestört | Nichts erzwingen. Meldung lesen, im Zweifel Tool-Verantwortlicher oder Vertretung |
 
 ### Häufige Fälle
 
@@ -209,7 +209,7 @@ Erste Anlaufstelle ist das **Log neben der CSV**: `SupportBoard-Export.log`. Es 
 |---|---|
 | `Fertig (Server): … Zeilen` | Alles gut, das ist der Normalfall. |
 | `Uebersprungen: Datei ist erst … Minuten alt` | Kein Fehler. Ein anderer Lauf war schneller. |
-| `Sicherheitsstopp: …` | Jemand hat die Abfrage verändert. Es wurde nichts ausgeführt. VKU oder IT. |
+| `Sicherheitsstopp: …` | Jemand hat die Abfrage verändert. Es wurde nichts ausgeführt. Tool-Verantwortlicher oder IT. |
 | `Login failed for user …` | Datenbank-Anmeldung abgelehnt, meist abgelaufenes Passwort. IT. |
 | `Die Abfrage lieferte 0 Zeilen` | Schutzmechanismus, die alte CSV bleibt stehen. Wenn wiederholt: IT. |
 | `Zielordner nicht erreichbar` | Der Server kommt nicht an den Ordner. IT. |
@@ -241,7 +241,7 @@ Fehler landen zusätzlich im Ereignisprotokoll des Servers unter Anwendung, Quel
 
 **Bitte vorher abstimmen:** Schwellenwerte der Listen, Filtergruppen, Kundengruppen und der interne Kunde. Das verändert, was das ganze Team zu sehen bekommt.
 
-**Nur VKU oder die IT:** die SQL-Abfrage, das Export-Skript und seine Einstellungen, die geplante Aufgabe auf dem Server, die Ordner und Freigaben. Der Knopf „Notfall: Team-Datei neu schreiben“ ist ebenfalls tabu, solange keine Rücksprache erfolgt ist – er überschreibt den Teamstand mit dem eigenen.
+**Nur der Tool-Verantwortliche oder die IT:** die SQL-Abfrage, das Export-Skript und seine Einstellungen, die geplante Aufgabe auf dem Server, die Ordner und Freigaben. Der Knopf „Notfall: Team-Datei neu schreiben“ ist ebenfalls tabu, solange keine Rücksprache erfolgt ist – er überschreibt den Teamstand mit dem eigenen.
 
 **Nie nötig:** Die HTML-Datei bearbeiten. Alles Einstellbare steht in der Verwaltung.
 

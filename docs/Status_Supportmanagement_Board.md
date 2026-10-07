@@ -38,7 +38,7 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 | v1.13 | Globale Suche, Mehrfach-Kennzeichnung, callübergreifende ACK-Kommentare |
 | v1.14 | Team-Sync gehärtet: nie schreiben ohne erfolgreiches Lesen, Sync-Banner, Notfall-Override |
 | v1.15–v1.17 | Verbinden-Dialog entschärft, Protokoll ohne MPDV, Kundenschwelle einstellbar |
-| v1.18–v1.20 | Interne Textbausteine neutralisiert, einheitliche Tabellen-Ausrichtung, Reiter „Auslastung“ (nur VKU) |
+| v1.18–v1.20 | Interne Textbausteine neutralisiert, einheitliche Tabellen-Ausrichtung, Reiter „Auslastung“ (nur freigegebene Kürzel) |
 | v1.21 | ACK ohne „bis“-Datum bleibt dauerhaft bestehen |
 | v1.22 | Button „Jetzt synchronisieren“; Export-Skript mit Schalter `-Jetzt` |
 | v1.23 | Mittwochsmail-Vorbereitung: Markier-Punkte in der Zelle (kein Modus, kein Scrollsprung), ACK-Spalte, Fokus-Filter; Wochenendtermine rot umrahmt |
@@ -83,15 +83,16 @@ Seit v1.27 entstehen aus einem Quellcode zwei Ausgaben: `SupportBoard.html` (Pro
 - Reaktionszeit-Grundgesamtheit (v1.41): Die Reaktionsabfrage legt fest, welche Calls bewertet werden (Kunden, Kategorien, SLA-Vertrag). Leere Spalte „Externe Reaktion“ = nicht bewertet, 0 = noch keine Reaktion (`slaBewertet()`). Die Abfrage darf deshalb weder auf `erste_ext_aktion_kalender > 0` noch auf `e_bestaetigung_kalender > 0` noch auf eine Region filtern; Region filtert das Board. Werte `MPDV_Europe/USA/Asia` werden zu Europa/USA/Asien
 - Top 10 (Dauer, älteste) getrennt nach Kunden und MPDV intern (Umschalter je Karte, Vorliebe je Gerät `uiPref.topScope`; Kunden fürs Montagsmeeting, intern für die Donnerstagsrunde). Schnappschuss speichert `topD/topA` (Kunden) und `topDi/topAi` (intern). „In der Vorwoche geschlossen“ zählt nur Calls, die in der Vorwoche selbst (oder im letzten Schnappschuss davor) in der Liste standen; Felder nur Call, Kunde, Eröffnet bzw. Aufwand, geschlossen am; eingefroren unter `state.topGeschl[KW][kind_scope]`
 - Reaktionsfrist-Hinweis (v1.41): offene Calls ohne erste Reaktion werden ab `rules.slaWarn` Minuten Geschäftszeit gemeldet (Vorgabe Rot 60 = nach der 30-Min-Frist, Blau 210, Grün 2850): Zähler am Reiter „Reaktionszeit“, Zahl im Fenstertitel, Hinweiszeile, optional Desktop-Benachrichtigung (`uiPref.slaNotify`, je Gerät, Browser-Erlaubnis). Je Call eine Meldung pro Sitzung (`slaGemeldet`), Prüfung bei jedem Datenstand und jede Minute. Verzögerung bis zu Export-Takt + Prüfintervall
+- Datenschutz (2026-10-07): keine realen Namen, Kürzel, Kundenkürzel, Call-Nummern, Rechnernamen oder Pfade in Code, Doku und Chat; nur Spalten-/SQL-Namen, „MPDV“, „MPDV intern“, USA/Asien/Europa. Dummywerte: Team `SM1/SM2/DP1/DP2`, Bearbeiter `PD1…`, Kunden `ALPHA…`, Calls ab 900000/800000. Reiter „Auslastung“ über `rules.auslastungFuer` (Vorgabe `SM1`), Vorgabewerte ohne SupMan-Kürzel, Intranet-Links in Standardtexten als Platzhalter
 - Geschlossene Calls stehen in keiner Tagesliste und keiner Mail. Sie zählen in Tagesstatistik, Top-10-Abschlüssen (Vorwoche Mo–So, je Woche eingefroren) und Reaktionszeit (Vollmodus: live aus dem Export, eingefrorene Summen nur für Zeiträume vor dem Export-Fenster; Vorgabewerte gelten weiter)
 - Prüfhaken der Mittwochsmail sind persönlich (je Benutzer) und stehen nicht in der Team-Historie; alte teamweite Haken wurden mit v1.41 einmalig verworfen (`state.v41`)
 - Mittwochsmail: fehlender Lösungstermin wird nur automatisch gelb, wenn die letzte Weiterleitung mehr als 14 Tage zurückliegt (Wartend nie). Prio steht in der Vorbereitung und in der OneNote-Tabelle, nie in der Mail
-- Region (USA/Asien/Europa) kommt aus der Abfrage (Spalte `Kundenbetreuung`/`Region`, Werte wie `MPDV_Europe`, `MPDV_USA`, `MPDV_Asia`, auch `MPAS/MPCN/MPMY/MPFE`); nur ohne diese Spalte gelten die Kürzellisten USA/Asien der Verwaltung. Nicht erkannte Werte zeigt die Verwaltung gelb; `rules.regionAsien`/`rules.regionUsa` ordnen sie zu. Das gesamte Supportmanager-Protokoll (Calls > 10 h und Kundenliste) schließt USA und Asien aus (`protoRelevant`)
+- Region (USA/Asien/Europa) kommt aus der Abfrage (Spalte `Kundenbetreuung`/`Region`, Werte wie `MPDV_Europe`, `MPDV_USA`, `MPDV_Asia`, weitere interne Firmenkürzel über die Verwaltung zuordnen); nur ohne diese Spalte gelten die Kürzellisten USA/Asien der Verwaltung. Nicht erkannte Werte zeigt die Verwaltung gelb; `rules.regionAsien`/`rules.regionUsa` ordnen sie zu. Das gesamte Supportmanager-Protokoll (Calls > 10 h und Kundenliste) schließt USA und Asien aus (`protoRelevant`)
 - Status „zu“ ab Werk: Gelöst, Geschlossen, Abgeschlossen, Reviewer, Closed, Resolved, Solved (`rules.closedStatus`, alte Vorgabe wird einmalig angehoben)
 - Der Cache der geladenen Calls fällt bei Platznot im Browser auf die offenen Calls zurück; die geschlossenen kommen mit dem nächsten Lesen der Datei wieder
 - Die Liste „Kritische Calls“ ist eine Sammelliste und löst kein ⚠ „steht auch in …“ in anderen Listen aus
 - Das Export-Skript liest ausschließlich (Prüfung vor dem Start, Transaktion mit Rollback, ReadUncommitted). Es darf nichts kaputt machen
-- Lieferregel (VKU, 2026-09-11): Das Server-Skript wird immer unter genau dem Dateinamen geliefert, unter dem es auf dem Server liegt: `SupportBoard-Export-Server.ps1` (Ordner `E:\SupMan`). Kein Umbenennen, keine Versionszusätze im Dateinamen. Gleiches gilt für `SupportBoard-Abfrage.sql`, `SupportBoard-Abfrage-Reaktion.sql` und die drei HTML-Dateien
+- Lieferregel (2026-09-11): Das Server-Skript wird immer unter genau dem Dateinamen geliefert, unter dem es auf dem Server liegt: `SupportBoard-Export-Server.ps1` (Skriptordner auf dem Server). Kein Umbenennen, keine Versionszusätze im Dateinamen. Gleiches gilt für `SupportBoard-Abfrage.sql`, `SupportBoard-Abfrage-Reaktion.sql` und die drei HTML-Dateien
 
 ## Bedienungsroutine (Quell-Dateien)
 
@@ -99,7 +100,7 @@ Die Dashboards sind Omnitracker-Abfragetabellen mit „Daten vor dem Speichern e
 
 ## Offene Punkte
 
-0. Export läuft auf dem OT-Testserver. Offen: neue SQL von VKU (geschlossene Calls, Region) mit den erwarteten Spaltennamen abgleichen (`Region`, optional `Geschlossen`; Status-„zu“-Werte in der Verwaltung prüfen), `SupportBoard-Abfrage-Reaktion.sql` auf dem Server ablegen, `-Preview` und `-Status` prüfen; Kollegen auf die Testserver-Version umstellen; Handbuch (docx/pdf) auf v1.41 nachziehen. Auslastung Dispatcher folgt, sobald die Abfrage Daten dafür liefert.
+0. Export läuft auf dem Testserver. Offen: neue SQL des Tool-Verantwortlichen (geschlossene Calls, Region) mit den erwarteten Spaltennamen abgleichen (`Region`, optional `Geschlossen`; Status-„zu“-Werte in der Verwaltung prüfen), `SupportBoard-Abfrage-Reaktion.sql` auf dem Server ablegen, `-Preview` und `-Status` prüfen; Kollegen auf die Testserver-Version umstellen; Handbuch (docx/pdf) auf v1.41 nachziehen. Auslastung Dispatcher folgt, sobald die Abfrage Daten dafür liefert.
 1. OneNote-Link im PD-Fußtext ersetzen (Platzhalter-URL `https://LINK-ZUM-ONENOTE-HIER-EINFUEGEN`)
 2. Team-Rollout: gemeinsame JSON auf dem Share einrichten, Kollegen verknüpfen
 3. Optional: Gelb-Schwelle Terminänderungen in der Freitagsmail evtl. ≥5 statt >6 (unbestätigt)

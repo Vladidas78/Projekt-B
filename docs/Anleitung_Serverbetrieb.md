@@ -1,6 +1,6 @@
 # Datenexport auf dem Server betreiben
 
-Ziel: Das Export-Skript läuft nicht mehr auf dem Notebook von VKU, sondern rund um die Uhr auf einem Server (z. B. dem OT-Testserver). Für das Board und die Kollegen ändert sich nichts.
+Ziel: Das Export-Skript läuft nicht mehr auf einem Arbeitsplatz-Notebook, sondern rund um die Uhr auf einem Server (z. B. dem OT-Testserver). Für das Board und die Kollegen ändert sich nichts.
 
 Dafür gibt es eine eigene Server-Fassung des Skripts: `tools/SupportBoard-Export-Server.ps1`. Sie nutzt dieselbe Abfrage (`SupportBoard-Abfrage.sql`) und schreibt dieselbe CSV wie die Arbeitsplatz-Fassung, bringt aber die Einrichtung der Aufgabenplanung, das Dienstkonto und die Prüfung gleich mit.
 

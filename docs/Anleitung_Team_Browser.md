@@ -33,7 +33,7 @@ Dauerhaft weg ist der Klick nur, wenn die IT das Board unter einer festen intern
 ## 4. Warnungen ernst nehmen
 
 - **Rotes Banner „Team-Speicher NICHT verbunden“**: Eure Änderungen bleiben nur lokal. → **„Jetzt verbinden“** klicken und die Freigabe bestätigen. Das Banner zählt mit, wie viele Änderungen warten; nach dem Verbinden werden sie sauber mit dem Team-Stand zusammengeführt – es geht nichts verloren und nichts wird überschrieben.
-- **„Team-Abgleich gestört“**: Das Board pausiert absichtlich und überschreibt nichts. Einfach stehen lassen, es versucht es alle 15 Sekunden erneut. Bleibt es lange rot: an VKU melden.
+- **„Team-Abgleich gestört“**: Das Board pausiert absichtlich und überschreibt nichts. Einfach stehen lassen, es versucht es alle 15 Sekunden erneut. Bleibt es lange rot: an den Tool-Verantwortlichen melden.
 
 ## 5. Wenn etwas fehlt: Notfall-Sicherung
 

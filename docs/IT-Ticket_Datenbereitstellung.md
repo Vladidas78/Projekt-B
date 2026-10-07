@@ -1,6 +1,6 @@
 # IT-Ticket: Automatische Bereitstellung der Call-Daten für das Supportmanagement-Board
 
-**Ersteller:** Vladimir Kulakow (Supportmanagement)
+**Ersteller:** `<Name>` (Supportmanagement)
 **Art:** Optimierung eines bestehenden, laufenden Arbeitsablaufs
 **Priorität:** normal
 

@@ -23,7 +23,7 @@ Die Datei `SupportBoard-SQLTest.html` ist dasselbe Board wie die Produktivversio
 - **Eigene Team-Datei mit Kennung.** Die Testversion schlägt `SupportBoard-Team-SQLTest.json` vor und schreibt eine Kanal-Kennung hinein. Eine Team-Datei der Produktivversion nimmt sie nicht an: Wird versehentlich `SupportBoard-Team.json` gewählt, meldet sie das, merkt sich die Datei nicht und schreibt nichts. Umgekehrt lehnt die Produktivversion (ab v1.27) die Test-Team-Datei ab.
 - **Auf den Export abgestimmt.** Prüfintervall der Dashboard-Datei standardmäßig alle 5 Minuten; bleibt die CSV länger als die eingestellte Schwelle unverändert, lautet der Hinweis „läuft der Export?“ statt der Excel-Frage.
 
-## Schritt für Schritt (lokal, nur VKU)
+## Schritt für Schritt (lokal, nur Tool-Verantwortlicher)
 
 **1. Ordner anlegen und Dateien ablegen**
 `C:\Tools\SupportBoard\` mit Skript und Abfrage; Testordner auf dem Share mit `SupportBoard-SQLTest.html`.
@@ -67,7 +67,7 @@ Danach liegt `SupportBoard-Daten.csv` im Testordner. Kurz im Editor öffnen: Kop
 **7. Test-Board einrichten**
 `SupportBoard-SQLTest.html` aus dem Testordner per Doppelklick öffnen – im **selben Browser** wie die Produktivversion, dann ist der Stand sofort übernommen (Hinweis unten erscheint kurz).
 - Verwaltung → **„Dashboard überwachen …“** → `SupportBoard-Daten.csv` im Testordner wählen.
-- Verwaltung → **„Team-Speicher …“** → **„Neue Team-Datei erstellen“** → `SupportBoard-Team-SQLTest.json` im Testordner speichern. Das macht nur VKU einmal; Kollegen wählen später „Vorhandene Team-Datei auswählen“.
+- Verwaltung → **„Team-Speicher …“** → **„Neue Team-Datei erstellen“** → `SupportBoard-Team-SQLTest.json` im Testordner speichern. Das macht nur der Tool-Verantwortliche einmal; Kollegen wählen später „Vorhandene Team-Datei auswählen“.
 - Unten links beide Punkte grün, oben das gelbe Test-Feld: fertig.
 
 **8. Vergleichen – die Checkliste**

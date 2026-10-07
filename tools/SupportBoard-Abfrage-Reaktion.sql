@@ -25,7 +25,7 @@ SELECT
 FROM call_statistics AS cs
 JOIN open_calls AS o ON o.callnr = cs.callnr
 WHERE cs.erstellt >= DATEADD(YEAR, -2, GETDATE())
-  AND cs.meldende_firma_kurzz NOT IN ('MPDV', 'MPAS', 'MPCN', 'MPUS', 'MPMY', 'MPFE')
+  AND cs.meldende_firma_kurzz NOT IN ('MPDV' /* weitere interne Firmenkuerzel wie in der Fassung auf dem Server ergaenzen */)
   AND (kategorie1 NOT IN ('sonstiges', 'HARDWARE', 'Betriebssystem', 'Datenbank') OR kategorie1 IS NULL)
   AND (kategorie2 NOT IN ('Servercheck', 'sonstiges', 'Datenbank') OR kategorie2 IS NULL)
   AND o.SLA_vertrag_titel != ''
@@ -38,7 +38,7 @@ SELECT
 FROM call_statistics AS cs
 JOIN closed_calls AS cc ON cc.callnr = cs.callnr
 WHERE cs.erstellt >= DATEADD(YEAR, -2, GETDATE())
-  AND cs.meldende_firma_kurzz NOT IN ('MPDV', 'MPAS', 'MPCN', 'MPUS', 'MPMY', 'MPFE')
+  AND cs.meldende_firma_kurzz NOT IN ('MPDV' /* weitere interne Firmenkuerzel wie in der Fassung auf dem Server ergaenzen */)
   AND (kategorie1 NOT IN ('sonstiges', 'HARDWARE', 'Betriebssystem', 'Datenbank') OR kategorie1 IS NULL)
   AND (kategorie2 NOT IN ('Servercheck', 'sonstiges', 'Datenbank') OR kategorie2 IS NULL)
   AND cc.SLA_vertrag_titel != ''

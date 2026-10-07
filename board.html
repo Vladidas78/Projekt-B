@@ -574,14 +574,10 @@ const DEFAULT_STATE = {
   },
   user: "",      // Kürzel des angemeldeten Nutzers
   team: [        // Anmelde-Kürzel (in der Verwaltung erweiterbar)
-    { k: "MLH", name: "Marlon Hennrich" },
-    { k: "APA", name: "Arthur Palmer" },
-    { k: "RRE", name: "Rebecca Rechner" },
-    { k: "VKU", name: "Vladimir Kulakow" },
-    { k: "JOS", name: "Johannes Schäfer" },
-    { k: "AAO", name: "Antonio Alo" },
-    { k: "DBU", name: "Dominic Burger-Graseck" },
-    { k: "MRE", name: "Markus Reißfelder" }
+    { k: "SM1", name: "Supportmanager 1" },
+    { k: "SM2", name: "Supportmanager 2" },
+    { k: "DP1", name: "Dispatcher 1" },
+    { k: "DP2", name: "Dispatcher 2" }
   ],
   saasKunden: "",      // Kundengruppen (Kürzel, Semikolon-getrennt) – Ausblenden über den Filter „Sonstiges“ je Liste
   usaKunden: "",
@@ -590,17 +586,18 @@ const DEFAULT_STATE = {
   rules: { exclBearbeiter: "HX-MP-UPDATE", // Pseudo-Bearbeiter – Ausblenden über den Filter „Sonstiges" je Liste
            closedStatus: "Gelöst; Geschlossen; Abgeschlossen; Reviewer; Closed; Resolved; Solved", // Status, die als „zu“ gelten (v1.41: der Export liefert auch geschlossene Calls)
            regionAsien: "", regionUsa: "", // zusätzliche Werte der Spalte Kundenbetreuung, die als Asien bzw. USA gelten (Semikolon-getrennt)
+           auslastungFuer: "SM1", // Kürzel (Semikolon-getrennt), die den Reiter „Auslastung“ sehen
            slaWarn: { rot: 60, blau: 210, "grün": 2850 } }, // Reaktionsfrist: Hinweis ab so vielen Minuten Geschäftszeit ohne erste Reaktion (Rot 1 h, Blau 3,5 h, Grün 47,5 h)
   udienste: [ // Unterstützungsdienste: Tagesaufgabe „Mail an eingeplanten Kollegen“ (Verwaltung)
     { k: "IMP", name: "Implementation Services", gruppen: "ImplementationServices; Implementation Services; IMP",
       intro: "Hallo,\n\nhier die Calls sortiert nach letzter Aktion zum Kunden, sollten noch weitere Calls reinkommen, melden wir uns:",
-      fuss: "Zu Calls, bei denen Unterstützung durch einen PSOD notwendig ist, den jeweiligen PSOD kontaktieren, siehe auch [link=file://mpdv.local/Data/OurPros/ResourcePlanning/CallDispatching_Dienstplan.xlsm]\\\\mpdv.local\\Data\\OurPros\\ResourcePlanning\\CallDispatching_Dienstplan.xlsm[/link]\n\nEine Übersichtsseite zum Thema Supporttag ist im MPDVNet zu finden: [link=http://mpdvnet.mpdv.local/de/Abteilungen/SupportServices/Seiten/Supporttag.aspx]http://mpdvnet.mpdv.local/de/Abteilungen/SupportServices/Seiten/Supporttag.aspx[/link]\n\nAnschließend bei den Calls, die auf WARTEND stehen und das „Wartend Bis“ Datum erreicht ist, prüfen, wie es weitergeht.\n\nNach Abschluss der Tätigkeiten an die Statusmail denken.\n\nViele Grüße" },
+      fuss: "Zu Calls, bei denen Unterstützung durch einen PSOD notwendig ist, den jeweiligen PSOD kontaktieren, siehe auch [link=file://SERVER/Pfad/CallDispatching_Dienstplan.xlsm]Dienstplan Call-Dispatching (Pfad in der Verwaltung eintragen)[/link]\n\nEine Übersichtsseite zum Thema Supporttag ist im Intranet zu finden: [link=https://INTRANET/Supporttag]Übersichtsseite Supporttag (Adresse in der Verwaltung eintragen)[/link]\n\nAnschließend bei den Calls, die auf WARTEND stehen und das „Wartend Bis“ Datum erreicht ist, prüfen, wie es weitergeht.\n\nNach Abschluss der Tätigkeiten an die Statusmail denken.\n\nViele Grüße" },
     { k: "SAP-CC", name: "SAP Competence Center", gruppen: "SAP-CC; SAP_CC; SAPCC",
       intro: "Hallo,\n\nbitte die Calls heute in folgender Reihenfolge bearbeiten (sortiert nach „Letzte Aktion zum Kunden“):",
-      fuss: "Zu Calls, bei denen Unterstützung durch einen PSOD notwendig ist, den jeweiligen PSOD kontaktieren, siehe auch [link=file://mpdv.local/Data/OurPros/ResourcePlanning/CallDispatching_Dienstplan.xlsm]\\\\mpdv.local\\Data\\OurPros\\ResourcePlanning\\CallDispatching_Dienstplan.xlsm[/link]\n\nBitte anschließend bei den Calls, die auf WARTEND stehen und das „Wiedervorlagedatum“ erreicht ist, prüfen, wie es weitergeht.\n\nBitte nach Abschluss der Tätigkeiten an die Statusmail denken.\n\nViele Grüße" },
+      fuss: "Zu Calls, bei denen Unterstützung durch einen PSOD notwendig ist, den jeweiligen PSOD kontaktieren, siehe auch [link=file://SERVER/Pfad/CallDispatching_Dienstplan.xlsm]Dienstplan Call-Dispatching (Pfad in der Verwaltung eintragen)[/link]\n\nBitte anschließend bei den Calls, die auf WARTEND stehen und das „Wiedervorlagedatum“ erreicht ist, prüfen, wie es weitergeht.\n\nBitte nach Abschluss der Tätigkeiten an die Statusmail denken.\n\nViele Grüße" },
     { k: "CONS", name: "Consulting", gruppen: "Consulting; CONS",
       intro: "Hallo,\n\nbitte die Calls heute in folgender Reihenfolge (sortiert nach „Letzte Aktion zum Kunden“) bearbeiten:",
-      fuss: "Bitte auch die Calls im Status „Wartend“ prüfen, ob der Status noch korrekt ist bzw. ob die Calls ggf. geschlossen werden können.\n\nZu Calls, bei denen Unterstützung durch einen PSOD notwendig ist, den jeweiligen PSOD kontaktieren, siehe auch [link=file://mpdv.local/Data/OurPros/ResourcePlanning/CallDispatching_Dienstplan.xlsm]\\\\mpdv.local\\Data\\OurPros\\ResourcePlanning\\CallDispatching_Dienstplan.xlsm[/link]\n\nEine Übersichtsseite zum Thema Supporttag ist im MPDVNet zu finden: [link=http://mpdvnet.mpdv.local/de/Abteilungen/SupportServices/Seiten/Supporttag.aspx]http://mpdvnet.mpdv.local/de/Abteilungen/SupportServices/Seiten/Supporttag.aspx[/link]\n\nBitte anschließend bei den Calls, die auf WARTEND stehen und das „Wartend Bis“ Datum erreicht ist, prüfen, wie es weitergeht.\n\nBitte nach Abschluss der Tätigkeiten an die Statusmail denken.\n\nViele Grüße" }
+      fuss: "Bitte auch die Calls im Status „Wartend“ prüfen, ob der Status noch korrekt ist bzw. ob die Calls ggf. geschlossen werden können.\n\nZu Calls, bei denen Unterstützung durch einen PSOD notwendig ist, den jeweiligen PSOD kontaktieren, siehe auch [link=file://SERVER/Pfad/CallDispatching_Dienstplan.xlsm]Dienstplan Call-Dispatching (Pfad in der Verwaltung eintragen)[/link]\n\nEine Übersichtsseite zum Thema Supporttag ist im Intranet zu finden: [link=https://INTRANET/Supporttag]Übersichtsseite Supporttag (Adresse in der Verwaltung eintragen)[/link]\n\nBitte anschließend bei den Calls, die auf WARTEND stehen und das „Wartend Bis“ Datum erreicht ist, prüfen, wie es weitergeht.\n\nBitte nach Abschluss der Tätigkeiten an die Statusmail denken.\n\nViele Grüße" }
   ],
   reakt: {},     // "YYYY-MM" (Monat der Eröffnung) -> { call: {e, r, p, k, g, b} } – gemerkte erste externe Reaktion je Call (teamweit), Basis der Reaktionszeit-Statistik
   reaktAgg: {},  // "W<Montag>" / "M<YYYY-MM>" -> Summen je Prio (n, sum, ok, brk, unb) – eingefrorene Wochen/Monate; Wochen behalten 8 Wochen lang die Liste der Brüche
@@ -754,6 +751,7 @@ function normalizeState() {
     const fehlt = std.filter(x => !eigene.includes(x.toLowerCase()));
     if (fehlt.length) { state.rules.closedStatus = [...(state.rules.closedStatus ? [String(state.rules.closedStatus).trim().replace(/;\s*$/, "")] : []), ...fehlt].filter(Boolean).join("; "); _rowsCache = null; } }
   state.rules.regionAsien ??= ""; state.rules.regionUsa ??= "";
+  state.rules.auslastungFuer ??= DEFAULT_STATE.rules.auslastungFuer;
   state.rules.slaWarn = { ...DEFAULT_STATE.rules.slaWarn, ...(state.rules.slaWarn && typeof state.rules.slaWarn === "object" ? state.rules.slaWarn : {}) };
   if (!state.filters.sla.v35) { state.filters.sla.intern = true; state.filters.sla.v35 = 1; } // v1.35: interner Kunde ab Werk ausgeschlossen
   if (state.filters.extreakt) delete state.filters.extreakt;
@@ -923,8 +921,8 @@ function regionNorm(v) {
   if (ruleList(state?.rules?.regionAsien).includes(tl)) return "Asien"; // eigene Zuordnung aus der Verwaltung gewinnt
   if (ruleList(state?.rules?.regionUsa).includes(tl)) return "USA";
   const l = tl.replace(/^mpdv[_ -]*/, ""); // Werte der Abfrage: MPDV_Europe, MPDV_USA, MPDV_Asia …
-  if (/usa|amerika|america|north am|nordam|^us$|^mpus$/.test(l)) return "USA";
-  if (/asi|apac|china|japan|singap|malay|korea|india|far ?east|^mpas$|^mpcn$|^mpmy$|^mpfe$/.test(l)) return "Asien";
+  if (/usa|amerika|america|north am|nordam|^us$/.test(l)) return "USA";
+  if (/asi|apac|china|japan|singap|malay|korea|india|far ?east/.test(l)) return "Asien"; // weitere Werte: Verwaltung → „Zusätzlich Asien/USA“
   if (/eur|emea|deutschland|germany/.test(l)) return "Europa";
   return t;
 }
@@ -2572,14 +2570,14 @@ function loadDemo() {
   const rnd = mulberry32(20260825);
   const pick = a => a[Math.floor(rnd() * a.length)];
   const pickW = pairs => { const tot = pairs.reduce((s, p) => s + p[1], 0); let x = rnd() * tot; for (const [v, w] of pairs) { x -= w; if (x <= 0) return v; } return pairs[0][0]; };
-  const kunden = ["ACME", "BHKW", "CONT", "DRAX", "EWG", "FLTX", "GMD", "HANS", "KRON", "LMT", "MEWA", "NOVA", "OPTI", "PWG", "RHEIN", "STIX", "TWB", "VOSS", "WEBA", "ZERO", "MPDV"];
+  const kunden = ["ALPHA", "BRAVO", "CHARLY", "DELTA", "ECHO", "FOXTR", "GOLF", "HOTEL", "INDIA", "JULIA", "KILO", "LIMA", "MIKE", "NOVEM", "OSCAR", "PAPA", "QUEBE", "ROMEO", "SIERA", "TANGO", "MPDV"]; // frei erfunden
   const titles = ["Auftragsrückmeldung wird nicht übernommen", "Performance-Problem im Leitstand", "Etikettendruck: falsche Chargennummer", "Schnittstelle ERP: Aufträge fehlen", "Report Ausschussgründe: Summen fehlerhaft", "Terminal friert bei Mengenbuchung ein", "Filterfeld wird nicht gespeichert", "Kennzahl OEE weicht ab", "Werkzeugverwaltung: Standmenge falsch", "Zeiterfassung: Pausenregel greift nicht", "Leeres Dropdown-Feld für die Handling Unit", "Sehr langsame Abfrage von Materialrelationen"];
   const bearb = {
-    "3rd_PD": ["KRA", "DWI", "NIH", "MCW", "TJE", "ALM", "MST", "MRI", "HCH"],
-    "Productmanagement": ["PMA", "PMB", "PMC"],
-    "3rd_SD": ["TBS", "CJD", "PUH", "TK", "FLE", "WAG"],
-    "2nd_CAQ": ["CQA", "CQB"], "2nd_MF": ["MFA", "MFB"], "2nd_HR": ["HRA", "HRB"],
-    "1st_Level": ["FLA", "FLB", "FLC"], "Hotline": ["HOA", "HOB"]
+    "3rd_PD": ["PD1", "PD2", "PD3", "PD4", "PD5", "PD6", "PD7", "PD8", "PD9"],
+    "Productmanagement": ["PM1", "PM2", "PM3"],
+    "3rd_SD": ["SD1", "SD2", "SD3", "SD4", "SD5", "SD6"],
+    "2nd_CAQ": ["CQ1", "CQ2"], "2nd_MF": ["MF1", "MF2"], "2nd_HR": ["HR1", "HR2"],
+    "1st_Level": ["FL1", "FL2", "FL3"], "Hotline": ["HO1", "HO2"]
   };
   const vor = ["Anna", "Ben", "Clara", "David", "Eva", "Felix", "Greta", "Henrik", "Ida", "Jonas", "Katrin", "Lukas", "Mara", "Nils", "Ole"];
   const nach = ["Albrecht", "Brandt", "Claußen", "Dorn", "Ebert", "Falk", "Grimm", "Hauser", "Ilg", "Jung", "Kaiser", "Lorenz", "Mohr", "Nagel", "Oswald"];
@@ -2623,9 +2621,9 @@ function loadDemo() {
     rows.push({
       ErsteExtReaktion: erste, ExtReaktionTage: kunde === "MPDV" ? null : (erste ? (erste - er) / DAY : 0),
       Region: pickW([["Europa", 70], ["USA", 18], ["Asien", 12]]), Geschlossen: null,
-      Quelle: quelleOf(gruppe), Prio: prio, Call: 156000 + i * 7 + Math.floor(rnd() * 6),
+      Quelle: quelleOf(gruppe), Prio: prio, Call: 900000 + i * 7 + Math.floor(rnd() * 6),
       "Eröffnet": er, Gruppe: gruppe, Bearbeiter: hx ? "HX-MP-UPDATE" : pick(bearb[gruppe]), Kunde: kunde,
-      Titel: pick(titles), SupMan: rnd() < 0.25 ? pick(["MLH", "APA", "RRE", "VKU"]) : "", Status: status, Dauer: dauer,
+      Titel: pick(titles), SupMan: rnd() < 0.25 ? pick(["SM1", "SM2", "SM3", "SM4"]) : "", Status: status, Dauer: dauer,
       Weiterleitung: new Date(er.getTime() + rnd() * (now() - er) * 0.5),
       "Letzte_Änderung": new Date(now() - ch * DAY),
       Wartend_bis: status === "Wartend" && rnd() < 0.7 ? new Date(now().getTime() + (rnd() - 0.4) * 30 * DAY) : null,
@@ -2647,9 +2645,9 @@ function loadDemo() {
     const erste = rnd() < 0.9 ? new Date(Math.min(zu.getTime(), er.getTime() + reaktMin * 60000)) : null;
     rows.push({
       ErsteExtReaktion: erste, ExtReaktionTage: erste ? (erste - er) / DAY : 0, Region: pickW([["Europa", 70], ["USA", 18], ["Asien", 12]]), Geschlossen: zu,
-      Quelle: quelleOf(gruppe), Prio: prio, Call: 140000 + i * 11 + Math.floor(rnd() * 9),
+      Quelle: quelleOf(gruppe), Prio: prio, Call: 800000 + i * 11 + Math.floor(rnd() * 9),
       "Eröffnet": er, Gruppe: gruppe, Bearbeiter: pick(bearb[gruppe]), Kunde: pick(kunden),
-      Titel: pick(titles), SupMan: rnd() < 0.25 ? pick(["MLH", "APA", "RRE", "VKU"]) : "", Status: rnd() < 0.6 ? "Geschlossen" : "Gelöst",
+      Titel: pick(titles), SupMan: rnd() < 0.25 ? pick(["SM1", "SM2", "SM3", "SM4"]) : "", Status: rnd() < 0.6 ? "Geschlossen" : "Gelöst",
       Dauer: Math.round(Math.pow(rnd(), 1.8) * 60 * 100) / 100,
       Weiterleitung: new Date(er.getTime() + rnd() * (zu - er) * 0.3), "Letzte_Änderung": zu,
       Wartend_bis: null, "Lösung_bis": rnd() < 0.5 ? new Date(zu.getTime() + (rnd() - 0.3) * 10 * DAY) : null, "Terminänderungen": pickW([[0, 60], [1, 25], [2, 10], [4, 5]]),
@@ -2673,7 +2671,7 @@ const TABS = [
   ...WF.map(w => ({ id: w.id, label: w.title, wf: true })),
   { id: "udienst", label: "Unterstützungsdienste" },
   { id: "sla", label: "Reaktionszeit" },
-  { id: "last", label: "Auslastung", nurFuer: ["VKU"] },
+  { id: "last", label: "Auslastung", nurRegel: "auslastungFuer" }, // sichtbar nur für Kürzel aus Verwaltung → Grundregeln
   { id: "proto", label: "Supportmanager Protokoll" },
   { id: "mi", label: "Mittwochsmail" },
   { id: "fr", label: "Freitagsmail" },
@@ -2952,10 +2950,8 @@ const NAV_ICONS = {
 function navIcon(id) {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NAV_ICONS[id] || ""}</svg>`;
 }
-function sichtbareTabs() {
-  const k = currentUser().k;
-  return TABS.filter(t => !t.nurFuer || t.nurFuer.includes(k));
-}
+function tabErlaubt(t) { return !t?.nurRegel || ruleList(state.rules?.[t.nurRegel]).includes(String(currentUser().k || "").toLowerCase()); }
+function sichtbareTabs() { return TABS.filter(tabErlaubt); }
 function renderTabs() {
   const nav = document.getElementById("tabs");
   nav.innerHTML = "";
@@ -3797,12 +3793,12 @@ const SLA_VORGABEN = (() => {
     "M2026-06": { fix: fix("00:26:32", "03:06:45", "06:32:37", "04:01:01") },
     "M2026-07": { fix: fix("00:24:25", "02:40:54", "04:20:30", "03:07:24") },
     "M2026-08": { fix: fix("00:18:10", "02:48:36", "04:50:06", "03:09:06") },
-    "W2026-07-20": { fix: fix(null, "01:40:19", "03:00:29", "02:07:03"), sm: "MLH" },
-    "W2026-07-27": { fix: fix("00:24:44", "02:28:36", "02:16:34", "02:14:17"), sm: "JOS" },
-    "W2026-08-03": { fix: fix("00:14:18", "02:47:33", "05:01:50", "03:14:26"), sm: "VKU" },
-    "W2026-08-10": { fix: fix("00:13:50", "02:03:28", "05:13:22", "03:00:25"), sm: "MRE" },
-    "W2026-08-17": { fix: fix("00:25:21", "03:46:29", "04:36:28", "03:36:12"), sm: "APA/JOS" },
-    "W2026-08-24": { fix: fix("00:11:54", "02:29:55", "04:14:27", "02:43:33"), sm: "VKU" }
+    "W2026-07-20": { fix: fix(null, "01:40:19", "03:00:29", "02:07:03") },
+    "W2026-07-27": { fix: fix("00:24:44", "02:28:36", "02:16:34", "02:14:17") },
+    "W2026-08-03": { fix: fix("00:14:18", "02:47:33", "05:01:50", "03:14:26") },
+    "W2026-08-10": { fix: fix("00:13:50", "02:03:28", "05:13:22", "03:00:25") },
+    "W2026-08-17": { fix: fix("00:25:21", "03:46:29", "04:36:28", "03:36:12") },
+    "W2026-08-24": { fix: fix("00:11:54", "02:29:55", "04:14:27", "02:43:33") }
   };
 })();
 function slaVorgabenEinspielen() {
@@ -4109,7 +4105,7 @@ function renderSuche(view) {
   }));
 }
 
-/* ================= Auslastung (nur VKU) =================
+/* ================= Auslastung (nur für freigegebene Kürzel) =================
    Wer trägt gerade wie viel? Je Bearbeiter: Anzahl offener Calls und Summe der
    Call-Dauern. Die Dauer ist die kumulierte Gesamtdauer des Calls – der beste
    verfügbare Näherungswert für Aufwand, auch wenn mehrere daran gearbeitet haben. */
@@ -4130,7 +4126,7 @@ function lastAgg() {
   return [...by.values()].map(e => ({ ...e, mittel: e.calls ? e.dauer / e.calls : 0 }));
 }
 function renderLast(view) {
-  if (currentUser().k !== "VKU") { activeTab = "heute"; render(); return; }
+  if (!tabErlaubt(TABS.find(t => t.id === "last"))) { activeTab = "heute"; render(); return; }
   const daten = lastAgg();
   const dir = lastSort.dir, key = lastSort.key;
   daten.sort((a, b) => (typeof a[key] === "string" ? a[key].localeCompare(b[key], "de") : (a[key] - b[key])) * dir);
@@ -4142,7 +4138,7 @@ function renderLast(view) {
   const bar = (wert, max, text) => `<td class="lastcell"><div class="lb"><span class="lb-fill" style="width:${Math.round(wert / max * 100)}%"></span><span class="lb-val">${text}</span></div></td>`;
   view.innerHTML = `<div class="card">
     <h2>Auslastung der Bearbeiter <span class="pill s-ok" style="margin-left:6px">${daten.length} Bearbeiter</span></h2>
-    <p class="sub">Nur sichtbar, wenn du als VKU angemeldet bist. Grundlage: alle offenen Calls im aktuellen Datenstand.
+    <p class="sub">Nur sichtbar für die Kürzel, die in der Verwaltung unter Grundregeln bei „Auslastung sichtbar für“ stehen. Grundlage: alle offenen Calls im aktuellen Datenstand.
     „Aufwand“ ist die Summe der Call-Gesamtdauern je Bearbeiter – der beste verfügbare Näherungswert, auch wenn an einem Call mehrere beteiligt waren.</p>
     ${daten.length ? `<div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
       <div class="kpi"><div class="k-label">Meiste offene Calls</div><div class="k-value">${esc(topCalls.k)}</div><div class="k-note">${topCalls.calls} Calls · ${esc(resolveName(topCalls.k) ?? "")}</div></div>
@@ -4450,7 +4446,7 @@ function renderFr(view) {
 const PLACEHOLDERS = ["{Call}", "{Kunde}", "{Titel}", "{Bearbeiter}", "{BearbeiterName}", "{BearbeiterVorname}", "{LT}", "{Status}", "{TageOhneInfo}", "{TageOhneAenderung}", "{MeinKuerzel}", "{MeinVorname}"];
 function exampleRow() {
   return allRows()[0] ?? {
-    Call: 156285, Kunde: "VOSS", Titel: "Werkzeugverwaltung: Standmenge falsch", Bearbeiter: "HCH",
+    Call: 900001, Kunde: "ALPHA", Titel: "Werkzeugverwaltung: Standmenge falsch", Bearbeiter: "PD1",
     Status: "In Bearbeitung", Dauer: 12.5, "Lösung_bis": new Date(now().getTime() - 3 * DAY),
     "Letzte_Änderung": new Date(now().getTime() - 16 * DAY), TageOhneInfo: 9
   };
@@ -4600,6 +4596,7 @@ function renderAdmin(view) {
       <p class="sub">Sichtbarkeits-Filter stehen direkt in den jeweiligen Ansichten („Filter“) – dort lassen sich unter „Sonstiges“ auch ${esc(state.internKunde || "MPDV")}-Calls und ${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")} ein- und ausblenden.</p>
       <table class="grid"><tbody>
         <tr><td style="width:230px">Warnung „Datei unverändert“ ab (Min.)</td><td><input data-cfg="staleWarnMin" value="${esc(state.staleWarnMin)}" type="number" min="5" style="width:90px"></td></tr>
+        <tr><td>Auslastung sichtbar für (Kürzel)</td><td><input data-cfg="rules.auslastungFuer" value="${esc(state.rules.auslastungFuer ?? "")}" placeholder="Kürzel mit Semikolon" style="width:100%"><div class="hint">Der Reiter „Auslastung“ (Aufwand je Bearbeiter) erscheint nur für diese Anmelde-Kürzel.</div></td></tr>
         <tr><td>Reaktionsfrist: Hinweis ab (Min. Geschäftszeit)</td><td><div class="frow" style="margin:0">
           <span class="flabel" style="width:auto">Rot</span><input data-cfg="rules.slaWarn.rot" value="${esc(state.rules.slaWarn?.rot ?? 60)}" type="number" min="1" style="width:80px">
           <span class="flabel" style="width:auto">Blau</span><input data-cfg="rules.slaWarn.blau" value="${esc(state.rules.slaWarn?.blau ?? 210)}" type="number" min="1" style="width:80px">
@@ -4730,7 +4727,7 @@ function renderAdmin(view) {
 
 function render() {
   const def = TABS.find(t => t.id === activeTab);
-  if (def?.nurFuer && !def.nurFuer.includes(currentUser().k)) activeTab = "heute";
+  if (!tabErlaubt(def)) activeTab = "heute";
   buildMemberMap();
   renderTabs();
   const view = document.getElementById("view");
