@@ -102,6 +102,23 @@ Die Hauptabfrage liefert jetzt auch die **geschlossenen Calls der letzten zwei J
 | `Geschlossen` | Optional: Abschlussdatum. Fehlt die Spalte, gilt bei geschlossenen Calls die letzte Änderung als Abschluss. |
 | `Externe Reaktion` | Kommt aus der zweiten Datei `SupportBoard-Abfrage-Reaktion.sql` (Spalte 1 Call, Spalte 2 Wert; weitere Spalten werden ignoriert). Diese Abfrage legt die Grundgesamtheit der Reaktionszeit fest: Calls ohne Zeile werden nicht bewertet, Wert 0 heißt „noch keine Reaktion“. Deshalb ohne Filter auf `erste_ext_aktion_kalender > 0`, `e_bestaetigung_kalender > 0` und ohne Regionsfilter (die Region filtert das Board). |
 
+### Ab v1.42: Weiterleitungs-Historie
+
+Für den Reiter „Weiterleitungen“ (Ping-Pong zwischen Hotline/1st Level und Dispatcher, Liegedauer je Monat, Verteilung der Dispatcher-Weiterleitungen) liefert die Hauptabfrage zusätzlich die Weiterleitungen je Call. Erwartet werden diese Spalten (`AS …`):
+
+| Spalte | Inhalt |
+|---|---|
+| `Letzte_Weiterleitung` | Bisher `Weiterleitung` – beide Namen werden erkannt. |
+| `Datum Weiterleitung` | Zeitpunkt der Weiterleitung (mit Uhrzeit). |
+| `vorherige Gruppe`, `vorheriger Bearbeiter` | Gruppe und Bearbeiter vor der Weiterleitung. |
+| `aktuelle Gruppe`, `aktueller Bearbeiter` | Gruppe und Bearbeiter nach der Weiterleitung. |
+| `Folgestatus` | Status nach der Weiterleitung (nur Anzeige). |
+| `Ersteller Weiterleitung` | Wer weitergeleitet hat (nur Anzeige). |
+| `Weiterleitung Nr` | Laufende Nummer je Call (1 = erste Weiterleitung). |
+| `Gesamtanzahl Weiterleitungen` | Anzahl aller Weiterleitungen des Calls, in jeder Zeile gleich. |
+
+**Wichtig:** Die Abfrage liefert **je Weiterleitung eine Zeile**; die Call-Spalten wiederholen sich. Das Board bündelt die Zeilen je Call-Nummer wieder zu einem Call und hängt die Historie an. Ein Call ohne Weiterleitung kommt als eine Zeile mit leeren Weiterleitungs-Spalten. Liefert die Abfrage nur die letzte Weiterleitung je Call (`Weiterleitung Nr` kleiner als `Gesamtanzahl`), zeigt der Reiter einen Hinweis – Wege und Liegezeiten fehlen dann. Die Gruppennamen in `vorherige Gruppe`/`aktuelle Gruppe` müssen zu den Eingangsstapeln in der Verwaltung passen (Vorgabe: `Hotline; 1st_Level` und `Dispatcher`); die Verwaltung listet alle Gruppen, die in der Historie vorkommen.
+
 Geschlossene Calls stehen in keiner Tagesliste und keiner Mail. Sie zählen in der Tagesstatistik (neu/geschlossen/wieder geöffnet), bei den Top 10 („in der Vorwoche Mo–So geschlossen“) und in der Reaktionszeit – dort auch Calls, die zwischen zwei Exporten aufgingen, beantwortet und geschlossen wurden.
 
 Die Abfrage enthält eine zusätzliche Spalte **„Letzte externe Reaktion“** (mit Uhrzeit). Damit wird die Ansicht *„Keine ext. Reaktion“* im Board scharf geschaltet: Rot ab 30 Minuten, Blau ab 4 Stunden, Grün ab 48 Stunden.

@@ -7,7 +7,7 @@ Im Quellcode, in der Doku und im Chat stehen **keine** realen Personennamen, Anm
 Der Nutzer ist Supportmanager bei MPDV und entwickelt das „Supportmanagement Board“ iterativ weiter: eine Single-File-HTML-Anwendung (kein Server, kein Framework, SheetJS eingebettet) für Dispatcher und Supportmanager. Datenquelle ist eine CSV, die ein PowerShell-Export per lesender SQL-Abfrage aus der Omnitracker-Schattendatenbank schreibt; der Export läuft auf einem Testserver in der Aufgabenplanung (alle 10 Minuten, Konto SYSTEM). Haken, Kommentare und Stammdaten liegen in einer Team-JSON auf dem Teamshare.
 
 ## Aktueller Stand
-Version **v1.41**, alles committet und gepusht auf Branch `claude/clever-ritchie-jfsm8k` im Repo `vladidas78/projekt-b`. Artefakt (immer mit `url` republishen, nie neu anlegen): `https://claude.ai/code/artifact/025f646d-502f-42c3-9629-b7d9ecbe2a3a`.
+Version **v1.42**, alles committet und gepusht auf Branch `claude/trusting-franklin-1ecqoi` im Repo `vladidas78/projekt-b` (enthält den Stand von `claude/clever-ritchie-jfsm8k`). Artefakt (immer mit `url` republishen, nie neu anlegen): `https://claude.ai/code/artifact/025f646d-502f-42c3-9629-b7d9ecbe2a3a`.
 
 Quelle ist `board.html`; `python3 build.py` erzeugt daraus `SupportBoard.html` (prod), `SupportBoard-SQLTest.html` (Kanal sqltest), `SupportBoard-Testserver.html` (gleicher Kanal, andere Beschriftung) und `board-artifact.html` (Artefakt, in .gitignore). SheetJS liegt in `package/dist/xlsx.full.min.js`.
 
@@ -22,6 +22,11 @@ v1.41 enthält:
 - Mails auf einen Knopf (Text kopieren + `mailto:` mit An, CC, Betreff) plus `.eml`-Entwurf mit `X-Unsent: 1`; Einzelschritte eingeklappt.
 - Reiter „Auslastung“ sichtbar für Kürzel aus `rules.auslastungFuer` (Vorgabe `SM1`). **Einmalig nötig:** Der Tool-Verantwortliche trägt sein echtes Kürzel in Verwaltung → Grundregeln → „Auslastung sichtbar für“ ein, sonst fehlt ihm der Reiter.
 - Vorgabewerte der Reaktionszeit (`SLA_VORGABEN`) tragen keine SupMan-Kürzel mehr; die Spalte SupMan bleibt bei diesen Wochen leer.
+
+v1.42 enthält:
+- Weiterleitungs-Historie aus dem Export: je Weiterleitung eine Zeile (neue Spalten `Datum Weiterleitung`, `vorherige Gruppe`, `vorheriger Bearbeiter`, `aktuelle Gruppe`, `aktueller Bearbeiter`, `Folgestatus`, `Ersteller Weiterleitung`, `Weiterleitung Nr`, `Gesamtanzahl Weiterleitungen`; `Weiterleitung` → `Letzte_Weiterleitung`). `buendleWeiterleitungen()` macht daraus einen Call je Zeile mit `r.Wl`; `WlLueckig`, wenn weniger Zeilen als Gesamtanzahl kommen.
+- Reiter **„Weiterleitungen“** (`renderWl`, `wlCalls`, `wlAufenthalte`, `wlPingPong`, `wlVerteilung`, `wlMonatsStat`): Kennzahlen, Ping-Pong-Calls (Schwelle `wlMin`), Liegedauer je Monat (Ø/Median je Stapel und bis Bearbeitung), Verteilung Dispatcher und Hotline/1st Level, Zeitraum `wlZeitraum`, Zeitmaß `uiPref.wlGz`, Filter `state.filters.wl` (intern ab Werk aus), Kopiertabellen. Eingangsstapel `rules.wlHotline` / `rules.wlDispatcher` in der Verwaltung. Spalte `COLS.wl` („Weiterl.“). Beispieldaten mit Wegen (`demoWl`). Doku in `tools/Anleitung_SQL-Export.md` (Spaltenvertrag) und Handbuch.
+- **Offen:** Die SQL-Abfrage für die Historie schreibt das Team (Tabelle/Join im Omnitracker unbekannt); im Repo liegt keine Fassung. Nach dem ersten Lauf Gruppennamen der Eingangsstapel in der Verwaltung prüfen.
 
 Server-Export `tools/SupportBoard-Export-Server.ps1` (UTF-8 mit BOM, CRLF, keine Gedankenstriche): optionale zweite Abfrage `SupportBoard-Abfrage-Reaktion.sql` (Spalte 1 Call, Spalte 2 Wert, weitere ignoriert) in eigener Verbindung, Wert wird über die Call-Nummer angehängt; Ausfall = WARNUNG, CSV kommt trotzdem. `-Preview` zeigt Spalten und „Reaktionswert fuer N von M Zeilen gefunden“. Der Lauf auf dem Server hat funktioniert (rund 10.000 Zeilen, 22 Spalten). Die Reaktionsabfrage legt die Grundgesamtheit fest und darf nicht auf `erste_ext_aktion_kalender > 0`, `e_bestaetigung_kalender > 0` oder eine Region filtern. Die Hauptabfrage im Repo (`tools/SupportBoard-Abfrage.sql`) enthält den `UNION ALL` auf `closed_calls` (dort fehlen `zugeordneter_supman`, `letzte_Weiterleitung`, `Anzahl_LT_Verschiebungen`, `nicht_auswerten_fuer_kd_kommunikation` → Leerwerte). Die Fassung auf dem Server enthält die realen internen Firmenkürzel in der Ausschlussliste; im Repo steht nur `'MPDV'` plus Kommentar.
 
@@ -54,6 +59,7 @@ Claude-Session: <URL der aktuellen Session>
 ```
 
 ## Offene Punkte / nächste Schritte
+0. Weiterleitungs-Abfrage des Teams mit dem Spaltenvertrag abgleichen (je Weiterleitung eine Zeile); nach dem ersten Export Reiter „Weiterleitungen“ und Verwaltung → Grundregeln (Gruppen der Eingangsstapel) prüfen.
 1. Abweichung der Reaktionszeiten zur Excel-Liste klären (Beispiel-Call nachrechnen, Kalender- vs. Geschäftszeit, Feld in Geschäftszeit in `call_statistics`?). Danach entscheiden, ob die rote Frist 30 Minuten bleibt oder 1 h wird.
 2. Regionsrohwerte prüfen (Verwaltung → Grundregeln → „Region: Werte der Abfrage“): gelbe Werte zuordnen oder fest in `regionNorm()` aufnehmen.
 3. Tool-Verantwortlicher trägt sein Kürzel bei „Auslastung sichtbar für“ ein.
@@ -65,4 +71,4 @@ Claude-Session: <URL der aktuellen Session>
 Deutsch, direkt, kurze Rückfragen nur wenn nötig. Selbstständig umsetzen, testen (Playwright), alle drei HTML-Dateien als Datei liefern (SendUserFile), Artefakt republishen, Ursachen erklären, Grenzen ehrlich benennen („ehrlich gesagt“ wird geschätzt). Bei Server-/PowerShell-Themen: fertige Befehlsfolgen in Reihenfolge, Platzhalter klar markiert, Fehlermeldungen wörtlich deuten; der Nutzer hat Zugriff auf den Server (Ordner und PowerShell als Administrator). Bei Skriptänderungen: sagen, welche Zeilen anzupassen sind, statt reflexartig neue Dateien zu schicken; die Einstellungen stehen oben im Block EINSTELLUNGEN. Bei Fragen nach Optionen: Optionen mit Empfehlung, dann auf Freigabe warten. Keine Rückfragen-Schleifen.
 
 ## Erste Aktion im neuen Chat
-Repo-Stand prüfen (`git log --oneline | head -3` auf Branch `claude/clever-ritchie-jfsm8k`), Datenschutz-Regel oben beachten, dann die nächste Anforderung des Nutzers als v1.42 umsetzen (Version in `board.html` bumpen, drei Ausgaben bauen, Status-Doku fortschreiben, Dateien liefern, Artefakt republishen).
+Repo-Stand prüfen (`git log --oneline | head -3` auf Branch `claude/trusting-franklin-1ecqoi`), Datenschutz-Regel oben beachten, dann die nächste Anforderung des Nutzers als v1.43 umsetzen (Version in `board.html` bumpen, drei Ausgaben bauen, Status-Doku fortschreiben, Dateien liefern, Artefakt republishen).
