@@ -619,7 +619,8 @@ const DEFAULT_STATE = {
   internKunde: "MPDV", // internes Kunden-Kürzel – Ausblenden über den Filter „Sonstiges" je Liste
   rules: { exclBearbeiter: "HX-MP-UPDATE", // Pseudo-Bearbeiter – Ausblenden über den Filter „Sonstiges" je Liste
            closedStatus: "Gelöst; Geschlossen; Abgeschlossen; Reviewer; Closed; Resolved; Solved", // Status, die als „zu“ gelten (v1.41: der Export liefert auch geschlossene Calls)
-           regionAsien: "", regionUsa: "" }, // zusätzliche Werte der Spalte Kundenbetreuung, die als Asien bzw. USA gelten (Semikolon-getrennt)
+           regionAsien: "", regionUsa: "", // zusätzliche Werte der Spalte Kundenbetreuung, die als Asien bzw. USA gelten (Semikolon-getrennt)
+           slaWarn: { rot: 60, blau: 210, "grün": 2850 } }, // Reaktionsfrist: Hinweis ab so vielen Minuten Geschäftszeit ohne erste Reaktion (Rot 1 h, Blau 3,5 h, Grün 47,5 h)
   udienste: [ // Unterstützungsdienste: Tagesaufgabe „Mail an eingeplanten Kollegen“ (Verwaltung)
     { k: "IMP", name: "Implementation Services", gruppen: "ImplementationServices; Implementation Services; IMP",
       intro: "Hallo,\n\nhier die Calls sortiert nach letzter Aktion zum Kunden, sollten noch weitere Calls reinkommen, melden wir uns:",
@@ -783,6 +784,7 @@ function normalizeState() {
     const fehlt = std.filter(x => !eigene.includes(x.toLowerCase()));
     if (fehlt.length) { state.rules.closedStatus = [...(state.rules.closedStatus ? [String(state.rules.closedStatus).trim().replace(/;\s*$/, "")] : []), ...fehlt].filter(Boolean).join("; "); _rowsCache = null; } }
   state.rules.regionAsien ??= ""; state.rules.regionUsa ??= "";
+  state.rules.slaWarn = { ...DEFAULT_STATE.rules.slaWarn, ...(state.rules.slaWarn && typeof state.rules.slaWarn === "object" ? state.rules.slaWarn : {}) };
   if (!state.filters.sla.v35) { state.filters.sla.intern = true; state.filters.sla.v35 = 1; } // v1.35: interner Kunde ab Werk ausgeschlossen
   if (state.filters.extreakt) delete state.filters.extreakt;
   if (!state.filters.sla.v37) { state.filters.sla.usa = true; state.filters.sla.asia = true; state.filters.sla.v37 = 1; } // v1.37: USA/Asien ab Werk ausgeschlossen
@@ -1754,6 +1756,7 @@ async function importCallFile(file, live) {
     snapshotKpis(computeKpis());
     cacheSources();
     toast(`${rows.length} Calls geladen`);
+    setTimeout(pruefeSlaMeldungen, 2800); // nach dem Lade-Hinweis
   } catch (e) { alert("Import fehlgeschlagen: " + e.message); }
 }
 const fmtT = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
@@ -2691,6 +2694,7 @@ function loadDemo() {
   recordWfSeen();
   updateChips(); render();
   toast(`Beispieldaten geladen (${offenN} offene und ${rows.length - offenN} geschlossene Calls, fiktive Personen)`);
+  setTimeout(pruefeSlaMeldungen, 2800);
 }
 
 /* ================= Rendering ================= */
@@ -2993,7 +2997,11 @@ function renderTabs() {
       const w = WF.find(x => x.id === t.id);
       const open = wfOpenCount(w);
       cnt = `<span class="cnt${open ? " hot" : ""}">${open}</span>`;
+    } else if (t.id === "sla") {
+      const n = slaMeldungen().length;
+      cnt = `<span class="cnt hot${n ? "" : " hidden"}" title="Calls, die den Hinweiszeitpunkt der Reaktionsfrist erreicht haben">${n}</span>`;
     }
+    b.dataset.tab = t.id;
     b.innerHTML = navIcon(t.id) + `<span class="lbl">${esc(t.label)}</span>` + cnt;
     b.addEventListener("click", () => { activeTab = t.id; openAcks.clear(); frischAcks.clear(); closeColPopover(); render(); });
     nav.appendChild(b);
@@ -3345,10 +3353,12 @@ function slaKarte() {
   const kw = slaStat(akt, list);
   const ohne = allRows().filter(r => slaBewertet(r) && !r.ErsteExtReaktion && r["Eröffnet"] && slaRowOk(r));
   const ueber = ohne.filter(r => geschaeftszeit(r["Eröffnet"], now()) > slaLimit(prioName(r.Prio))).length;
+  const bald = ohneReaktionRows().filter(x => x.stufe === "warn").length;
   return `<div class="card"><h2>Erste externe Reaktion <span class="hint" style="font-weight:400;margin-left:6px">Rot 30 Min. · Blau 4 Std. · Grün 48 Std. · in Geschäftszeit</span></h2>
     <div class="kpis" style="margin-bottom:0">
       <button class="kpi" data-goto="sla"><div class="k-label">Ohne erste Reaktion</div><div class="k-value">${fmtN.format(ohne.length)}</div><div class="k-note">offene Calls</div></button>
-      <button class="kpi${ueber ? " crit" : ""}" data-goto="sla"><div class="k-label">davon Frist überschritten</div><div class="k-value">${fmtN.format(ueber)}</div><div class="k-note">jetzt reagieren</div></button>
+      <button class="kpi" data-goto="sla"><div class="k-label">Kurz vor Frist</div><div class="k-value"${bald ? ' style="color:#8a5a00"' : ""}>${fmtN.format(bald)}</div><div class="k-note">Hinweiszeitpunkt erreicht</div></button>
+      <button class="kpi${ueber ? " crit" : ""}" data-goto="sla"><div class="k-label">Frist überschritten</div><div class="k-value">${fmtN.format(ueber)}</div><div class="k-note">jetzt reagieren</div></button>
       <button class="kpi" data-goto="sla"><div class="k-label">SLA-Quote ${esc(akt.label)}</div><div class="k-value">${pct(kw.ges.quote)}</div><div class="k-note">${kw.ges.ok} eingehalten · ${kw.ges.brk} gebrochen</div></button>
       <button class="kpi" data-goto="sla"><div class="k-label">Ø Reaktionszeit ${esc(akt.label)}</div><div class="k-value" style="font-size:26px">${fmtDur(kw.ges.avg)}</div><div class="k-note">Rot ${fmtDur(kw.rot.avg)} · Blau ${fmtDur(kw.blau.avg)} · Grün ${fmtDur(kw["grün"].avg)}</div></button>
     </div></div>`;
@@ -3943,10 +3953,46 @@ function slaGebrochen(per, list) {
     .sort((a, b) => (PRIO_ORD[a.p] ?? 9) - (PRIO_ORD[b.p] ?? 9) || a.e - b.e);
 }
 /* Offene Calls ohne erste Reaktion – aus dem aktuellen Datenstand */
+function slaWarnMs(p) { const m = Number(state.rules?.slaWarn?.[p] ?? DEFAULT_STATE.rules.slaWarn[p] ?? DEFAULT_STATE.rules.slaWarn["grün"]); return (Number.isFinite(m) && m > 0 ? m : DEFAULT_STATE.rules.slaWarn["grün"]) * 60000; }
 function ohneReaktionRows() {
   return applyFilters("sla", allRows().filter(r => slaBewertet(r) && !r.ErsteExtReaktion && r["Eröffnet"] && !slaKundeAus(r.Kunde)))
-    .map(r => { const p = prioName(r.Prio), lim = slaLimit(p), alter = geschaeftszeit(r["Eröffnet"], now()); return { r, p, lim, alter, ueber: alter - lim }; })
+    .map(r => { const p = prioName(r.Prio), lim = slaLimit(p), alter = geschaeftszeit(r["Eröffnet"], now());
+      const ueber = alter - lim, warn = alter >= slaWarnMs(p);
+      return { r, p, lim, alter, ueber, warn, stufe: ueber > 0 ? "bruch" : warn ? "warn" : "" }; })
     .sort((a, b) => b.ueber - a.ueber);
+}
+/* Hinweis „Reaktionsfrist“ (v1.41): Offene Calls ohne erste Reaktion, die den Hinweiszeitpunkt ihrer Prio erreicht haben
+   (Verwaltung → Grundregeln). Gemeldet wird je Call einmal pro Sitzung: Zeile unten, Zähler am Reiter „Reaktionszeit“,
+   Zahl im Fenstertitel und – wenn eingeschaltet – eine Desktop-Benachrichtigung. Geprüft wird bei jedem Datenstand und
+   jede Minute, weil die Zeit auch ohne neuen Export weiterläuft. */
+const slaGemeldet = new Set();
+let TITEL_BASIS = document.title;
+function slaMeldungen() { return hatSpalte("ErsteExtReaktion") && allRows().length ? ohneReaktionRows().filter(x => x.warn) : []; }
+function slaNotifyAktiv() { return !!uiPref.slaNotify && typeof Notification !== "undefined" && Notification.permission === "granted"; }
+function pruefeSlaMeldungen() {
+  const list = slaMeldungen();
+  const n = list.length;
+  document.title = (n ? `(${n}) ` : "") + TITEL_BASIS;
+  const cntEl = document.querySelector('#tabs [data-tab="sla"] .cnt');
+  if (cntEl) { cntEl.textContent = n; cntEl.classList.toggle("hot", n > 0); cntEl.classList.toggle("hidden", n === 0); }
+  const neu = list.filter(x => !slaGemeldet.has(String(x.r.Call)));
+  if (!neu.length) return;
+  for (const x of neu) slaGemeldet.add(String(x.r.Call));
+  const zeile = x => `${x.r.Call} ${x.r.Kunde ?? ""} (${x.p[0].toUpperCase() + x.p.slice(1)}: ${x.ueber > 0 ? "überfällig seit " + fmtAgo(x.ueber) : "noch " + fmtAgo(-x.ueber)})`;
+  const txt = neu.slice(0, 4).map(zeile).join(" · ") + (neu.length > 4 ? ` · +${neu.length - 4} weitere` : "");
+  toast(`⏱ Reaktionsfrist: ${txt}`);
+  if (slaNotifyAktiv()) {
+    try { new Notification(`Reaktionsfrist – ${neu.length} Call${neu.length > 1 ? "s" : ""}`, { body: neu.slice(0, 6).map(zeile).join("\n"), tag: "sla-" + Date.now() }); } catch (e) {}
+  }
+}
+async function slaNotifyUmschalten() {
+  if (typeof Notification === "undefined") { alert("Dieser Browser bietet keine Desktop-Benachrichtigungen."); return; }
+  if (uiPref.slaNotify) { uiPref.slaNotify = false; saveUiPref(); render(); return; }
+  let p = Notification.permission;
+  if (p !== "granted") { try { p = await Notification.requestPermission(); } catch (e) { p = "denied"; } }
+  if (p === "granted") { uiPref.slaNotify = true; saveUiPref(); try { new Notification("Supportmanagement Board", { body: "Desktop-Benachrichtigungen für die Reaktionsfrist sind eingeschaltet." }); } catch (e) {} }
+  else alert("Der Browser hat die Benachrichtigung abgelehnt. In den Seiteneinstellungen des Browsers (Schloss-Symbol in der Adresszeile) Benachrichtigungen erlauben und erneut versuchen.");
+  render();
 }
 function prioZelle(p) { return `<span class="pd-dot" style="background:${p === "rot" ? "var(--crit)" : p === "blau" ? "var(--accent)" : "var(--good)"};margin-right:6px"></span>${esc(p ? p[0].toUpperCase() + p.slice(1) : "–")}`; }
 /* Tabellen fürs Protokoll (OneNote): mit leerer SupMan-Spalte */
@@ -3994,7 +4040,8 @@ function renderSla(view) {
   if (!wochen.some(w => w.id === slaWoche)) slaWoche = wochen[wochen.length - 1].id;
   const wSel = wochen.find(w => w.id === slaWoche);
   const kw = slaStat(wochen[wochen.length - 1], list);
-  const ohne = ohneReaktionRows(), ueber = ohne.filter(x => x.ueber > 0);
+  const ohne = ohneReaktionRows(), ueber = ohne.filter(x => x.ueber > 0), bald = ohne.filter(x => x.stufe === "warn");
+  const warnTxt = p => { const m = slaWarnMs(p) / 60000; return m % 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")} h` : `${m / 60} h`; };
   const brk = slaGebrochen(wSel, list);
   let artVor = null;
   const statZeilen = per.map(x => { const a = slaStat(x, list); const sep = artVor && x.art !== artVor ? `<tr class="sep"><td colspan="7"></td></tr>` : ""; artVor = x.art;
@@ -4010,10 +4057,11 @@ function renderSla(view) {
       <p class="sub">Ausgeblendete Gruppen, Prioritäten, Regionen (Europa, USA, Asien – unter „Sonstiges“) und Kunden werden weder gezählt noch gelistet. Ab Werk ohne ${esc(state.internKunde || "MPDV")}-, USA- und Asien-Calls. ${slaVollmodus() ? "Wirkt sofort auf alle Zeiträume, die der Export abdeckt." : "Wirkt auf neue Aufzeichnungen; bereits eingefrorene Wochen bleiben, wie sie sind."}</p>
       ${filterPanel("sla", allRows(), { text: "kunden", textLabel: "Kunden ausschließen", textHint: "Kürzel oder Namensteile, mit Semikolon – z. B. ASIA; USA" })}
     </div>
-    <div class="card" id="slaOhne"><h2>Ohne erste externe Reaktion <span class="pill ${ueber.length ? "s-crit" : "s-ok"}" style="margin-left:6px">${ueber.length} überfällig</span></h2>
-      <p class="sub">${regeln} Sortiert nach Überfälligkeit; Calls innerhalb der Frist stehen unten. Bewertet werden nur Calls, für die die Reaktionsabfrage eine Zeile liefert (Kunden, Kategorien und SLA-Vertrag legt die Abfrage fest).</p>
+    <div class="card" id="slaOhne"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Ohne erste externe Reaktion <span class="pill ${ueber.length ? "s-crit" : "s-ok"}">${ueber.length} überfällig</span><span class="pill ${bald.length ? "s-warn" : "s-ok"}" title="Hinweiszeitpunkt erreicht, Frist noch nicht überschritten">${bald.length} kurz vor Frist</span>
+      <button class="small${slaNotifyAktiv() ? " primary" : ""}" id="btnSlaNotify" style="margin-left:auto" title="${slaNotifyAktiv() ? "Desktop-Benachrichtigungen sind an – klicken zum Ausschalten" : "Der Browser meldet sich auf dem Desktop, sobald ein Call den Hinweiszeitpunkt erreicht (nur solange das Board geöffnet ist)"}">${slaNotifyAktiv() ? "Benachrichtigungen: an" : "Desktop-Benachrichtigungen einschalten"}</button></h2>
+      <p class="sub">${regeln} Hinweis („kurz vor Frist“) ab Rot ${warnTxt("rot")} · Blau ${warnTxt("blau")} · Grün ${warnTxt("grün")} ohne Reaktion – einstellbar in der Verwaltung unter Grundregeln. Neue Fälle erscheinen als Zeile unten im Bild, als Zahl am Reiter „Reaktionszeit“, im Fenstertitel und auf Wunsch als Desktop-Benachrichtigung. Der Export läuft alle 10 Minuten und das Board prüft die Datei alle ${esc(KANAL_INFO.watchMin)} Minuten; so spät kann ein Hinweis frühestens kommen. Sortiert nach Überfälligkeit; Calls innerhalb der Frist stehen unten. Bewertet werden nur Calls, für die die Reaktionsabfrage eine Zeile liefert (Kunden, Kategorien und SLA-Vertrag legt die Abfrage fest).</p>
       ${ohne.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Gruppe</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th><th>Eröffnet</th><th class="ta-r" title="in Geschäftszeit">Alter (GZ)</th><th class="ta-r">Frist</th><th class="ta-r">Rest / überfällig</th></tr></thead><tbody>
-      ${ohne.map(x => `<tr><td class="nowrap">${prioZelle(x.p)}</td><td class="tnum nowrap">${esc(x.r.Call)}</td><td class="nowrap">${esc(gruppeKurz(x.r.Gruppe) || "–")}</td><td class="nowrap" title="${esc(resolveName(x.r.Bearbeiter) ?? "")}">${esc(x.r.Bearbeiter ?? "–")}</td><td class="nowrap">${esc(x.r.Kunde ?? "–")}${smBadge(x.r)}</td><td class="titlecell">${esc(x.r.Titel ?? "–")}</td><td class="nowrap">${esc(x.r.Status ?? "–")}</td><td class="tnum nowrap">${fmtDT.format(x.r["Eröffnet"])}</td><td class="ta-r tnum">${fmtAgo(x.alter)}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td><td class="ta-r tnum nowrap ${x.ueber > 0 ? "c-crit" : "c-warn"}">${x.ueber > 0 ? "überfällig seit " + fmtAgo(x.ueber) : "noch " + fmtAgo(-x.ueber)}</td></tr>`).join("")}
+      ${ohne.map(x => `<tr><td class="nowrap">${prioZelle(x.p)}</td><td class="tnum nowrap">${esc(x.r.Call)}${x.stufe === "warn" ? ' <span class="pill s-warn" style="font-size:10.5px">kurz vor Frist</span>' : ""}</td><td class="nowrap">${esc(gruppeKurz(x.r.Gruppe) || "–")}</td><td class="nowrap" title="${esc(resolveName(x.r.Bearbeiter) ?? "")}">${esc(x.r.Bearbeiter ?? "–")}</td><td class="nowrap">${esc(x.r.Kunde ?? "–")}${smBadge(x.r)}</td><td class="titlecell">${esc(x.r.Titel ?? "–")}</td><td class="nowrap">${esc(x.r.Status ?? "–")}</td><td class="tnum nowrap">${fmtDT.format(x.r["Eröffnet"])}</td><td class="ta-r tnum">${fmtAgo(x.alter)}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td><td class="ta-r tnum nowrap ${x.ueber > 0 ? "c-crit" : "c-warn"}">${x.ueber > 0 ? "überfällig seit " + fmtAgo(x.ueber) : "noch " + fmtAgo(-x.ueber)}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="empty"><b>Alles beantwortet.</b> Jeder offene Call hat eine erste externe Reaktion.</p>`}
     </div>
     <div class="card" id="slaStat"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Erste ext. Reaktion (Durchschnitt)
@@ -4035,6 +4083,7 @@ function renderSla(view) {
   view.querySelector("#btnSlaStatCopy").addEventListener("click", e => { const t = slaStatTabelle(reaktEintraege()); copyHtml(t.html, t.plain, e.target); });
   view.querySelector("#btnSlaBruchCopy").addEventListener("click", e => { const t = slaBruchTabelle(wSel, reaktEintraege()); copyHtml(t.html, t.plain, e.target); });
   view.querySelector("#slaWocheSel").addEventListener("change", e => { slaWoche = e.target.value; render(); });
+  view.querySelector("#btnSlaNotify").addEventListener("click", slaNotifyUmschalten);
   view.querySelectorAll("[data-slanote]").forEach(inp => inp.addEventListener("change", () => {
     const call = inp.dataset.slanote, v = inp.value.trim();
     state.slaNote ??= {};
@@ -4581,6 +4630,11 @@ function renderAdmin(view) {
       <p class="sub">Sichtbarkeits-Filter stehen direkt in den jeweiligen Ansichten („Filter“) – dort lassen sich unter „Sonstiges“ auch ${esc(state.internKunde || "MPDV")}-Calls und ${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")} ein- und ausblenden.</p>
       <table class="grid"><tbody>
         <tr><td style="width:230px">Warnung „Datei unverändert“ ab (Min.)</td><td><input data-cfg="staleWarnMin" value="${esc(state.staleWarnMin)}" type="number" min="5" style="width:90px"></td></tr>
+        <tr><td>Reaktionsfrist: Hinweis ab (Min. Geschäftszeit)</td><td><div class="frow" style="margin:0">
+          <span class="flabel" style="width:auto">Rot</span><input data-cfg="rules.slaWarn.rot" value="${esc(state.rules.slaWarn?.rot ?? 60)}" type="number" min="1" style="width:80px">
+          <span class="flabel" style="width:auto">Blau</span><input data-cfg="rules.slaWarn.blau" value="${esc(state.rules.slaWarn?.blau ?? 210)}" type="number" min="1" style="width:80px">
+          <span class="flabel" style="width:auto">Grün</span><input data-cfg="rules.slaWarn.grün" value="${esc(state.rules.slaWarn?.["grün"] ?? 2850)}" type="number" min="1" style="width:80px"></div>
+          <div class="hint">Ab so vielen Minuten ohne erste Reaktion (in Geschäftszeit) meldet das Board den Call: Zähler am Reiter „Reaktionszeit“, Fenstertitel, Hinweiszeile und auf Wunsch Desktop-Benachrichtigung. Fristen selbst: Rot 30 Min., Blau 4 h, Grün 48 h. Vorgabe: Rot 60 (nach der Frist), Blau 210 (3,5 h), Grün 2850 (47,5 h).</div></td></tr>
         <tr><td>Status „zu“ (geschlossene Calls)</td><td><input data-cfg="rules.closedStatus" value="${esc(state.rules.closedStatus ?? "")}" placeholder="Gelöst; Geschlossen" style="width:100%"><div class="hint">Calls mit diesen Status liefert der Export als geschlossen mit – sie stehen in keiner Tagesliste, zählen aber in Tagesstatistik, Top-10-Abschlüssen und Reaktionszeit. Zusätze wie „Reviewer (intern)“ zählen mit.</div>
           ${alleZeilen().length ? `<div class="hint" style="margin-top:6px">Statuswerte im aktuellen Datenstand (${fmtN.format(allRows().length)} offen, ${fmtN.format(closedRows().length)} zu):</div>
           <div style="display:flex;flex-wrap:wrap;gap:4px;margin:4px 0">${statusRohwerte().map(x => `<span class="pill ${x.zu ? "s-ok" : "s-warn"}" title="${x.zu ? "zählt als zu" : "zählt als offen"}">${esc(x.raw)} · ${fmtN.format(x.n)}${x.zu ? " · zu" : ""}</span>`).join("")}</div>
@@ -4629,7 +4683,9 @@ function renderAdmin(view) {
   view.querySelector("#btnTeamAdd").addEventListener("click", () => { state.team.push({ k: "", name: "" }); touch("cfg|team"); saveState(); render(); });
   view.querySelectorAll("[data-cfg]").forEach(inp => inp.addEventListener("change", () => {
     const k = inp.dataset.cfg;
-    if (k.startsWith("rules.")) {
+    if (k.startsWith("rules.slaWarn.")) {
+      const p = k.slice(14), n = Number(inp.value); (state.rules.slaWarn ??= {})[p] = Number.isFinite(n) && n > 0 ? n : DEFAULT_STATE.rules.slaWarn[p]; touch("cfg|rules"); slaGemeldet.clear();
+    } else if (k.startsWith("rules.")) {
       const f = k.slice(6); state.rules[f] = inp.value.trim() || (f === "closedStatus" ? DEFAULT_STATE.rules.closedStatus : ""); touch("cfg|rules"); _rowsCache = null;
       if (f.startsWith("region")) for (const r of sources.ALL.rows) r.Region = regionNorm(r.RegionRoh ?? r.Region);
     }
@@ -4753,6 +4809,8 @@ if (KANAL_INFO.badge) {
   document.querySelector(".side-brand .mark").classList.add("test");
   document.title = `Supportmanagement Board – ${KANAL_INFO.name}`;
 }
+TITEL_BASIS = document.title;
+setInterval(pruefeSlaMeldungen, 60000); // Reaktionsfrist: die Uhr läuft auch ohne neuen Export
 document.getElementById("watchInterval").value = KANAL_INFO.watchMin;
 restoreSources();
 dailyBackup();
