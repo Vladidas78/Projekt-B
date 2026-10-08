@@ -74,36 +74,27 @@ if (-not $SkriptPfad) { throw 'Das Skript muss als Datei gestartet werden (z. B.
 $Basis      = Split-Path -Parent $SkriptPfad
 
 # ============================ EINSTELLUNGEN =================================
-# Hier eintragen - sonst muss nichts angepasst werden.
+# Nur die zwei Werte mit EINTRAGEN ausfuellen - alles andere passt fuer den Betrieb
+# auf dem Server (Aufgabe als SYSTEM, SQL-Anmeldung, CSV im Ordner dieses Skripts).
 
-$Server        = 'BeispielServer-01'          # Data Source (wie in der Arbeitsplatz-Fassung)
-$Datenbank     = 'MPDV-Reporting'             # Initial Catalog
-$WindowsAuth   = $true                         # $true  = das Dienstkonto meldet sich mit Windows an der Datenbank an (empfohlen)
-                                               # $false = SQL-Anmeldung mit $Benutzer + Passwort (-SetPassword)
-$Benutzer      = 'Beispiel-readonly'          # nur bei $WindowsAuth = $false
+$Server        = '<SERVER>'                    # EINTRAGEN: Data Source (wie im Excel-Verbindungsstring)
+$Datenbank     = 'MPDV-Reporting'              # Initial Catalog
+$WindowsAuth   = $false                        # $false = SQL-Anmeldung mit $Benutzer + hinterlegtem Passwort (SupportBoard-Export.pwd, -SetPassword)
+                                               # $true  = Windows-Anmeldung des Kontos, unter dem die Aufgabe laeuft
+$Benutzer      = '<SQL-BENUTZER>'              # EINTRAGEN: User ID (wie im Excel-Verbindungsstring)
 
-# Ziel: der Team-Ordner auf dem Share, in dem auch Board und Team-Datei liegen.
-# Erprobung: Testordner. Spaeter Produktivordner - nur diese Zeile aendern.
-# Hat der Server KEIN Schreibrecht auf den Teamshare: hier einen Ordner auf dem
-# Server eintragen (z. B. 'C:\SupportBoard-Daten\SupportBoard-Daten.csv') und
-# $ZielpfadErsatz = '' setzen; -ErsatzEinrichten gibt diesen Ordner dann frei.
-$Zielpfad      = '\\Server\Freigabe\Supportmanagement\SQL-Test\SupportBoard-Daten.csv'
+# Ziel: SupportBoard-Daten.csv im selben Ordner wie dieses Skript. Von dort liest das
+# Board (ueber die Freigabe des Servers). Ein zweites Ziel gibt es nicht.
+$Zielpfad      = Join-Path $Basis 'SupportBoard-Daten.csv'
 
-# Ersatzpfad (Fallback): Ordner auf dem Server, in den die CSV zusaetzlich
-# gespiegelt wird. Er wird per -ErsatzEinrichten als Freigabe veroeffentlicht,
-# das Board kann dann \\SERVER\<Freigabe>\SupportBoard-Daten.csv ueberwachen.
-# Kommt der Server nicht an den Teamshare, bleibt die CSV hier trotzdem frisch.
-# '' = kein Ersatzpfad.
-$ZielpfadErsatz   = 'C:\SupportBoard-Daten\SupportBoard-Daten.csv'
-$ErsatzFreigabe   = 'SupportBoard'                 # Freigabename -> \\SERVER\SupportBoard
-$ErsatzLesegruppe = 'DOMAENE\Domänen-Benutzer'    # wer die Freigabe lesen darf (Gruppe oder Konto)
+# Ersatzpfad: wird nicht gebraucht, weil das Ziel schon auf dem Server liegt. '' = aus.
+$ZielpfadErsatz   = ''
+$ErsatzFreigabe   = 'SupportBoard'                 # nur fuer -ErsatzEinrichten
+$ErsatzLesegruppe = 'DOMAENE\Domänen-Benutzer'    # nur fuer -ErsatzEinrichten
 
-# Konto, unter dem die Aufgabe laeuft:
-#   'DOMAENE\svc-supportboard'   Dienstkonto mit Passwort (wird bei -Install einmal abgefragt)
-#   'DOMAENE\gmsa-supportboard$' gruppenverwaltetes Dienstkonto (gMSA), kein Passwort noetig
-#   ''                           SYSTEM - greift auf Share und Datenbank als Computerkonto
-#                                (DOMAENE\SERVERNAME$) zu; dieses braucht dann die Rechte.
-$Dienstkonto   = 'DOMAENE\svc-supportboard'
+# Konto, unter dem die Aufgabe laeuft: '' = SYSTEM (so ist die Aufgabe eingerichtet).
+# Alternativ 'DOMAENE\svc-konto' (Dienstkonto, Passwort bei -Install) oder 'DOMAENE\gmsa-konto$' (gMSA).
+$Dienstkonto   = ''
 
 $IntervallMin  = 10                            # Abstand der Laeufe in Minuten
 $AufgabenName  = 'Supportboard Datenexport (Server)'
@@ -112,6 +103,10 @@ $AufgabenName  = 'Supportboard Datenexport (Server)'
 foreach ($n in 'Server','Datenbank','Zielpfad') {
     $v = Get-Variable -Name $n -ValueOnly -ErrorAction SilentlyContinue
     if ([string]::IsNullOrWhiteSpace($v)) { throw "Einstellung `$$n ist leer oder fehlt. Bitte im Block EINSTELLUNGEN eintragen (die Zeile muss genau `$$n = '...' lauten)." }
+}
+foreach ($n in 'Server','Benutzer') {
+    $v = [string](Get-Variable -Name $n -ValueOnly -ErrorAction SilentlyContinue)
+    if ($v.Trim().StartsWith('<')) { throw "Einstellung `$$n ist noch der Platzhalter '$v'. Bitte im Block EINSTELLUNGEN den echten Wert eintragen." }
 }
 if (-not $WindowsAuth -and [string]::IsNullOrWhiteSpace($Benutzer)) { throw 'Einstellung $Benutzer ist leer, wird aber bei $WindowsAuth = $false gebraucht.' }
 if (-not (Split-Path -Parent $Zielpfad)) { throw "Einstellung `$Zielpfad muss ein vollstaendiger Pfad mit Ordner und Dateiname sein, z. B. C:\SupportBoard-Daten\SupportBoard-Daten.csv (aktuell: '$Zielpfad')." }
@@ -460,11 +455,15 @@ function Lade-Zusatz($z) {
         if ($fc -lt 2) { $r2.Close(); throw "Die $($z.Name) muss mindestens zwei Spalten liefern: Call und den Wert." }
         $h = @{}
         if ($fc -eq 2 -or -not $z.Buendeln) {
-            # Ein Wert je Call: die zweite Spalte wird so uebernommen, wie sie ist (Spaltenname aus der Abfrage), weitere Spalten werden ignoriert
-            $z.Spalte = $r2.GetName(1)
+            # Ein Wert je Call. Wertspalte = die Spalte mit dem erwarteten Namen (z. B. 'Externe Reaktion'),
+            # egal an welcher Stelle sie steht; gibt es sie nicht, die zweite Spalte. Weitere Spalten werden ignoriert.
+            $wi = 1
+            for ($i = 1; $i -lt $fc; $i++) { if ($r2.GetName($i) -ieq $z.Spalte) { $wi = $i; break } }
+            if ($r2.GetName($wi) -ine $z.Spalte) { Schreibe-Log "$($z.Name): keine Spalte '$($z.Spalte)' gefunden - es wird die Spalte '$($r2.GetName($wi))' angehaengt." 'WARNUNG' }
+            $z.Spalte = $r2.GetName($wi)
             while ($r2.Read()) {
                 $k = [string]$r2.GetValue(0)
-                if ($k) { $k = $k.Trim(); if (-not $h.ContainsKey($k)) { $h[$k] = $r2.GetValue(1) } }
+                if ($k) { $k = $k.Trim(); if (-not $h.ContainsKey($k)) { $h[$k] = $r2.GetValue($wi) } }
             }
             $r2.Close()
             Schreibe-Log "$($z.Name): $($h.Count) Calls mit Wert '$($z.Spalte)' - wird ueber die Call-Nummer angehaengt."
