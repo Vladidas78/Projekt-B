@@ -12,9 +12,10 @@
     werden sie zusaetzlich ausgefuehrt. Jede liefert je Call genau einen Wert
     (zwei Spalten: Call und Wert). Das Skript haengt den Wert ueber die
     Call-Nummer an die Zeilen der Hauptabfrage an - es entsteht weiterhin EINE
-    CSV mit einer Zeile je Call. Liefert eine Zusatzabfrage mehr als zwei
-    Spalten (Rohform der Weiterleitungen: je Weiterleitung eine Zeile mit Call,
-    Datum, vorherige Gruppe, vorheriger Bearbeiter, aktuelle Gruppe, aktueller
+    CSV mit einer Zeile je Call. Weitere Spalten der Reaktionsabfrage werden
+    ignoriert. Nur bei der Weiterleitungsabfrage gilt: Liefert sie mehr als
+    zwei Spalten (Rohform: je Weiterleitung eine Zeile mit Call, Datum,
+    vorherige Gruppe, vorheriger Bearbeiter, aktuelle Gruppe, aktueller
     Bearbeiter, Folgestatus, Ersteller), buendelt das Skript die Zeilen je Call
     selbst zu einem Text (Felder mit |, Weiterleitungen mit " # ", nach Datum). Fehlt eine Datei, ist sie leer oder schlaegt
     die Abfrage fehl (z. B. weil die Tabelle auf der Schattendatenbank gerade
@@ -363,13 +364,13 @@ Pruefe-NurLesen $Sql 'Abfrage'
 # Jede liefert zwei Spalten (Call, Wert); der Wert wird ueber die Call-Nummer an die Hauptabfrage angehaengt.
 $Zusatz = @()
 foreach ($z in @(
-        @{ Datei = $AbfrageDateiReaktion;      Name = 'Reaktionsabfrage';      Spalte = 'Externe Reaktion' },
-        @{ Datei = $AbfrageDateiWeiterleitung; Name = 'Weiterleitungsabfrage'; Spalte = 'Weiterleitungen' })) {
+        @{ Datei = $AbfrageDateiReaktion;      Name = 'Reaktionsabfrage';      Spalte = 'Externe Reaktion'; Buendeln = $false },
+        @{ Datei = $AbfrageDateiWeiterleitung; Name = 'Weiterleitungsabfrage'; Spalte = 'Weiterleitungen';   Buendeln = $true })) {
     if (-not (Test-Path $z.Datei)) { continue }
     $t = Get-Content -Path $z.Datei -Raw -Encoding UTF8
     if ([string]::IsNullOrWhiteSpace($t)) { continue }
     Pruefe-NurLesen $t $z.Name
-    $Zusatz += @{ Sql = $t; Name = $z.Name; Spalte = $z.Spalte; Werte = @{} }
+    $Zusatz += @{ Sql = $t; Name = $z.Name; Spalte = $z.Spalte; Buendeln = [bool]$z.Buendeln; Werte = @{} }
 }
 
 # --- Verbindungszeichenfolge ------------------------------------------------
@@ -430,8 +431,8 @@ function Lade-Zusatz($z) {
         $fc = $r2.FieldCount
         if ($fc -lt 2) { $r2.Close(); throw "Die $($z.Name) muss mindestens zwei Spalten liefern: Call und den Wert." }
         $h = @{}
-        if ($fc -eq 2) {
-            # Ein Wert je Call: die zweite Spalte wird so uebernommen, wie sie ist (Spaltenname aus der Abfrage)
+        if ($fc -eq 2 -or -not $z.Buendeln) {
+            # Ein Wert je Call: die zweite Spalte wird so uebernommen, wie sie ist (Spaltenname aus der Abfrage), weitere Spalten werden ignoriert
             $z.Spalte = $r2.GetName(1)
             while ($r2.Read()) {
                 $k = [string]$r2.GetValue(0)
@@ -440,7 +441,7 @@ function Lade-Zusatz($z) {
             $r2.Close()
             Schreibe-Log "$($z.Name): $($h.Count) Calls mit Wert '$($z.Spalte)' - wird ueber die Call-Nummer angehaengt."
         } else {
-            # Rohform (v1.45): je Weiterleitung eine Zeile - Spalte 1 Call, Spalte 2 Datum, danach die weiteren Felder.
+            # Rohform (v1.45, nur Weiterleitungsabfrage): je Weiterleitung eine Zeile - Spalte 1 Call, Spalte 2 Datum, danach die weiteren Felder.
             # Wird hier je Call zu EINEM Text gebuendelt: Felder mit |, Weiterleitungen mit " # ", sortiert nach Datum.
             # Ergebnis ist dasselbe wie bei einer Buendelung per STRING_AGG in der Abfrage.
             $roh = @{}; $n = 0

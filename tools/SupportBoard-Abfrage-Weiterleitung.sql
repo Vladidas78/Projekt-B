@@ -18,9 +18,12 @@
    Die Zeichen | und # ersetzt das Skript in den Werten.
 
    Die WHERE-Klausel laesst die Hotline-/1st-Level-Gruppen USA und Asien
-   aussen vor (Stand des Teams). Hinweis: Ohne diese Einschraenkung wuerde
-   das Board die Calls ueber den Regionsfilter (Chips USA/Asien) ausblenden;
-   mit ihr fehlen bei betroffenen Calls einzelne Schritte des Weges.
+   aussen vor (Stand des Teams; NULL in der Gruppe zaehlt nicht als Treffer).
+   Hinweis: Ohne diese Einschraenkung wuerde das Board die Calls ueber den
+   Regionsfilter (Chips USA/Asien) ausblenden; mit ihr fehlen bei betroffenen
+   Calls einzelne Schritte des Weges. Die Zeitgrenze von zwei Jahren passt zur
+   Hauptabfrage (geschlossene Calls der letzten zwei Jahre); eine Weiterleitung
+   liegt nie vor der Eroeffnung ihres Calls.
    ========================================================================= */
 SELECT
     callnr          AS Call,
@@ -32,8 +35,9 @@ SELECT
     folgestatus     AS Folgestatus,
     ersteller       AS Ersteller
 FROM forwardings
-WHERE current_grp     NOT IN ('Hotline_USA', '1st_Level_Asia', 'Hotline_Asia', '1st_Level_USA')
-  AND predecessor_grp NOT IN ('Hotline_USA', '1st_Level_Asia', 'Hotline_Asia', '1st_Level_USA')
+WHERE datum >= DATEADD(YEAR, -2, GETDATE())
+  AND (current_grp     IS NULL OR current_grp     NOT IN ('Hotline_USA', '1st_Level_Asia', 'Hotline_Asia', '1st_Level_USA'))
+  AND (predecessor_grp IS NULL OR predecessor_grp NOT IN ('Hotline_USA', '1st_Level_Asia', 'Hotline_Asia', '1st_Level_USA'))
 ORDER BY callnr, datum;
 
 /* --- Alternative: Buendelung schon in SQL (SQL Server ab 2017, STRING_AGG). Liefert zwei Spalten
@@ -52,7 +56,8 @@ SELECT
             REPLACE(REPLACE(ISNULL(w.ersteller, ''),       '|', '/'), '#', ' ')
         ) AS nvarchar(max)), ' # ') WITHIN GROUP (ORDER BY w.datum) AS Weiterleitungen
 FROM forwardings AS w
-WHERE w.current_grp     NOT IN ('Hotline_USA', '1st_Level_Asia', 'Hotline_Asia', '1st_Level_USA')
-  AND w.predecessor_grp NOT IN ('Hotline_USA', '1st_Level_Asia', 'Hotline_Asia', '1st_Level_USA')
+WHERE w.datum >= DATEADD(YEAR, -2, GETDATE())
+  AND (w.current_grp     IS NULL OR w.current_grp     NOT IN ('Hotline_USA', '1st_Level_Asia', 'Hotline_Asia', '1st_Level_USA'))
+  AND (w.predecessor_grp IS NULL OR w.predecessor_grp NOT IN ('Hotline_USA', '1st_Level_Asia', 'Hotline_Asia', '1st_Level_USA'))
 GROUP BY w.callnr;
 */

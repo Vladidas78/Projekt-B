@@ -467,7 +467,7 @@
 /*__SHEETJS__*/</script>
 <script>
 "use strict";
-const VERSION = "1.45";
+const VERSION = "1.46";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -1038,9 +1038,21 @@ function buendleWeiterleitungen(rows) {
   return out;
 }
 const REQUIRED = ["Call", "Bearbeiter", "Status"];
+/* v1.46: Trennzeichen einer Text-CSV aus der Kopfzeile bestimmen. SheetJS rät es sonst aus den ersten 1024 Zeichen –
+   steht dort ein Call mit vielen Weiterleitungen, gewinnt das „|“ der Historie gegen das „;“ und die Datei wäre unlesbar. */
+function csvTrennzeichen(buf) {
+  try {
+    const kopf = new TextDecoder("utf-8").decode(new Uint8Array(buf.slice(0, 8192))).replace(/^\uFEFF/, "");
+    if (/^PK/.test(kopf) || !kopf.trim()) return null; // xlsx (ZIP) oder leer: nichts vorgeben
+    const zeile = kopf.split(/\r?\n/)[0] || "";
+    const best = [";", ",", "\t", "|"].map(c => [c, zeile.split(c).length - 1]).sort((a, b) => b[1] - a[1])[0];
+    return best[1] > 0 ? best[0] : null;
+  } catch (e) { return null; }
+}
 async function parseCallFile(file) {
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { cellDates: true });
+  const fs = csvTrennzeichen(buf);
+  const wb = XLSX.read(buf, fs ? { cellDates: true, FS: fs } : { cellDates: true });
   let best = null, bestLen = -1, bestRaw = null;
   for (const name of wb.SheetNames) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: null });

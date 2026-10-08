@@ -124,7 +124,7 @@ Beispiel für einen Call mit zwei Weiterleitungen:
 
 Das Server-Skript führt die Abfrage in einer eigenen Verbindung aus und hängt den Text über die Call-Nummer als Spalte `Weiterleitungen` an jede Zeile der Hauptabfrage an, genau wie die externe Reaktion. Calls ohne Weiterleitung bekommen eine leere Spalte. Fehlt die Datei oder scheitert die Abfrage, bleibt die Spalte leer (WARNUNG im Log), die CSV kommt trotzdem. `-Preview` meldet „Weiterleitungsabfrage: Wert 'Weiterleitungen' fuer N von M Zeilen gefunden“.
 
-Die Vorlage im Repo nutzt `STRING_AGG` (SQL Server ab 2017) und enthält auskommentiert eine Fassung mit `FOR XML PATH` für ältere Server. Tabelle und Feldnamen der Weiterleitungs-Historie sind Platzhalter. Die Gruppennamen in den Blöcken müssen zu den Eingangsstapeln in der Verwaltung passen (Vorgabe: `Hotline; 1st_Level` und `Dispatcher`); die Verwaltung listet alle Gruppen, die in der Historie vorkommen.
+Die Datei im Repo ist die Abfrage des Teams in der Rohform (Tabelle `forwardings`, zwei Jahre, ohne die Hotline-/1st-Level-Gruppen USA und Asien); eine `STRING_AGG`-Fassung (SQL Server ab 2017) steht als Kommentar darin. Die Gruppennamen in den Blöcken müssen zu den Eingangsstapeln in der Verwaltung passen (Vorgabe: `Hotline; 1st_Level` und `Dispatcher`); die Verwaltung listet alle Gruppen, die in der Historie vorkommen.
 
 Alternativ erkennt das Board weiterhin die Form aus v1.42 (je Weiterleitung eine Zeile in der Haupt-CSV mit den Spalten `Datum Weiterleitung`, `vorherige Gruppe`, `vorheriger Bearbeiter`, `aktuelle Gruppe`, `aktueller Bearbeiter`, `Folgestatus`, `Ersteller Weiterleitung`, `Weiterleitung Nr`, `Gesamtanzahl Weiterleitungen`). Sie ist nicht empfohlen: Die Call-Spalten müssten in allen Zeilen eines Calls identisch sein, die Datei wird mehrfach so groß, und jeder Verbraucher muss je Call entdoppeln.
 
@@ -143,7 +143,7 @@ Der Zeitplan (z. B. alle 15 Minuten) reicht für den Alltag. Wer einen frischen 
 1. **Skript von Hand starten** – am einfachsten über eine Desktop-Verknüpfung mit dem Ziel:
 
    ```
-   powershell.exe -ExecutionPolicy Bypass -File "PFAD\SupportBoard-Export.ps1" -Jetzt
+   powershell.exe -ExecutionPolicy Bypass -File "PFAD\SupportBoard-Export-Server.ps1" -Jetzt
    ```
 
    Der Schalter `-Jetzt` überspringt die „Datei ist noch frisch“-Prüfung, damit der Ad-hoc-Lauf nicht wegen einer wenige Minuten alten Datei aussteigt. Alle Schutzmechanismen (nur lesen, Rollback, alte Datei bleibt bei Fehlern stehen) gelten unverändert.
@@ -179,6 +179,6 @@ Erste Anlaufstelle ist `SupportBoard-Export.log` im selben Ordner – dort steht
 | `Zielordner nicht erreichbar` | Netzlaufwerk nicht verbunden. |
 | `Die Abfrage lieferte 0 Zeilen` | Schutzmechanismus – die alte Datei bleibt erhalten. |
 | `Die Eingabezeichenfolge hat das falsche Format` (ConvertTo-SecureString) | Passwortdatei aus einer älteren Skriptversion oder von Hand angelegt. `SupportBoard-Export.pwd` löschen und `-SetPassword` erneut ausführen. |
-| `Möchten Sie diese Datei ausführen? [N] [M] [H]` bei jedem Start | Die Datei trägt die Download-Markierung von Windows. Einmalig `Unblock-File .\SupportBoard-Export.ps1` ausführen, dann fragt PowerShell nicht mehr. |
+| `Möchten Sie diese Datei ausführen? [N] [M] [H]` bei jedem Start | Die Datei trägt die Download-Markierung von Windows. Einmalig `Unblock-File .\SupportBoard-Export-Server.ps1` ausführen, dann fragt PowerShell nicht mehr. |
 
 Die alte Excel-Routine funktioniert unverändert weiter und kann jederzeit als Rückfallebene dienen.
