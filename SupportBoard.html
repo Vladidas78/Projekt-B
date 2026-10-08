@@ -497,7 +497,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.42";
+const VERSION = "1.43";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -506,7 +506,7 @@ const KANAL = "prod"; /*__KANAL__*/
 const KANAL_INFO = {
   prod:    { name: "", badge: "", teamDatei: "SupportBoard-Team.json", suffix: "", watchMin: "10",
              staleHint: "wurde sie geöffnet & gespeichert?" },
-  sqltest: { name: "Testversion SQL", badge: "TEST · SQL-Daten", teamDatei: "SupportBoard-Team-SQLTest.json", suffix: "_sqltest", watchMin: "5",
+  sqltest: { name: "Testversion", badge: "TEST", teamDatei: "SupportBoard-Team-SQLTest.json", suffix: "_sqltest", watchMin: "5", // v1.43: Ausgabe SupportBoard_Test.html; Team-Datei und Speicherschlüssel bleiben, damit nichts verloren geht
              staleHint: "läuft der Export?" }
 }[KANAL];
 const LS_STATE    = "smbState_v1" + KANAL_INFO.suffix;
@@ -943,6 +943,8 @@ const COLMAP = {
   "ersteller weiterleitung": "WlErsteller", "ersteller_weiterleitung": "WlErsteller", "weitergeleitet von": "WlErsteller",
   "weiterleitung nr": "WlNr", "weiterleitung_nr": "WlNr", "weiterleitung nr.": "WlNr", "weiterleitungsnr": "WlNr", "lfd. nr": "WlNr",
   "gesamtanzahl weiterleitungen": "WlGesamt", "gesamtanzahl_weiterleitungen": "WlGesamt", "anzahl weiterleitungen": "WlGesamt", "weiterleitungen gesamt": "WlGesamt",
+  // v1.43: Historie als eine Textspalte je Call (aus SupportBoard-Abfrage-Weiterleitung.sql, vom Export über die Call-Nummer angehängt)
+  "weiterleitungen": "WlText", "weiterleitungs-historie": "WlText", "weiterleitungshistorie": "WlText", "weiterleitung historie": "WlText",
   "letzte_änderung": "Letzte_Änderung", "letzte_aenderung": "Letzte_Änderung",
   "wartend_bis": "Wartend_bis", "lösung_bis": "Lösung_bis", "loesung_bis": "Lösung_bis", "lt": "Lösung_bis",
   "terminänderungen": "Terminänderungen", "terminaenderungen": "Terminänderungen",
@@ -996,16 +998,7 @@ function normalizeRows(raw) {
       const key = COLMAP[String(k).trim().toLowerCase()];
       if (key) r[key] = v;
     }
-    for (const dc of DATECOLS) {
-      const v = r[dc];
-      if (v == null || v === "") { r[dc] = null; continue; }
-      if (v instanceof Date) continue;
-      if (typeof v === "number") { r[dc] = new Date(Math.round((v - 25569) * DAY)); }
-      else {
-        const m = String(v).match(/(\d{1,2})\.(\d{1,2})\.(\d{2,4})(?:\D+(\d{1,2}):(\d{2}))?/);
-        r[dc] = m ? new Date(+(m[3].length === 2 ? "20" + m[3] : m[3]), m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0)) : (isNaN(Date.parse(v)) ? null : new Date(v));
-      }
-    }
+    for (const dc of DATECOLS) r[dc] = datumAusWert(r[dc]);
     if (r.TageOhneInfo == null && r.LetzteInfo) r.TageOhneInfo = Math.max(0, daysSince(r.LetzteInfo) - 1);
     // Erste externe Reaktion: entweder als Zeitstempel geliefert oder aus „Externe Reaktion“ (Tage ab Eröffnung) berechnet
     const tg = (r.ExtReaktionTage == null || r.ExtReaktionTage === "") ? NaN : Number(String(r.ExtReaktionTage).replace(",", "."));
@@ -1015,6 +1008,7 @@ function normalizeRows(raw) {
     r.Score = Number.isFinite(sc) ? sc : null;
     r.TageOhneInfo = (r.TageOhneInfo == null || r.TageOhneInfo === "") ? null : Number(r.TageOhneInfo);
     for (const k of ["WlNr", "WlGesamt"]) { const n = (r[k] == null || r[k] === "") ? NaN : Number(r[k]); r[k] = Number.isFinite(n) ? n : null; }
+    if ("WlText" in r) { parseWlText(r); delete r.WlText; }
     r.Quelle = quelleOf(r.Gruppe);
     r.RegionRoh = String(r.Region ?? "").trim();
     r.Region = regionNorm(r.RegionRoh);
@@ -1022,18 +1016,45 @@ function normalizeRows(raw) {
   }).filter(r => r.Call != null || r.Titel);
   return buendleWeiterleitungen(out);
 }
-/* v1.42: Weiterleitungs-Historie. Der Export liefert je Weiterleitung eine Zeile (die Call-Spalten wiederholen sich,
+/* Datum aus einem Zellwert: Date, Excel-Zahl, „TT.MM.JJJJ hh:mm“ oder ISO-Text; sonst null */
+function datumAusWert(v) {
+  if (v == null || v === "") return null;
+  if (v instanceof Date) return v;
+  if (typeof v === "number") return new Date(Math.round((v - 25569) * DAY));
+  const m = String(v).match(/(\d{1,2})\.(\d{1,2})\.(\d{2,4})(?:\D+(\d{1,2}):(\d{2}))?/);
+  return m ? new Date(+(m[3].length === 2 ? "20" + m[3] : m[3]), m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0)) : (isNaN(Date.parse(v)) ? null : new Date(v));
+}
+/* v1.43: Weiterleitungs-Historie als Textspalte „Weiterleitungen“ (Abfrage SupportBoard-Abfrage-Weiterleitung.sql, vom Export
+   über die Call-Nummer angehängt – eine Zeile je Call bleibt). Je Weiterleitung ein Block
+   „Datum|vorherige Gruppe|vorheriger Bearbeiter|aktuelle Gruppe|aktueller Bearbeiter|Folgestatus|Ersteller“,
+   Blöcke mit „ # “ getrennt, in zeitlicher Reihenfolge. Leere Spalte = keine Weiterleitung. */
+function parseWlText(r) {
+  const wl = [];
+  for (const blk of String(r.WlText ?? "").split(/\s*#\s*/)) {
+    if (!blk.trim()) continue;
+    const f = blk.split("|").map(x => x.trim());
+    const d = datumAusWert(f[0]);
+    if (!(d instanceof Date) || isNaN(d)) continue;
+    wl.push({ nr: 0, d, von: f[1] ?? "", vonB: f[2] ?? "", nach: f[3] ?? "", nachB: f[4] ?? "", st: f[5] ?? "", er: f[6] ?? "" });
+  }
+  wl.sort((a, b) => a.d - b.d); wl.forEach((w, i) => { w.nr = i + 1; });
+  r.Wl = wl; r.WlAusText = true;
+  const l = wl[wl.length - 1];
+  r.WlGesamt = wl.length; r.WlNr = l?.nr ?? null; r.WlDatum = l?.d ?? null; r.WlVon = l?.von ?? ""; r.WlVonB = l?.vonB ?? ""; r.WlNach = l?.nach ?? ""; r.WlNachB = l?.nachB ?? ""; r.WlStatus = l?.st ?? ""; r.WlErsteller = l?.er ?? "";
+  r.WlLueckig = false;
+}
+/* v1.42: Weiterleitungs-Historie als Zeilen (wird weiter erkannt). Der Export liefert je Weiterleitung eine Zeile (die Call-Spalten wiederholen sich,
    „Weiterleitung Nr“ zählt hoch, „Gesamtanzahl Weiterleitungen“ steht in jeder Zeile). Hier wird daraus wieder ein
    Call je Zeile; die Historie hängt als r.Wl (nach Nummer sortiert) am Call, die Wl-Spalten des Calls zeigen die
    jüngste Weiterleitung. Ohne diese Spalten bleibt alles wie bisher. */
 function buendleWeiterleitungen(rows) {
-  if (!rows.some(r => r.WlDatum instanceof Date || r.WlNr != null)) return rows;
+  if (!rows.some(r => r.WlDatum instanceof Date || r.WlNr != null || r.WlAusText)) return rows;
   const by = new Map(), out = [];
   for (const r of rows) {
     const k = String(r.Call);
-    const w = r.WlDatum instanceof Date ? { nr: r.WlNr, d: r.WlDatum, von: String(r.WlVon ?? "").trim(), vonB: String(r.WlVonB ?? "").trim(), nach: String(r.WlNach ?? "").trim(), nachB: String(r.WlNachB ?? "").trim(), st: String(r.WlStatus ?? "").trim(), er: String(r.WlErsteller ?? "").trim() } : null;
+    const w = !r.WlAusText && r.WlDatum instanceof Date ? { nr: r.WlNr, d: r.WlDatum, von: String(r.WlVon ?? "").trim(), vonB: String(r.WlVonB ?? "").trim(), nach: String(r.WlNach ?? "").trim(), nachB: String(r.WlNachB ?? "").trim(), st: String(r.WlStatus ?? "").trim(), er: String(r.WlErsteller ?? "").trim() } : null;
     let e = by.get(k);
-    if (!e) { e = r; e.Wl = []; by.set(k, e); out.push(e); }
+    if (!e) { e = r; e.Wl = Array.isArray(r.Wl) ? r.Wl : []; by.set(k, e); out.push(e); }
     if (w && !(w.nr != null && e.Wl.some(x => x.nr === w.nr))) e.Wl.push(w);
     if ((r.WlGesamt ?? 0) > (e.WlGesamt ?? 0)) e.WlGesamt = r.WlGesamt;
   }
@@ -1280,7 +1301,7 @@ let sharedKanalFremd = false; // die Team-Datei gehört zum anderen Kanal (Produ
    werden – und umgekehrt. Dateien ohne Kennung (bis v1.26) gelten als Produktivdateien. */
 function kanalVon(remote) { return remote?.kanal || "prod"; }
 function kanalPasst(remote) { return !remote || typeof remote !== "object" || !Object.keys(remote).length || kanalVon(remote) === KANAL; }
-function kanalName(k) { return k === "prod" ? "Produktivversion" : "Testversion SQL"; }
+function kanalName(k) { return k === "prod" ? "Produktivversion" : "Testversion"; }
 function kanalFehlerText(name, remote) {
   return `„${name}“ ist die Team-Datei der ${kanalName(kanalVon(remote))}. Diese ${kanalName(KANAL)} verwendet sie nicht – bitte die Team-Datei der ${kanalName(KANAL)} wählen (${KANAL_INFO.teamDatei}). Es wurde nichts geschrieben.`;
 }
@@ -4285,7 +4306,7 @@ function wlStapel(g) {
   if (ruleList(state.rules?.wlDispatcher ?? DEFAULT_STATE.rules.wlDispatcher).includes(s)) return "D";
   return "";
 }
-function hatWeiterleitungen() { return hatSpalte("WlDatum") || hatSpalte("WlNach") || hatSpalte("Wl"); }
+function hatWeiterleitungen() { return hatSpalte("WlText") || hatSpalte("WlDatum") || hatSpalte("WlNach") || hatSpalte("Wl"); }
 function wlGruppenImStand() { return [...new Set(alleZeilen().flatMap(r => (r.Wl || []).flatMap(w => [w.von, w.nach])).filter(Boolean))].sort((a, b) => a.localeCompare(b, "de")); }
 function wlGz() { return !!uiPref.wlGz; }
 function wlDauer(a, b) { return wlGz() ? geschaeftszeit(a, b) : Math.max(0, b - a); }
@@ -4391,7 +4412,7 @@ function renderWl(view) {
   const stapelTxt = `Eingangsstapel: <b>${esc(WL_NAME.H)}</b> = ${esc(state.rules.wlHotline || "")} · <b>Dispatcher</b> = ${esc(state.rules.wlDispatcher || "")} (Verwaltung → Grundregeln). Alles andere zählt als Bearbeitung (2nd/3rd Level, Unterstützungsdienste …).`;
   if (!hatWeiterleitungen()) {
     view.innerHTML = `<div class="card"><h2>Weiterleitungen</h2><p class="sub">${stapelTxt}</p>
-      <p class="empty">Die Quelle liefert die Weiterleitungs-Historie noch nicht. Erwartet wird je Weiterleitung eine Zeile mit den Spalten <b>Datum Weiterleitung</b>, <b>vorherige Gruppe</b>, <b>vorheriger Bearbeiter</b>, <b>aktuelle Gruppe</b>, <b>aktueller Bearbeiter</b>, <b>Folgestatus</b>, <b>Ersteller Weiterleitung</b>, <b>Weiterleitung Nr</b> und <b>Gesamtanzahl Weiterleitungen</b>; die Call-Spalten wiederholen sich je Zeile. Sobald die Abfrage sie enthält, füllt sich diese Ansicht automatisch – die Auswertung ist bereits eingebaut.</p></div>`;
+      <p class="empty">Die Quelle liefert die Weiterleitungs-Historie noch nicht. Erwartet wird die Spalte <b>Weiterleitungen</b> (je Call ein Text, den der Export aus <b>SupportBoard-Abfrage-Weiterleitung.sql</b> anhängt: je Weiterleitung „Datum|vorherige Gruppe|vorheriger Bearbeiter|aktuelle Gruppe|aktueller Bearbeiter|Folgestatus|Ersteller“, Blöcke mit „#“ getrennt). Sobald die CSV sie enthält, füllt sich diese Ansicht automatisch – die Auswertung ist bereits eingebaut.</p></div>`;
     return;
   }
   const calls = wlCalls(), z = wlZeitraumGrenzen(), monate = wlMonate(), jahr = String(todayStart().getFullYear());
@@ -4826,7 +4847,7 @@ function renderAdmin(view) {
       <h2>${esc(KANAL_INFO.name)} – Parallelbetrieb</h2>
       <p class="sub">Diese Ausgabe des Boards läuft vollständig getrennt von der Produktivversion: eigener Browser-Speicher, eigene Dateiverknüpfungen,
       eigene Team-Datei (<b>${esc(KANAL_INFO.teamDatei)}</b>). Beim ersten Start wurden Personen, Vorlagen, Regeln, Haken und Kommentare einmalig aus der
-      Produktivversion übernommen – seitdem laufen beide Stände unabhängig. Dashboard-Quelle ist die CSV des SQL-Exports (<b>SupportBoard-Daten.csv</b> im Testordner).
+      Produktivversion übernommen – seitdem laufen beide Stände unabhängig. Dashboard-Quelle ist die CSV, die der Export auf dem Testserver schreibt (<b>SupportBoard-Daten.csv</b> im Ordner des Boards). Neue Stände werden zuerst hier erprobt und danach in die Produktivversion übernommen.
       Eine Team-Datei der Produktivversion nimmt diese Version nicht an – und umgekehrt.</p>
     </div>` : ""}
     <div class="card" style="grid-column:1/-1">

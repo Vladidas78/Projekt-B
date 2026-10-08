@@ -1,18 +1,17 @@
 # Automatischer Datenexport für das Supportmanagement-Board
 
 Ersetzt das manuelle Öffnen, Aktualisieren und Speichern der Excel-Liste.
-Drei Dateien, ein einmaliges Einrichten, danach läuft es von selbst.
 
-Für die Erprobung neben dem laufenden Betrieb (eigener Testordner, Testversion des Boards) siehe `docs/Anleitung_Parallelbetrieb_SQL-Test.md`.
+**Stand v1.43:** Der Export läuft ausschließlich auf dem Server (`SupportBoard-Export-Server.ps1`, Anleitung: `docs/Anleitung_Serverbetrieb.md`). Die frühere Arbeitsplatz-Fassung `SupportBoard-Export.ps1` ist abgeschafft; die Abschnitte unten zum Einrichten am Arbeitsplatz gelten nur noch als Hintergrund. Die Spaltenverträge der Abfragen (weiter unten) gelten unverändert.
 
 | Datei | Zweck |
 |---|---|
-| `SupportBoard-Export.ps1` | Das Skript. Hier oben die Einstellungen eintragen. |
-| `SupportBoard-Abfrage.sql` | Deine Abfrage. Änderungen wirken sofort beim nächsten Lauf. |
+| `SupportBoard-Export-Server.ps1` | Das Skript (Server-Fassung). Hier oben die Einstellungen eintragen. |
+| `SupportBoard-Abfrage.sql` | Hauptabfrage: eine Zeile je Call (offen + zwei Jahre geschlossen). Änderungen wirken sofort beim nächsten Lauf. |
 | `SupportBoard-Abfrage-Reaktion.sql` | Optional (ab v1.41): zweite Abfrage mit zwei Spalten `Call` und `Externe Reaktion`. Das Skript hängt den Wert über die Call-Nummer an – es bleibt **eine** CSV. Fehlt die Datei oder scheitert die Abfrage, wird die CSV trotzdem geschrieben (Spalte leer, WARNUNG im Log). |
+| `SupportBoard-Abfrage-Weiterleitung.sql` | Optional (ab v1.43): dritte Abfrage mit zwei Spalten `Call` und `Weiterleitungen` (Weiterleitungs-Historie als Text je Call). Gleicher Mechanismus wie die Reaktion. Vorlage im Repo, Tabellen- und Feldnamen sind Platzhalter. |
 | `SupportBoard-Export.log` | Entsteht automatisch, protokolliert jeden Lauf. |
-| `SupportBoard-Export-leise.vbs` | Optionaler Starter für die Aufgabenplanung, damit kein Fenster aufblitzt. |
-| `SupportBoard-Export-Server.ps1` | Server-Fassung: gleiche Abfrage, gleiche CSV, läuft rund um die Uhr unter einem Dienstkonto. Anleitung: `docs/Anleitung_Serverbetrieb.md`. |
+| `SupportBoard-Export-Server-leise.vbs` | Optionaler Starter für die Aufgabenplanung, damit kein Fenster aufblitzt. |
 
 ## Sicherheit: Es kann nichts kaputtgehen
 
@@ -102,22 +101,28 @@ Die Hauptabfrage liefert jetzt auch die **geschlossenen Calls der letzten zwei J
 | `Geschlossen` | Optional: Abschlussdatum. Fehlt die Spalte, gilt bei geschlossenen Calls die letzte Änderung als Abschluss. |
 | `Externe Reaktion` | Kommt aus der zweiten Datei `SupportBoard-Abfrage-Reaktion.sql` (Spalte 1 Call, Spalte 2 Wert; weitere Spalten werden ignoriert). Diese Abfrage legt die Grundgesamtheit der Reaktionszeit fest: Calls ohne Zeile werden nicht bewertet, Wert 0 heißt „noch keine Reaktion“. Deshalb ohne Filter auf `erste_ext_aktion_kalender > 0`, `e_bestaetigung_kalender > 0` und ohne Regionsfilter (die Region filtert das Board). |
 
-### Ab v1.42: Weiterleitungs-Historie
+### Ab v1.43: Weiterleitungs-Historie (dritte Abfrage)
 
-Für den Reiter „Weiterleitungen“ (Ping-Pong zwischen Hotline/1st Level und Dispatcher, Liegedauer je Monat, Verteilung der Dispatcher-Weiterleitungen) liefert die Hauptabfrage zusätzlich die Weiterleitungen je Call. Erwartet werden diese Spalten (`AS …`):
+Für den Reiter „Weiterleitungen“ (Ping-Pong zwischen Hotline/1st Level und Dispatcher, Liegedauer je Monat, Verteilung der Dispatcher-Weiterleitungen) liefert die Datei `SupportBoard-Abfrage-Weiterleitung.sql` die Historie je Call. Die Hauptabfrage bleibt unverändert, eine Zeile je Call. In der Hauptabfrage heißt die bisherige Spalte `Weiterleitung` jetzt `Letzte_Weiterleitung` (beide Namen werden erkannt).
+
+Die dritte Abfrage liefert **zwei Spalten**:
 
 | Spalte | Inhalt |
 |---|---|
-| `Letzte_Weiterleitung` | Bisher `Weiterleitung` – beide Namen werden erkannt. |
-| `Datum Weiterleitung` | Zeitpunkt der Weiterleitung (mit Uhrzeit). |
-| `vorherige Gruppe`, `vorheriger Bearbeiter` | Gruppe und Bearbeiter vor der Weiterleitung. |
-| `aktuelle Gruppe`, `aktueller Bearbeiter` | Gruppe und Bearbeiter nach der Weiterleitung. |
-| `Folgestatus` | Status nach der Weiterleitung (nur Anzeige). |
-| `Ersteller Weiterleitung` | Wer weitergeleitet hat (nur Anzeige). |
-| `Weiterleitung Nr` | Laufende Nummer je Call (1 = erste Weiterleitung). |
-| `Gesamtanzahl Weiterleitungen` | Anzahl aller Weiterleitungen des Calls, in jeder Zeile gleich. |
+| `Call` | Call-Nummer, Schlüssel für das Anhängen. |
+| `Weiterleitungen` | Ein Text je Call: je Weiterleitung ein Block `Datum\|vorherige Gruppe\|vorheriger Bearbeiter\|aktuelle Gruppe\|aktueller Bearbeiter\|Folgestatus\|Ersteller`, Blöcke mit ` # ` getrennt, älteste zuerst. Datum als `JJJJ-MM-TTThh:mm:ss`. Leeres Feld = kein Wert; `\|` und `#` dürfen in den Werten nicht vorkommen (die Vorlage ersetzt sie). |
 
-**Wichtig:** Die Abfrage liefert **je Weiterleitung eine Zeile**; die Call-Spalten wiederholen sich. Das Board bündelt die Zeilen je Call-Nummer wieder zu einem Call und hängt die Historie an. Ein Call ohne Weiterleitung kommt als eine Zeile mit leeren Weiterleitungs-Spalten. Liefert die Abfrage nur die letzte Weiterleitung je Call (`Weiterleitung Nr` kleiner als `Gesamtanzahl`), zeigt der Reiter einen Hinweis – Wege und Liegezeiten fehlen dann. Die Gruppennamen in `vorherige Gruppe`/`aktuelle Gruppe` müssen zu den Eingangsstapeln in der Verwaltung passen (Vorgabe: `Hotline; 1st_Level` und `Dispatcher`); die Verwaltung listet alle Gruppen, die in der Historie vorkommen.
+Beispiel für einen Call mit zwei Weiterleitungen:
+
+```
+2026-09-01T10:30:00|Hotline|HO1|Dispatcher||Neu|HO1 # 2026-09-02T10:05:00|Dispatcher|DP1|2nd_CAQ|CQ1|In Bearbeitung|DP1
+```
+
+Das Server-Skript führt die Abfrage in einer eigenen Verbindung aus und hängt den Text über die Call-Nummer als Spalte `Weiterleitungen` an jede Zeile der Hauptabfrage an, genau wie die externe Reaktion. Calls ohne Weiterleitung bekommen eine leere Spalte. Fehlt die Datei oder scheitert die Abfrage, bleibt die Spalte leer (WARNUNG im Log), die CSV kommt trotzdem. `-Preview` meldet „Weiterleitungsabfrage: Wert 'Weiterleitungen' fuer N von M Zeilen gefunden“.
+
+Die Vorlage im Repo nutzt `STRING_AGG` (SQL Server ab 2017) und enthält auskommentiert eine Fassung mit `FOR XML PATH` für ältere Server. Tabelle und Feldnamen der Weiterleitungs-Historie sind Platzhalter. Die Gruppennamen in den Blöcken müssen zu den Eingangsstapeln in der Verwaltung passen (Vorgabe: `Hotline; 1st_Level` und `Dispatcher`); die Verwaltung listet alle Gruppen, die in der Historie vorkommen.
+
+Alternativ erkennt das Board weiterhin die Form aus v1.42 (je Weiterleitung eine Zeile in der Haupt-CSV mit den Spalten `Datum Weiterleitung`, `vorherige Gruppe`, `vorheriger Bearbeiter`, `aktuelle Gruppe`, `aktueller Bearbeiter`, `Folgestatus`, `Ersteller Weiterleitung`, `Weiterleitung Nr`, `Gesamtanzahl Weiterleitungen`). Sie ist nicht empfohlen: Die Call-Spalten müssten in allen Zeilen eines Calls identisch sein, die Datei wird mehrfach so groß, und jeder Verbraucher muss je Call entdoppeln.
 
 Geschlossene Calls stehen in keiner Tagesliste und keiner Mail. Sie zählen in der Tagesstatistik (neu/geschlossen/wieder geöffnet), bei den Top 10 („in der Vorwoche Mo–So geschlossen“) und in der Reaktionszeit – dort auch Calls, die zwischen zwei Exporten aufgingen, beantwortet und geschlossen wurden.
 

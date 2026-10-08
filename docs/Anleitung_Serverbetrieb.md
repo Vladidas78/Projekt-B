@@ -10,11 +10,11 @@ Dafür gibt es eine eigene Server-Fassung des Skripts: `tools/SupportBoard-Expor
 
 | Datei | Ort | Wer schreibt | Wer liest |
 |---|---|---|---|
-| `SupportBoard-Export-Server.ps1`, `SupportBoard-Abfrage.sql`, `.pwd`, `.log` (Ersatz) | Server, z. B. `C:\Tools\SupportBoard\` | Administrator (einmalig) | Dienstkonto |
+| `SupportBoard-Export-Server.ps1`, `SupportBoard-Abfrage.sql`, optional `SupportBoard-Abfrage-Reaktion.sql` und `SupportBoard-Abfrage-Weiterleitung.sql`, `.pwd`, `.log` (Ersatz) | Server, z. B. `C:\Tools\SupportBoard\` | Administrator (einmalig) | Dienstkonto |
 | `SupportBoard-Daten.csv` | Teamshare, z. B. `\\Server\Freigabe\Supportmanagement\SQL-Test\` | Dienstkonto vom Server aus | jeder Arbeitsplatz (Board) |
 | `SupportBoard-Export.log` | Teamshare, gleicher Ordner | Dienstkonto | jeder, der nachsehen will |
 | `SupportBoard-Team-SQLTest.json` | Teamshare, gleicher Ordner | jeder Arbeitsplatz (Board) | jeder Arbeitsplatz (Board) |
-| `SupportBoard-SQLTest.html` | Teamshare, gleicher Ordner (später ggf. interner Webserver, siehe IT-Anleitung) | – | jeder Arbeitsplatz |
+| `SupportBoard_Test.html` | Teamshare, gleicher Ordner (später ggf. interner Webserver, siehe IT-Anleitung) | – | jeder Arbeitsplatz |
 
 Warum nicht auf dem Server?
 
@@ -164,6 +164,8 @@ Zurück auf die direkte Aktion geht es jederzeit mit `-Install`.
 ## Zweite Abfrage: externe Reaktion (ab v1.41)
 
 Die externe Reaktion kommt aus einer eigenen Datei `SupportBoard-Abfrage-Reaktion.sql` im Skriptordner (zwei Spalten: `Call`, `Externe Reaktion`). Das Skript führt sie in einer eigenen Verbindung aus (gleiche Absicherung: Prüfung, Rollback, keine Sperren) und hängt den Wert über die Call-Nummer an die Zeilen der Hauptabfrage an. Ergebnis bleibt eine CSV.
+
+Seit v1.43 gibt es auf dieselbe Weise eine dritte Datei `SupportBoard-Abfrage-Weiterleitung.sql` (zwei Spalten: `Call`, `Weiterleitungen`): die Weiterleitungs-Historie je Call als Text, Grundlage des Reiters „Weiterleitungen“. Spaltenvertrag und Vorlage: `tools/Anleitung_SQL-Export.md`. Fehlt die Datei, läuft der Export ohne sie.
 
 - Datei fehlt oder ist leer: nichts wird angehängt, kein Fehler.
 - Abfrage scheitert (Tabelle abgestellt, Timeout): CSV wird trotzdem geschrieben, Spalte bleibt leer, Log zeigt `WARNUNG Reaktionsabfrage uebersprungen`.

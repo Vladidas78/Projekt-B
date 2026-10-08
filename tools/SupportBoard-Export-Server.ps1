@@ -6,14 +6,16 @@
     Abfrage aus SupportBoard-Abfrage.sql aus und legt das Ergebnis als CSV
     im Team-Ordner ab. Das Board liest diese Datei wie gewohnt.
 
-    Zweite Abfrage (optional, seit v1.41): Liegt im Skriptordner eine Datei
-    SupportBoard-Abfrage-Reaktion.sql, wird sie zusaetzlich ausgefuehrt. Sie
-    liefert je Call den Wert der externen Reaktion (zwei Spalten: Call und
-    Wert). Das Skript haengt den Wert ueber die Call-Nummer an die Zeilen der
-    Hauptabfrage an - es entsteht weiterhin EINE CSV. Fehlt die Datei, ist sie
-    leer oder schlaegt die Abfrage fehl (z. B. weil die Tabelle auf der
-    Schattendatenbank gerade abgestellt ist), wird die CSV trotzdem
-    geschrieben; die Spalte bleibt dann leer und das Log zeigt eine WARNUNG.
+    Zusatzabfragen (optional): Liegen im Skriptordner die Dateien
+      SupportBoard-Abfrage-Reaktion.sql       (seit v1.41: Spalten Call, Externe Reaktion)
+      SupportBoard-Abfrage-Weiterleitung.sql  (seit v1.43: Spalten Call, Weiterleitungen)
+    werden sie zusaetzlich ausgefuehrt. Jede liefert je Call genau einen Wert
+    (zwei Spalten: Call und Wert). Das Skript haengt den Wert ueber die
+    Call-Nummer an die Zeilen der Hauptabfrage an - es entsteht weiterhin EINE
+    CSV mit einer Zeile je Call. Fehlt eine Datei, ist sie leer oder schlaegt
+    die Abfrage fehl (z. B. weil die Tabelle auf der Schattendatenbank gerade
+    abgestellt ist), wird die CSV trotzdem geschrieben; die Spalte bleibt dann
+    leer und das Log zeigt eine WARNUNG.
 
     Unterschiede zur Arbeitsplatz-Fassung (SupportBoard-Export.ps1):
       - Einrichtung per Schalter: -Install legt die Aufgabe an, -Uninstall
@@ -114,6 +116,7 @@ if ($null -eq $Dienstkonto)    { $Dienstkonto = '' }
 
 $AbfrageDatei  = Join-Path $Basis 'SupportBoard-Abfrage.sql'
 $AbfrageDateiReaktion = Join-Path $Basis 'SupportBoard-Abfrage-Reaktion.sql'   # optional: externe Reaktion je Call (2 Spalten: Call, Wert)
+$AbfrageDateiWeiterleitung = Join-Path $Basis 'SupportBoard-Abfrage-Weiterleitung.sql'   # optional (v1.43): Weiterleitungs-Historie je Call (2 Spalten: Call, Weiterleitungen)
 $PasswortDatei = Join-Path $Basis 'SupportBoard-Export.pwd'   # verschluesselt, an diesen Rechner gebunden
 $LogDatei      = Join-Path (Split-Path -Parent $Zielpfad) 'SupportBoard-Export.log'   # im Zielordner: vom Arbeitsplatz aus lesbar
 $LogDateiErsatz = if ($ZielpfadErsatz) { Join-Path (Split-Path -Parent $ZielpfadErsatz) 'SupportBoard-Export.log' } else { Join-Path $Basis 'SupportBoard-Export.log' }
@@ -352,12 +355,17 @@ if (-not (Test-Path $AbfrageDatei)) { throw "Abfragedatei nicht gefunden: $Abfra
 $Sql = Get-Content -Path $AbfrageDatei -Raw -Encoding UTF8
 Pruefe-NurLesen $Sql 'Abfrage'
 
-# Zweite Abfrage (optional): wird genauso geprueft; Fehler hier stoppen den Export NICHT
-$SqlReaktion = $null
-if (Test-Path $AbfrageDateiReaktion) {
-    $SqlReaktion = Get-Content -Path $AbfrageDateiReaktion -Raw -Encoding UTF8
-    if ([string]::IsNullOrWhiteSpace($SqlReaktion)) { $SqlReaktion = $null }
-    else { Pruefe-NurLesen $SqlReaktion 'Reaktionsabfrage' }
+# Zusatzabfragen (optional): werden genauso geprueft; Fehler beim Ausfuehren stoppen den Export NICHT.
+# Jede liefert zwei Spalten (Call, Wert); der Wert wird ueber die Call-Nummer an die Hauptabfrage angehaengt.
+$Zusatz = @()
+foreach ($z in @(
+        @{ Datei = $AbfrageDateiReaktion;      Name = 'Reaktionsabfrage';      Spalte = 'Externe Reaktion' },
+        @{ Datei = $AbfrageDateiWeiterleitung; Name = 'Weiterleitungsabfrage'; Spalte = 'Weiterleitungen' })) {
+    if (-not (Test-Path $z.Datei)) { continue }
+    $t = Get-Content -Path $z.Datei -Raw -Encoding UTF8
+    if ([string]::IsNullOrWhiteSpace($t)) { continue }
+    Pruefe-NurLesen $t $z.Name
+    $Zusatz += @{ Sql = $t; Name = $z.Name; Spalte = $z.Spalte; Werte = @{} }
 }
 
 # --- Verbindungszeichenfolge ------------------------------------------------
@@ -405,30 +413,28 @@ if (-not $Preview -and -not $Jetzt -and $NurWennAelterAlsMin -gt 0) {
     }
 }
 
-# --- Zweite Abfrage: externe Reaktion je Call (eigene Verbindung, eigene Transaktion, immer Rollback) ---
-# Liefert eine Hashtable Call -> Wert oder $null, wenn es keine zweite Abfrage gibt oder sie fehlschlaegt.
-$ReaktSpalte = 'Externe Reaktion'
-function Lade-Reaktion {
-    if (-not $SqlReaktion) { return $null }
+# --- Zusatzabfragen: je Call ein Wert (eigene Verbindung, eigene Transaktion, immer Rollback) ---
+# Liefert eine Hashtable Call -> Wert; bei einem Fehler eine leere Hashtable (Spalte bleibt leer, WARNUNG im Log).
+function Lade-Zusatz($z) {
     $c2 = $null; $t2 = $null
     try {
         $c2 = New-Object System.Data.SqlClient.SqlConnection $b.ConnectionString
         $c2.Open()
         $t2 = $c2.BeginTransaction([System.Data.IsolationLevel]::ReadUncommitted)
-        $k2 = $c2.CreateCommand(); $k2.Transaction = $t2; $k2.CommandText = $SqlReaktion; $k2.CommandTimeout = $TimeoutSek
+        $k2 = $c2.CreateCommand(); $k2.Transaction = $t2; $k2.CommandText = $z.Sql; $k2.CommandTimeout = $TimeoutSek
         $r2 = $k2.ExecuteReader()
-        if ($r2.FieldCount -lt 2) { $r2.Close(); throw 'Die Reaktionsabfrage muss zwei Spalten liefern: Call und den Reaktionswert.' }
-        $script:ReaktSpalte = $r2.GetName(1)
+        if ($r2.FieldCount -lt 2) { $r2.Close(); throw "Die $($z.Name) muss zwei Spalten liefern: Call und den Wert." }
+        $z.Spalte = $r2.GetName(1)
         $h = @{}
         while ($r2.Read()) {
             $k = [string]$r2.GetValue(0)
             if ($k) { $k = $k.Trim(); if (-not $h.ContainsKey($k)) { $h[$k] = $r2.GetValue(1) } }
         }
         $r2.Close()
-        Schreibe-Log "Reaktionsabfrage: $($h.Count) Calls mit Wert '$script:ReaktSpalte' - wird ueber die Call-Nummer angehaengt."
+        Schreibe-Log "$($z.Name): $($h.Count) Calls mit Wert '$($z.Spalte)' - wird ueber die Call-Nummer angehaengt."
         return $h
     } catch {
-        Schreibe-Log "Reaktionsabfrage uebersprungen: $($_.Exception.Message) Die Spalte '$script:ReaktSpalte' bleibt in dieser CSV leer." 'WARNUNG'
+        Schreibe-Log "$($z.Name) uebersprungen: $($_.Exception.Message) Die Spalte '$($z.Spalte)' bleibt in dieser CSV leer." 'WARNUNG'
         return @{}
     } finally {
         if ($t2) { try { $t2.Rollback() } catch { } }
@@ -441,7 +447,7 @@ $conn = $null; $tx = $null; $TempDatei = $null; $Zeilen = 0
 try {
     Schreibe-Log "Start - $env:COMPUTERNAME als $env:USERDOMAIN\$env:USERNAME - Server '$Server', Datenbank '$Datenbank'$(if($Preview){' (Testlauf)'})"
 
-    $Reakt = Lade-Reaktion
+    foreach ($z in $Zusatz) { $z.Werte = Lade-Zusatz $z }
 
     $conn = New-Object System.Data.SqlClient.SqlConnection $b.ConnectionString
     $conn.Open()
@@ -456,19 +462,32 @@ try {
     $reader = $cmd.ExecuteReader()
 
     $Spalten = @(0..($reader.FieldCount - 1) | ForEach-Object { $reader.GetName($_) })
-    # Verknuepfung: Spalte "Call" der Hauptabfrage; die Reaktionsspalte wird angehaengt, sofern die Hauptabfrage sie nicht selbst liefert
+    # Verknuepfung: Spalte "Call" der Hauptabfrage; jede Zusatzspalte wird angehaengt, sofern die Hauptabfrage sie nicht selbst liefert
     $CallIdx = -1
     for ($i = 0; $i -lt $Spalten.Count; $i++) { if ($Spalten[$i] -ieq 'Call') { $CallIdx = $i } }
-    $ReaktAnhaengen = ($null -ne $Reakt) -and ($CallIdx -ge 0) -and -not ($Spalten | Where-Object { $_ -ieq $ReaktSpalte })
-    if ($null -ne $Reakt -and $CallIdx -lt 0) { Schreibe-Log "Die Hauptabfrage hat keine Spalte 'Call' - die Reaktionswerte koennen nicht zugeordnet werden." 'WARNUNG' }
-    $SpaltenAus = if ($ReaktAnhaengen) { $Spalten + $ReaktSpalte } else { $Spalten }
+    $Anhang = @()
+    foreach ($z in $Zusatz) {
+        $sp = $z.Spalte
+        if ($CallIdx -lt 0) { Schreibe-Log "Die Hauptabfrage hat keine Spalte 'Call' - die Werte der $($z.Name) koennen nicht zugeordnet werden." 'WARNUNG'; continue }
+        if ($Spalten | Where-Object { $_ -ieq $sp }) { Schreibe-Log "Die Hauptabfrage liefert die Spalte '$sp' selbst - die $($z.Name) wird nicht angehaengt."; continue }
+        $Anhang += $z
+    }
+    $SpaltenAus = @($Spalten)
+    foreach ($z in $Anhang) { $SpaltenAus += $z.Spalte }
 
     if ($Preview) {
-        $Treffer = 0
-        while ($reader.Read()) { $Zeilen++; if ($ReaktAnhaengen -and $Reakt.ContainsKey(([string]$reader.GetValue($CallIdx)).Trim())) { $Treffer++ } }
+        $Treffer = @{}
+        foreach ($z in $Anhang) { $Treffer[$z.Spalte] = 0 }
+        while ($reader.Read()) {
+            $Zeilen++
+            if ($Anhang.Count -gt 0) {
+                $k = ([string]$reader.GetValue($CallIdx)).Trim()
+                foreach ($z in $Anhang) { if ($z.Werte.ContainsKey($k)) { $Treffer[$z.Spalte]++ } }
+            }
+        }
         $reader.Close()
         Schreibe-Log "Testlauf erfolgreich: $Zeilen Zeilen, $($SpaltenAus.Count) Spalten. Es wurde keine Datei geschrieben."
-        if ($ReaktAnhaengen) { Schreibe-Log "Reaktionswert fuer $Treffer von $Zeilen Zeilen gefunden." }
+        foreach ($z in $Anhang) { Schreibe-Log "$($z.Name): Wert '$($z.Spalte)' fuer $($Treffer[$z.Spalte]) von $Zeilen Zeilen gefunden." }
         Write-Host ''
         Write-Host 'Spalten:' -ForegroundColor Cyan
         $SpaltenAus | ForEach-Object { Write-Host "  - $_" }
@@ -486,9 +505,13 @@ try {
                 for ($i = 0; $i -lt $reader.FieldCount; $i++) {
                     $felder[$i] = Format-CsvFeld (Format-Wert $reader.GetValue($i))
                 }
-                if ($ReaktAnhaengen) {
+                if ($Anhang.Count -gt 0) {
                     $k = ([string]$reader.GetValue($CallIdx)).Trim()
-                    $felder[$reader.FieldCount] = if ($Reakt.ContainsKey($k)) { Format-CsvFeld (Format-Wert $Reakt[$k]) } else { '' }
+                    $j = $reader.FieldCount
+                    foreach ($z in $Anhang) {
+                        $felder[$j] = if ($z.Werte.ContainsKey($k)) { Format-CsvFeld (Format-Wert $z.Werte[$k]) } else { '' }
+                        $j++
+                    }
                 }
                 $sw.WriteLine(($felder -join ';'))
                 $Zeilen++

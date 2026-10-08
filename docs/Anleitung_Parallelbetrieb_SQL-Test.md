@@ -1,5 +1,7 @@
 # Parallelbetrieb: Testversion mit SQL-Export
 
+> **Stand v1.43:** Die Testversion heißt `SupportBoard_Test.html` (Beschriftung „Testversion“, Badge „TEST“). Der Export läuft nur noch auf dem Server (`docs/Anleitung_Serverbetrieb.md`); die Schritte zum lokalen Skript `SupportBoard-Export.ps1` unten sind überholt und bleiben nur als Hintergrund stehen. Unverändert gilt: eigener Browser-Speicher, eigene Team-Datei `SupportBoard-Team-SQLTest.json`, Kanal-Trennung. Neue Stände werden immer zuerst in der Testversion erprobt.
+
 Ziel: Die neue Datenversorgung (SQL-Abfrage per Skript statt Excel-Routine) **neben** dem laufenden Betrieb testen – ohne die Produktivversion, ihre Excel-Quelle oder ihre Team-Datei anzufassen.
 
 ## Aufbau
@@ -9,16 +11,16 @@ Zwei Orte, klar getrennt:
 | Ort | Inhalt |
 |---|---|
 | **Lokal auf dem PC**, z. B. `C:\Tools\SupportBoard\` | `SupportBoard-Export.ps1`, `SupportBoard-Abfrage.sql`, danach automatisch `.pwd` (Passwort, verschlüsselt) und `.log` |
-| **Testordner auf dem Share**, z. B. `\\Server\Freigabe\Supportmanagement\SQL-Test\` | `SupportBoard-SQLTest.html` (das Test-Board), `SupportBoard-Daten.csv` (schreibt das Skript), `SupportBoard-Team-SQLTest.json` (entsteht beim ersten Verbinden) |
+| **Testordner auf dem Share**, z. B. `\\Server\Freigabe\Supportmanagement\SQL-Test\` | `SupportBoard_Test.html` (das Test-Board), `SupportBoard-Daten.csv` (schreibt das Skript), `SupportBoard-Team-SQLTest.json` (entsteht beim ersten Verbinden) |
 
 Der bisherige Produktivordner mit `SupportBoard.html`, `SupportBoard-Team.json` und der Excel-Liste bleibt unverändert. Die Kollegen arbeiten dort weiter wie bisher.
 
 ## Was die Testversion anders macht
 
-Die Datei `SupportBoard-SQLTest.html` ist dasselbe Board wie die Produktivversion, aber als eigener **Kanal** gebaut:
+Die Datei `SupportBoard_Test.html` ist dasselbe Board wie die Produktivversion, aber als eigener **Kanal** gebaut:
 
 - **Eigener Browser-Speicher.** Haken, Kommentare, Einstellungen, Daten-Cache und die gemerkten Dateiverknüpfungen liegen unter eigenen Schlüsseln. Beide Boards können im selben Browser gleichzeitig offen sein und kommen sich nicht in die Quere.
-- **Sichtbar markiert.** Gelbes Feld „TEST · SQL-Daten“ oben in der Seitenleiste, Fenstertitel „Testversion SQL“, Versionszeile „v1.27 · Testversion SQL“. Eine Verwechslung fällt sofort auf.
+- **Sichtbar markiert.** Gelbes Feld „TEST“ oben in der Seitenleiste, Fenstertitel „Testversion“, Versionszeile „v1.27 · Testversion SQL“. Eine Verwechslung fällt sofort auf.
 - **Einmalige Übernahme beim ersten Start.** Öffnet man die Testversion im selben Browser, in dem die Produktivversion läuft, übernimmt sie beim allerersten Start Personen, Vorlagen, Regeln, Haken, Kommentare und das angemeldete Kürzel. Danach laufen beide Stände getrennt weiter. Der Daten-Cache und die Dateiverknüpfungen werden **nicht** übernommen – die Testversion bekommt ihre eigene Quelle.
 - **Eigene Team-Datei mit Kennung.** Die Testversion schlägt `SupportBoard-Team-SQLTest.json` vor und schreibt eine Kanal-Kennung hinein. Eine Team-Datei der Produktivversion nimmt sie nicht an: Wird versehentlich `SupportBoard-Team.json` gewählt, meldet sie das, merkt sich die Datei nicht und schreibt nichts. Umgekehrt lehnt die Produktivversion (ab v1.27) die Test-Team-Datei ab.
 - **Auf den Export abgestimmt.** Prüfintervall der Dashboard-Datei standardmäßig alle 5 Minuten; bleibt die CSV länger als die eingestellte Schwelle unverändert, lautet der Hinweis „läuft der Export?“ statt der Excel-Frage.
@@ -26,7 +28,7 @@ Die Datei `SupportBoard-SQLTest.html` ist dasselbe Board wie die Produktivversio
 ## Schritt für Schritt (lokal, nur Tool-Verantwortlicher)
 
 **1. Ordner anlegen und Dateien ablegen**
-`C:\Tools\SupportBoard\` mit Skript und Abfrage; Testordner auf dem Share mit `SupportBoard-SQLTest.html`.
+`C:\Tools\SupportBoard\` mit Skript und Abfrage; Testordner auf dem Share mit `SupportBoard_Test.html`.
 
 **2. Skript-Einstellungen eintragen** (`SupportBoard-Export.ps1`, Block `EINSTELLUNGEN`)
 
@@ -65,7 +67,7 @@ Danach liegt `SupportBoard-Daten.csv` im Testordner. Kurz im Editor öffnen: Kop
 **6. Aufgabenplanung** (alle 15 Minuten, nur solange angemeldet, auch im Akkubetrieb) mit dem PowerShell-Block aus `tools/Anleitung_SQL-Export.md`, Schritt 6. Danach mit `schtasks /Run` einmal von Hand auslösen und im Log nachsehen.
 
 **7. Test-Board einrichten**
-`SupportBoard-SQLTest.html` aus dem Testordner per Doppelklick öffnen – im **selben Browser** wie die Produktivversion, dann ist der Stand sofort übernommen (Hinweis unten erscheint kurz).
+`SupportBoard_Test.html` aus dem Testordner per Doppelklick öffnen – im **selben Browser** wie die Produktivversion, dann ist der Stand sofort übernommen (Hinweis unten erscheint kurz).
 - Verwaltung → **„Dashboard überwachen …“** → `SupportBoard-Daten.csv` im Testordner wählen.
 - Verwaltung → **„Team-Speicher …“** → **„Neue Team-Datei erstellen“** → `SupportBoard-Team-SQLTest.json` im Testordner speichern. Das macht nur der Tool-Verantwortliche einmal; Kollegen wählen später „Vorhandene Team-Datei auswählen“.
 - Unten links beide Punkte grün, oben das gelbe Test-Feld: fertig.
