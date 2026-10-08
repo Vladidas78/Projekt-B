@@ -9,7 +9,7 @@ Ersetzt das manuelle Öffnen, Aktualisieren und Speichern der Excel-Liste.
 | `SupportBoard-Export-Server.ps1` | Das Skript (Server-Fassung). Hier oben die Einstellungen eintragen. |
 | `SupportBoard-Abfrage.sql` | Hauptabfrage: eine Zeile je Call (offen + zwei Jahre geschlossen). Änderungen wirken sofort beim nächsten Lauf. |
 | `SupportBoard-Abfrage-Reaktion.sql` | Optional (ab v1.41): zweite Abfrage mit zwei Spalten `Call` und `Externe Reaktion`. Das Skript hängt den Wert über die Call-Nummer an – es bleibt **eine** CSV. Fehlt die Datei oder scheitert die Abfrage, wird die CSV trotzdem geschrieben (Spalte leer, WARNUNG im Log). |
-| `SupportBoard-Abfrage-Weiterleitung.sql` | Optional (ab v1.43): dritte Abfrage mit zwei Spalten `Call` und `Weiterleitungen` (Weiterleitungs-Historie als Text je Call). Gleicher Mechanismus wie die Reaktion. Vorlage im Repo, Tabellen- und Feldnamen sind Platzhalter. |
+| `SupportBoard-Abfrage-Weiterleitung.sql` | Optional (ab v1.43): dritte Abfrage für die Weiterleitungs-Historie. Entweder in der Rohform (je Weiterleitung eine Zeile: Call, Datum, vorherige Gruppe, vorheriger Bearbeiter, aktuelle Gruppe, aktueller Bearbeiter, Folgestatus, Ersteller; das Skript bündelt je Call, ab v1.45) oder schon gebündelt als zwei Spalten `Call` und `Weiterleitungen`. Die Datei im Repo ist die Abfrage des Teams (Rohform). |
 | `SupportBoard-Export.log` | Entsteht automatisch, protokolliert jeden Lauf. |
 | `SupportBoard-Export-Server-leise.vbs` | Optionaler Starter für die Aufgabenplanung, damit kein Fenster aufblitzt. |
 
@@ -105,7 +105,11 @@ Die Hauptabfrage liefert jetzt auch die **geschlossenen Calls der letzten zwei J
 
 Für den Reiter „Weiterleitungen“ (Ping-Pong zwischen Hotline/1st Level und Dispatcher, Liegedauer je Monat, Verteilung der Dispatcher-Weiterleitungen) liefert die Datei `SupportBoard-Abfrage-Weiterleitung.sql` die Historie je Call. Die Hauptabfrage bleibt unverändert, eine Zeile je Call. In der Hauptabfrage heißt die bisherige Spalte `Weiterleitung` jetzt `Letzte_Weiterleitung` (beide Namen werden erkannt).
 
-Die dritte Abfrage liefert **zwei Spalten**:
+Die dritte Abfrage liefert entweder die **Rohform** (Stand des Teams, Datei im Repo) oder **zwei Spalten**.
+
+**Rohform** (ab v1.45 vom Skript gebündelt): je Weiterleitung eine Zeile mit genau dieser Spaltenreihenfolge: `Call`, `Datum`, `vorherige Gruppe`, `vorheriger Bearbeiter`, `aktuelle Gruppe`, `aktueller Bearbeiter`, `Folgestatus`, `Ersteller`. Die Spaltennamen sind frei, die Reihenfolge nicht: Spalte 1 ist der Schlüssel, Spalte 2 das Datum (nach ihm wird sortiert), die übrigen Spalten werden in dieser Reihenfolge mit `|` zusammengesetzt. Das Skript ersetzt `|` und `#` in den Werten, sortiert je Call nach Datum und schreibt den Text in die Spalte `Weiterleitungen`. Im Log steht „Rohform mit 8 Spalten, N Zeilen zu M Calls gebuendelt“.
+
+**Gebündelte Form** (zwei Spalten, zum Beispiel per `STRING_AGG`, Fassung als Kommentar in der Datei):
 
 | Spalte | Inhalt |
 |---|---|

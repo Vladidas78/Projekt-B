@@ -12,7 +12,11 @@
     werden sie zusaetzlich ausgefuehrt. Jede liefert je Call genau einen Wert
     (zwei Spalten: Call und Wert). Das Skript haengt den Wert ueber die
     Call-Nummer an die Zeilen der Hauptabfrage an - es entsteht weiterhin EINE
-    CSV mit einer Zeile je Call. Fehlt eine Datei, ist sie leer oder schlaegt
+    CSV mit einer Zeile je Call. Liefert eine Zusatzabfrage mehr als zwei
+    Spalten (Rohform der Weiterleitungen: je Weiterleitung eine Zeile mit Call,
+    Datum, vorherige Gruppe, vorheriger Bearbeiter, aktuelle Gruppe, aktueller
+    Bearbeiter, Folgestatus, Ersteller), buendelt das Skript die Zeilen je Call
+    selbst zu einem Text (Felder mit |, Weiterleitungen mit " # ", nach Datum). Fehlt eine Datei, ist sie leer oder schlaegt
     die Abfrage fehl (z. B. weil die Tabelle auf der Schattendatenbank gerade
     abgestellt ist), wird die CSV trotzdem geschrieben; die Spalte bleibt dann
     leer und das Log zeigt eine WARNUNG.
@@ -423,15 +427,43 @@ function Lade-Zusatz($z) {
         $t2 = $c2.BeginTransaction([System.Data.IsolationLevel]::ReadUncommitted)
         $k2 = $c2.CreateCommand(); $k2.Transaction = $t2; $k2.CommandText = $z.Sql; $k2.CommandTimeout = $TimeoutSek
         $r2 = $k2.ExecuteReader()
-        if ($r2.FieldCount -lt 2) { $r2.Close(); throw "Die $($z.Name) muss zwei Spalten liefern: Call und den Wert." }
-        $z.Spalte = $r2.GetName(1)
+        $fc = $r2.FieldCount
+        if ($fc -lt 2) { $r2.Close(); throw "Die $($z.Name) muss mindestens zwei Spalten liefern: Call und den Wert." }
         $h = @{}
-        while ($r2.Read()) {
-            $k = [string]$r2.GetValue(0)
-            if ($k) { $k = $k.Trim(); if (-not $h.ContainsKey($k)) { $h[$k] = $r2.GetValue(1) } }
+        if ($fc -eq 2) {
+            # Ein Wert je Call: die zweite Spalte wird so uebernommen, wie sie ist (Spaltenname aus der Abfrage)
+            $z.Spalte = $r2.GetName(1)
+            while ($r2.Read()) {
+                $k = [string]$r2.GetValue(0)
+                if ($k) { $k = $k.Trim(); if (-not $h.ContainsKey($k)) { $h[$k] = $r2.GetValue(1) } }
+            }
+            $r2.Close()
+            Schreibe-Log "$($z.Name): $($h.Count) Calls mit Wert '$($z.Spalte)' - wird ueber die Call-Nummer angehaengt."
+        } else {
+            # Rohform (v1.45): je Weiterleitung eine Zeile - Spalte 1 Call, Spalte 2 Datum, danach die weiteren Felder.
+            # Wird hier je Call zu EINEM Text gebuendelt: Felder mit |, Weiterleitungen mit " # ", sortiert nach Datum.
+            # Ergebnis ist dasselbe wie bei einer Buendelung per STRING_AGG in der Abfrage.
+            $roh = @{}; $n = 0
+            while ($r2.Read()) {
+                $k = [string]$r2.GetValue(0)
+                if (-not $k) { continue }
+                $k = $k.Trim()
+                $teile = New-Object System.Collections.Generic.List[string]
+                for ($i = 1; $i -lt $fc; $i++) {
+                    $teile.Add(((Format-Wert $r2.GetValue($i)) -replace '\|', '/' -replace '#', ' '))
+                }
+                $d = $r2.GetValue(1)
+                $t = if ($d -is [datetime]) { $d } else { [datetime]::MinValue }
+                if (-not $roh.ContainsKey($k)) { $roh[$k] = New-Object System.Collections.Generic.List[object] }
+                $roh[$k].Add(@{ t = $t; s = ($teile -join '|') })
+                $n++
+            }
+            $r2.Close()
+            foreach ($k in @($roh.Keys)) {
+                $h[$k] = @($roh[$k] | Sort-Object -Property @{ Expression = { $_.t } } | ForEach-Object { $_.s }) -join ' # '
+            }
+            Schreibe-Log "$($z.Name): Rohform mit $fc Spalten, $n Zeilen zu $($h.Count) Calls gebuendelt - Spalte '$($z.Spalte)' wird ueber die Call-Nummer angehaengt."
         }
-        $r2.Close()
-        Schreibe-Log "$($z.Name): $($h.Count) Calls mit Wert '$($z.Spalte)' - wird ueber die Call-Nummer angehaengt."
         return $h
     } catch {
         Schreibe-Log "$($z.Name) uebersprungen: $($_.Exception.Message) Die Spalte '$($z.Spalte)' bleibt in dieser CSV leer." 'WARNUNG'

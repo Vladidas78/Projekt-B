@@ -165,7 +165,7 @@ Zurück auf die direkte Aktion geht es jederzeit mit `-Install`.
 
 Die externe Reaktion kommt aus einer eigenen Datei `SupportBoard-Abfrage-Reaktion.sql` im Skriptordner (zwei Spalten: `Call`, `Externe Reaktion`). Das Skript führt sie in einer eigenen Verbindung aus (gleiche Absicherung: Prüfung, Rollback, keine Sperren) und hängt den Wert über die Call-Nummer an die Zeilen der Hauptabfrage an. Ergebnis bleibt eine CSV.
 
-Seit v1.43 gibt es auf dieselbe Weise eine dritte Datei `SupportBoard-Abfrage-Weiterleitung.sql` (zwei Spalten: `Call`, `Weiterleitungen`): die Weiterleitungs-Historie je Call als Text, Grundlage des Reiters „Weiterleitungen“. Spaltenvertrag und Vorlage: `tools/Anleitung_SQL-Export.md`. Fehlt die Datei, läuft der Export ohne sie.
+Seit v1.43 gibt es auf dieselbe Weise eine dritte Datei `SupportBoard-Abfrage-Weiterleitung.sql`: die Weiterleitungs-Historie, Grundlage des Reiters „Weiterleitungen“. Sie darf je Weiterleitung eine Zeile liefern (Call, Datum, vorherige Gruppe, vorheriger Bearbeiter, aktuelle Gruppe, aktueller Bearbeiter, Folgestatus, Ersteller); das Skript bündelt die Zeilen je Call zur Spalte `Weiterleitungen` (ab v1.45). Alternativ liefert sie die zwei Spalten `Call` und `Weiterleitungen` schon gebündelt. Spaltenvertrag und Vorlage: `tools/Anleitung_SQL-Export.md`. Fehlt die Datei, läuft der Export ohne sie.
 
 - Datei fehlt oder ist leer: nichts wird angehängt, kein Fehler.
 - Abfrage scheitert (Tabelle abgestellt, Timeout): CSV wird trotzdem geschrieben, Spalte bleibt leer, Log zeigt `WARNUNG Reaktionsabfrage uebersprungen`.

@@ -17,7 +17,7 @@ SELECT
     o.zugeordneter_supman                               AS SupMan,
     o.status                                            AS Status,
     o.dauer                                             AS Dauer,
-    o.letzte_Weiterleitung                              AS Weiterleitung,
+    o.letzte_Weiterleitung                              AS Letzte_Weiterleitung,
     o.letzte_aenderung                                  AS [Letzte_Änderung],
     o.WAKI_bis                                          AS Wartend_bis,
     o.loesung_bis                                       AS [Lösung_bis],
@@ -122,7 +122,7 @@ SELECT
     NULL                                                AS SupMan,               -- gibt es in closed_calls nicht
     cc.status                                           AS Status,
     cc.dauer                                            AS Dauer,
-    NULL                                                AS Weiterleitung,        -- gibt es in closed_calls nicht
+    NULL                                                AS Letzte_Weiterleitung,        -- gibt es in closed_calls nicht
     cc.letzte_aenderung                                 AS [Letzte_Änderung],
     cc.WAKI_bis                                         AS Wartend_bis,
     cc.loesung_bis                                      AS [Lösung_bis],

@@ -7,7 +7,7 @@ Im Quellcode, in der Doku und im Chat stehen **keine** realen Personennamen, Anm
 Der Nutzer ist Supportmanager bei MPDV und entwickelt das „Supportmanagement Board“ iterativ weiter: eine Single-File-HTML-Anwendung (kein Server, kein Framework, SheetJS eingebettet) für Dispatcher und Supportmanager. Datenquelle ist eine CSV, die ein PowerShell-Export per lesender SQL-Abfrage aus der Omnitracker-Schattendatenbank schreibt; der Export läuft auf einem Testserver in der Aufgabenplanung (alle 10 Minuten, Konto SYSTEM). Haken, Kommentare und Stammdaten liegen in einer Team-JSON auf dem Teamshare.
 
 ## Aktueller Stand
-Version **v1.44**, alles committet und gepusht auf Branch `claude/trusting-franklin-1ecqoi` im Repo `vladidas78/projekt-b` (enthält den Stand von `claude/clever-ritchie-jfsm8k`). Artefakt (immer mit `url` republishen, nie neu anlegen): `https://claude.ai/code/artifact/025f646d-502f-42c3-9629-b7d9ecbe2a3a`.
+Version **v1.45**, alles committet und gepusht auf Branch `claude/trusting-franklin-1ecqoi` im Repo `vladidas78/projekt-b` (enthält den Stand von `claude/clever-ritchie-jfsm8k`). Artefakt (immer mit `url` republishen, nie neu anlegen): `https://claude.ai/code/artifact/025f646d-502f-42c3-9629-b7d9ecbe2a3a`.
 
 Quelle ist `board.html`; `python3 build.py` erzeugt daraus **genau zwei** Ausgaben, `SupportBoard.html` (prod) und `SupportBoard_Test.html` (Kanal sqltest, Beschriftung „Testversion“), dazu `board-artifact.html` (Artefakt, in .gitignore). Regel des Nutzers (2026-10-08): Die Testversion wird immer zuerst erprobt, die Produktivversion zieht nach. Feste Dateinamen, nie abweichen: `SupportBoard-Abfrage.sql`, `SupportBoard-Abfrage-Reaktion.sql`, `SupportBoard-Abfrage-Weiterleitung.sql`, `SupportBoard-Export-Server.ps1`, `SupportBoard.html`, `SupportBoard_Test.html`. Der lokale Export (`SupportBoard-Export.ps1`) ist abgeschafft. SheetJS liegt in `package/dist/xlsx.full.min.js`.
 
@@ -22,6 +22,9 @@ v1.41 enthält:
 - Mails auf einen Knopf (Text kopieren + `mailto:` mit An, CC, Betreff) plus `.eml`-Entwurf mit `X-Unsent: 1`; Einzelschritte eingeklappt.
 - Reiter „Auslastung“ sichtbar für Kürzel aus `rules.auslastungFuer` (Vorgabe `SM1`). **Einmalig nötig:** Der Tool-Verantwortliche trägt sein echtes Kürzel in Verwaltung → Grundregeln → „Auslastung sichtbar für“ ein, sonst fehlt ihm der Reiter.
 - Vorgabewerte der Reaktionszeit (`SLA_VORGABEN`) tragen keine SupMan-Kürzel mehr; die Spalte SupMan bleibt bei diesen Wochen leer.
+
+v1.45 enthält:
+- SQL des Teams im Repo: Hauptabfrage mit `Letzte_Weiterleitung`; `SupportBoard-Abfrage-Weiterleitung.sql` = Rohform aus `forwardings` (acht Spalten, WHERE ohne USA/Asien-Hotlines, zweiter Ausschluss auf `predecessor_grp` korrigiert). Server-Skript `Lade-Zusatz` bündelt Zusatzabfragen mit > 2 Spalten je Call (Spalte 2 = Datum, Sortierung) zur Spalte `Weiterleitungen`; STRING_AGG-Fassung bleibt als Kommentar in der SQL. **Offen:** `-Preview` auf dem Server muss „Rohform mit 8 Spalten … gebuendelt“ zeigen; danach Reiter „Weiterleitungen“ und Gruppennamen in Verwaltung → Grundregeln prüfen (Gruppe des Dispatchers heißt in der Historie evtl. anders als „Dispatcher“).
 
 v1.44 enthält:
 - Rückläufer aus der Bearbeitung im Reiter „Weiterleitungen“ (`wlAbgaben`, `wlRueckStat`, Karte `#wlRueck`, fünfte Kennzahl, `wlAlleRl`): Abgabe Dispatcher/Hotline → Bearbeitungsgruppe nach Abgabedatum im Zeitraum, Ergebnis zurück/weiter/offen, Quote über beendete Abgaben, Ø Zeit bis Rückgabe, Call-Liste jüngste zuerst, Kopiertabellen. Demo: 14 % der Wege mit Schleife Dispatcher → 2nd/3rd → Dispatcher.
@@ -66,7 +69,7 @@ Claude-Session: <URL der aktuellen Session>
 ```
 
 ## Offene Punkte / nächste Schritte
-0. Wenn der Nutzer die fertige `SupportBoard-Abfrage-Weiterleitung.sql` durchgibt: gegen den Spaltenvertrag prüfen (zwei Spalten `Call`, `Weiterleitungen`, Blockformat, nur lesend, beginnt mit SELECT/WITH) und unter genau diesem Namen zurückliefern; nach dem ersten Export Reiter „Weiterleitungen“ und Verwaltung → Grundregeln (Gruppen der Eingangsstapel) prüfen.
+0. Erster Serverlauf mit v1.45: `-Preview` prüfen („Weiterleitungsabfrage: Rohform mit 8 Spalten … gebuendelt“, „Wert 'Weiterleitungen' fuer N von M Zeilen gefunden“); nach dem ersten Export Reiter „Weiterleitungen“ und Verwaltung → Grundregeln (Gruppen der Eingangsstapel) prüfen.
 1. Abweichung der Reaktionszeiten zur Excel-Liste klären (Beispiel-Call nachrechnen, Kalender- vs. Geschäftszeit, Feld in Geschäftszeit in `call_statistics`?). Danach entscheiden, ob die rote Frist 30 Minuten bleibt oder 1 h wird.
 2. Regionsrohwerte prüfen (Verwaltung → Grundregeln → „Region: Werte der Abfrage“): gelbe Werte zuordnen oder fest in `regionNorm()` aufnehmen.
 3. Tool-Verantwortlicher trägt sein Kürzel bei „Auslastung sichtbar für“ ein.
@@ -78,4 +81,4 @@ Claude-Session: <URL der aktuellen Session>
 Deutsch, direkt, kurze Rückfragen nur wenn nötig. Selbstständig umsetzen, testen (Playwright), alle drei HTML-Dateien als Datei liefern (SendUserFile), Artefakt republishen, Ursachen erklären, Grenzen ehrlich benennen („ehrlich gesagt“ wird geschätzt). Bei Server-/PowerShell-Themen: fertige Befehlsfolgen in Reihenfolge, Platzhalter klar markiert, Fehlermeldungen wörtlich deuten; der Nutzer hat Zugriff auf den Server (Ordner und PowerShell als Administrator). Bei Skriptänderungen: sagen, welche Zeilen anzupassen sind, statt reflexartig neue Dateien zu schicken; die Einstellungen stehen oben im Block EINSTELLUNGEN. Bei Fragen nach Optionen: Optionen mit Empfehlung, dann auf Freigabe warten. Keine Rückfragen-Schleifen.
 
 ## Erste Aktion im neuen Chat
-Repo-Stand prüfen (`git log --oneline | head -3` auf Branch `claude/trusting-franklin-1ecqoi`), Datenschutz-Regel oben beachten, dann die nächste Anforderung des Nutzers als v1.45 umsetzen (Version in `board.html` bumpen, drei Ausgaben bauen, Status-Doku fortschreiben, Dateien liefern, Artefakt republishen).
+Repo-Stand prüfen (`git log --oneline | head -3` auf Branch `claude/trusting-franklin-1ecqoi`), Datenschutz-Regel oben beachten, dann die nächste Anforderung des Nutzers als v1.46 umsetzen (Version in `board.html` bumpen, drei Ausgaben bauen, Status-Doku fortschreiben, Dateien liefern, Artefakt republishen).
