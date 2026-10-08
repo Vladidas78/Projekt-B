@@ -419,10 +419,11 @@ if (-not $Preview -and -not $Jetzt -and $NurWennAelterAlsMin -gt 0) {
 }
 
 # --- Datei ersetzen (seit 2026-10-08) -----------------------------------------
-# Move-Item -Force scheitert auf dem Server an einer vorhandenen Datei ("Eine Datei kann
-# nicht erstellt werden, wenn sie bereits vorhanden ist"). Deshalb: File.Replace (ersetzt
-# in einem Zug), bei Fehler bis zu 5 Versuche im Abstand von 2 Sekunden (falls ein Leser die
-# alte Datei kurz offen haelt), zuletzt Kopieren mit Ueberschreiben.
+# Haelt ein anderes Programm die alte CSV offen (Excel oder Editor auf dem Server, ein
+# Kollege ueber die Freigabe), meldet Move-Item -Force nur "Eine Datei kann nicht erstellt
+# werden, wenn sie bereits vorhanden ist". Deshalb: File.Replace (ersetzt in einem Zug), bei
+# Fehler bis zu 5 Versuche im Abstand von 2 Sekunden, zuletzt Kopieren mit Ueberschreiben;
+# klappt nichts davon, nennt die Meldung die echte Ursache.
 function Ersetze-Datei([string]$Neu, [string]$Ziel) {
     if (-not (Test-Path -LiteralPath $Ziel)) { [System.IO.File]::Move($Neu, $Ziel); return }
     $letzter = ''
@@ -439,7 +440,7 @@ function Ersetze-Datei([string]$Neu, [string]$Ziel) {
         Schreibe-Log "Ersetzen in einem Zug nicht moeglich ($($letzter.Trim())) - '$Ziel' wurde ueberschrieben." 'WARNUNG'
     } catch {
         $m = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
-        throw "Datei konnte nicht ersetzt werden: $($m.Trim()) (zuvor: $($letzter.Trim()))"
+        throw "Datei konnte nicht ersetzt werden: $($m.Trim()) (zuvor: $($letzter.Trim())). Ist die CSV geoeffnet? Excel/Editor schliessen; Zugriffe ueber die Freigabe zeigt Get-SmbOpenFile."
     }
 }
 

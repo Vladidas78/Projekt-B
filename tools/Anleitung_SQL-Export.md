@@ -179,7 +179,7 @@ Erste Anlaufstelle ist `SupportBoard-Export.log` im selben Ordner – dort steht
 | `Zielordner nicht erreichbar` | Netzlaufwerk nicht verbunden. |
 | `Die Abfrage lieferte 0 Zeilen` | Schutzmechanismus – die alte Datei bleibt erhalten. |
 | `Die Eingabezeichenfolge hat das falsche Format` (ConvertTo-SecureString) | Passwortdatei aus einer älteren Skriptversion oder von Hand angelegt. `SupportBoard-Export.pwd` löschen und `-SetPassword` erneut ausführen. |
-| `Eine Datei kann nicht erstellt werden, wenn sie bereits vorhanden ist` / `Cannot create a file when that file already exists` beim Schreiben | Ältere Skriptfassung ersetzte die CSV mit `Move-Item -Force`, das auf dem Server an einer vorhandenen Datei scheitert. Ab 2026-10-08 nutzt das Skript `Ersetze-Datei` (Ersetzen in einem Zug, mehrere Versuche, zuletzt Überschreiben). |
+| `Eine Datei kann nicht erstellt werden, wenn sie bereits vorhanden ist` / `Cannot create a file when that file already exists` beim Schreiben | Die alte CSV ist von einem anderen Programm geöffnet (Excel oder Editor auf dem Server, ein Kollege über die Freigabe). Programm schließen; Zugriffe über die Freigabe zeigt `Get-SmbOpenFile \| Where-Object Path -like '*SupportBoard-Daten*'`. Ab 2026-10-08 versucht das Skript es mehrfach (`Ersetze-Datei`) und nennt sonst die echte Ursache. |
 | `Möchten Sie diese Datei ausführen? [N] [M] [H]` bei jedem Start | Die Datei trägt die Download-Markierung von Windows. Einmalig `Unblock-File .\SupportBoard-Export-Server.ps1` ausführen, dann fragt PowerShell nicht mehr. |
 
 Die alte Excel-Routine funktioniert unverändert weiter und kann jederzeit als Rückfallebene dienen.
