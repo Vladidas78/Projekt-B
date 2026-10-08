@@ -467,7 +467,7 @@
 /*__SHEETJS__*/</script>
 <script>
 "use strict";
-const VERSION = "1.43";
+const VERSION = "1.44";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -2655,10 +2655,11 @@ function loadDemo() {
         const pp = rnd();
         if (pp < 0.14 && pfad.length > 1) pfad.push(start, "Dispatcher");
         if (pp < 0.05 && pfad.length > 1) pfad.push(start, "Dispatcher");
+        if (rnd() < 0.14 && pfad[pfad.length - 1] === "Dispatcher") pfad.push(pick(["2nd_CAQ", "2nd_MF", "2nd_HR", "3rd_SD"]), "Dispatcher"); // Rückläufer: aus der Bearbeitung zurück zum Dispatcher
         pfad.push(ziel);
       }
     }
-    const liege = g => (g === "Dispatcher" ? 0.5 + Math.pow(rnd(), 2) * 70 : 0.2 + Math.pow(rnd(), 2) * 28) * 3600000; // Stunden auf dem Stapel
+    const liege = g => (g === "Dispatcher" ? 0.5 + Math.pow(rnd(), 2) * 70 : quelleOf(g) === "1st" ? 0.2 + Math.pow(rnd(), 2) * 28 : 4 + Math.pow(rnd(), 2) * 160) * 3600000; // Stunden auf dem Stapel bzw. in der Bearbeitung
     const dauern = pfad.slice(0, -1).map(liege), sum = dauern.reduce((a, b) => a + b, 0), platz = Math.max(3600000, (ende - er) * 0.8);
     const f = sum > platz ? platz / sum : 1;
     const wl = []; let t = er.getTime();
@@ -4323,12 +4324,12 @@ function wlCalls() {
     for (let i = 1; i < segs.length; i++) hops.push({ d: segs[i].von, von: segs[i - 1].g, nach: segs[i].g, sVon: segs[i - 1].s, sNach: segs[i].s, pp: (segs[i - 1].s === "H" && segs[i].s === "D") || (segs[i - 1].s === "D" && segs[i].s === "H") });
     const bearb = segs[0].s ? segs.find(x => !x.s) : null; // erste Ankunft in einer Bearbeitungsgruppe – nur für Calls, die auf einem Eingangsstapel eröffnet wurden
     let liegeHD = 0; for (const x of segs) if (x.s) liegeHD += wlDauer(x.von, x.bis);
-    calls.push({ r, segs, hops, pp: hops.filter(h => h.pp).length, bearbAb: bearb ? bearb.von : null, liegeHD, pfad: segs.map(x => x.g) });
+    calls.push({ r, segs, hops, pp: hops.filter(h => h.pp).length, rl: hops.filter(h => !h.sVon && h.sNach).length, bearbAb: bearb ? bearb.von : null, liegeHD, pfad: segs.map(x => x.g) });
   }
   _wlCache = { src: sources.ALL.rows, n: sources.ALL.rows.length, key, calls };
   return calls;
 }
-let wlZeitraum = "jahr", wlMin = 2, wlAlle = false; // Zeitraum, Ping-Pong-Schwelle und „alle anzeigen“ – sitzungsweise
+let wlZeitraum = "jahr", wlMin = 2, wlAlle = false, wlAlleRl = false; // Zeitraum, Ping-Pong-Schwelle und „alle anzeigen“ – sitzungsweise
 function wlMonate() { // Monate, die der Export abdeckt (höchstens 13), jüngster zuerst
   let min = null; for (const r of alleZeilen()) if (r["Eröffnet"] instanceof Date && (!min || r["Eröffnet"] < min)) min = r["Eröffnet"];
   const out = [], d = new Date(todayStart()); d.setDate(1);
@@ -4358,6 +4359,32 @@ function wlVerteilung(calls, stapel, z) {
     e.n++; tot++; m.set(label, e);
   }
   return [...m.values()].map(e => ({ ...e, q: tot ? e.n / tot : 0 })).sort((a, b) => b.n - a.n || a.label.localeCompare(b.label, "de"));
+}
+/* Rückläufer (v1.44): Abgaben = Aufenthalte in einer Bearbeitungsgruppe (2nd/3rd Level, Unterstützungsdienste …), die von einem
+   Eingangsstapel (Dispatcher oder Hotline/1st Level) aus begannen und deren Beginn im Zeitraum liegt. Ergebnis je Abgabe:
+   „zurueck“ = der Call kam auf einen Eingangsstapel zurück, „weiter“ = er ging an eine andere Bearbeitungsgruppe oder wurde
+   dort geschlossen, „offen“ = er liegt noch dort. */
+function wlAbgaben(calls, z) {
+  const out = [];
+  for (const c of calls) for (let i = 1; i < c.segs.length; i++) {
+    const s = c.segs[i], prev = c.segs[i - 1];
+    if (s.s || !prev.s) continue;
+    if (s.von < z.von || s.von >= z.bis) continue;
+    const next = c.segs[i + 1];
+    const erg = next && next.s ? "zurueck" : s.art === "offen" ? "offen" : "weiter";
+    out.push({ c, g: s.g, von: s.von, bis: s.bis, ms: wlDauer(s.von, s.bis), erg, vonStapel: prev.s, zurueckAn: erg === "zurueck" ? next.g : "", zurueckStapel: erg === "zurueck" ? next.s : "" });
+  }
+  return out;
+}
+/* Rückläufer je Bearbeitungsgruppe: Abgaben, davon zurück / weiter / noch dort, Quote (zurück an allen beendeten), Ø Zeit bis zur Rückgabe */
+function wlRueckStat(abgaben) {
+  const m = new Map();
+  for (const a of abgaben) {
+    const e = m.get(a.g) ?? { g: a.g, n: 0, zurueck: 0, weiter: 0, offen: 0, ms: [] };
+    e.n++; e[a.erg]++; if (a.erg === "zurueck") e.ms.push(a.ms); m.set(a.g, e);
+  }
+  return [...m.values()].map(e => ({ ...e, quote: (e.zurueck + e.weiter) ? e.zurueck / (e.zurueck + e.weiter) : null, avg: mittel(e.ms) }))
+    .sort((a, b) => b.zurueck - a.zurueck || b.n - a.n || a.g.localeCompare(b.g, "de"));
 }
 /* Liegedauer je Monat: Aufenthalte auf H und D, die durch Weiterleitung endeten (Monat der Weiterleitung), und je Call
    die Gesamtzeit von der Eröffnung bis zur ersten Bearbeitungsgruppe (Monat dieser Ankunft). Schlüssel "J<Jahr>" = Jahr bisher. */
@@ -4393,6 +4420,8 @@ function renderWl(view) {
   const vertD = wlVerteilung(calls, "D", z), vertH = wlVerteilung(calls, "H", z);
   const zurueck = vertD.reduce((a, x) => a + (x.zurueck ? x.n : 0), 0), vertDtot = vertD.reduce((a, x) => a + x.n, 0);
   const stat = wlMonatsStat(calls);
+  const abgaben = wlAbgaben(calls, z), rueck = abgaben.filter(a => a.erg === "zurueck").sort((a, b) => b.bis - a.bis), rueckStat = wlRueckStat(abgaben);
+  const abgBeendet = abgaben.filter(a => a.erg !== "offen").length, abgOffen = abgaben.length - abgBeendet, rueckList = wlAlleRl ? rueck : rueck.slice(0, 30);
   const lueckig = calls.filter(c => c.r.WlLueckig).length;
   const zeilen = [["J" + jahr, `Jahr ${jahr} bisher`, true], ...monate.map(m => [m, wlMonatLabel(m), false])];
   const statZelle = (e, art) => { const a = e?.[art] ?? []; return `<td class="ta-r tnum">${a.length ? fmtN.format(a.length) : "–"}</td><td class="ta-r tnum">${a.length ? fmtLiege(mittel(a)) : "–"}</td><td class="ta-r tnum">${a.length ? fmtLiege(median(a)) : "–"}</td>`; };
@@ -4403,6 +4432,7 @@ function renderWl(view) {
       <button class="kpi" data-goto="wlStat"><div class="k-label">Liegt beim Dispatcher</div><div class="k-value">${fmtN.format(aufD.length)}</div><div class="k-note">offene Calls · Ø seit ${fmtLiege(mittel(aufD))}</div></button>
       <button class="kpi${pp.length ? " crit" : ""}" data-goto="wlPp"><div class="k-label">Ping-Pong-Calls</div><div class="k-value">${fmtN.format(pp.length)}</div><div class="k-note">${esc(z.label)} · ab ${wlMin} Wechseln Hotline ⇄ Dispatcher</div></button>
       <button class="kpi" data-goto="wlVert"><div class="k-label">Dispatcher → zurück an Hotline</div><div class="k-value">${pct(vertDtot ? zurueck / vertDtot : null)}</div><div class="k-note">${fmtN.format(zurueck)} von ${fmtN.format(vertDtot)} Weiterleitungen · ${esc(z.label)}</div></button>
+      <button class="kpi${rueck.length ? " crit" : ""}" data-goto="wlRueck"><div class="k-label">Rückläufer aus der Bearbeitung</div><div class="k-value">${fmtN.format(rueck.length)}</div><div class="k-note">${pct(abgBeendet ? rueck.length / abgBeendet : null)} von ${fmtN.format(abgBeendet)} beendeten Abgaben · ${esc(z.label)}</div></button>
     </div>
     <div class="card"><h2>Filter <span class="hint" style="font-weight:400;margin-left:6px">Zeitraum und Zeitmaß je Gerät, Ausblendungen teamweit</span></h2>
       <p class="sub">${stapelTxt} Ab Werk ohne ${esc(state.internKunde || "MPDV")}-Calls (Chip unter „Sonstiges“). Gruppe, Status und Prio beziehen sich auf den heutigen Stand des Calls; geschlossene Calls zählen mit.${lueckig ? ` <b>Hinweis:</b> Bei ${fmtN.format(lueckig)} Calls liefert der Export weniger Weiterleitungen als „Gesamtanzahl Weiterleitungen“ angibt – die Abfrage muss je Weiterleitung eine Zeile liefern, sonst fehlen Wege und Liegezeiten.` : ""}</p>
@@ -4417,6 +4447,17 @@ function renderWl(view) {
       ${ppList.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Kunde</th><th>Titel</th><th>Status</th><th>Eröffnet</th><th class="ta-r" title="Wechsel Hotline/1st Level ⇄ Dispatcher">Ping-Pong</th><th class="ta-r" title="alle Gruppenwechsel">Wechsel</th><th class="ta-r" title="Summe der Liegezeiten auf Hotline/1st Level und Dispatcher">Liegezeit Eingang</th><th>Weg</th></tr></thead><tbody>
       ${ppList.map(c => `<tr><td class="nowrap">${prioZelle(prioName(c.r.Prio))}</td><td class="tnum nowrap">${esc(c.r.Call)}</td><td class="nowrap">${esc(c.r.Kunde ?? "–")}${smBadge(c.r)}</td><td class="titlecell">${esc(c.r.Titel ?? "–")}</td><td class="nowrap">${esc(c.r.Status ?? "–")}${istGeschlossen(c.r) ? ' <span class="hint">zu</span>' : ""}</td><td class="tnum nowrap">${c.r["Eröffnet"] ? fmtD.format(c.r["Eröffnet"]) : "–"}</td><td class="ta-r tnum"><span class="pill ${c.pp >= 4 ? "s-crit" : "s-warn"}">${c.pp}</span></td><td class="ta-r tnum">${c.hops.length}</td><td class="ta-r tnum nowrap">${fmtLiege(c.liegeHD)}</td><td class="wlpfad">${esc(c.pfad.map(gruppeKurz).join(" → "))}</td></tr>`).join("")}
       </tbody></table></div>${pp.length > ppList.length ? `<div class="btnrow"><button class="small" id="btnWlAlle">Alle ${fmtN.format(pp.length)} anzeigen</button></div>` : ""}` : `<p class="empty"><b>Kein Ping-Pong</b> im Zeitraum ${esc(z.label)}.</p>`}
+    </div>
+    <div class="card" id="wlRueck"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Rückläufer aus der Bearbeitung <span class="pill ${rueck.length ? "s-crit" : "s-ok"}">${rueck.length}</span><span class="hint" style="font-weight:400">${esc(z.label)}</span>
+      <button class="small" id="btnWlRueckStatCopy" style="margin-left:auto" title="Tabelle je Bearbeitungsgruppe fürs Protokoll kopieren">Tabelle kopieren</button><button class="small" id="btnWlRueckCopy" title="Liste der Rückläufer fürs Protokoll kopieren (alle Zeilen)">Liste kopieren</button></h2>
+      <p class="sub">Eine Abgabe ist eine Weiterleitung vom Dispatcher oder von ${esc(WL_NAME.H)} in eine Bearbeitungsgruppe (2nd/3rd Level, Unterstützungsdienste …), gezählt nach dem Datum der Abgabe im Zeitraum. Rückläufer = die Bearbeitungsgruppe hat den Call wieder auf einen Eingangsstapel zurückgegeben. Quote = Rückläufer geteilt durch alle beendeten Abgaben (zurück oder weitergegeben/geschlossen); Calls, die noch in der Gruppe liegen, zählen nicht in die Quote. „Zeit dort“ in ${wlGz() ? "Geschäftszeit" : "Kalenderzeit"}.</p>
+      ${rueckStat.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Bearbeitungsgruppe</th><th class="ta-r">Abgaben</th><th class="ta-r">zurück</th><th class="ta-r">weiter / geschlossen</th><th class="ta-r">noch dort</th><th class="ta-r">Rücklaufquote</th><th class="ta-r" title="Durchschnittliche Zeit in der Gruppe bis zur Rückgabe">Ø bis Rückgabe</th><th style="width:25%"></th></tr></thead><tbody>
+      ${rueckStat.map(x => `<tr><td class="nowrap">${esc(gruppeKurz(x.g))}</td><td class="ta-r tnum">${fmtN.format(x.n)}</td><td class="ta-r tnum">${x.zurueck ? `<span class="pill s-warn">${fmtN.format(x.zurueck)}</span>` : "0"}</td><td class="ta-r tnum">${fmtN.format(x.weiter)}</td><td class="ta-r tnum">${fmtN.format(x.offen)}</td><td class="ta-r tnum">${pct(x.quote)}</td><td class="ta-r tnum nowrap">${x.zurueck ? fmtLiege(x.avg) : "–"}</td><td class="lastcell"><div class="lb"><span class="lb-fill" style="width:${Math.round((x.quote ?? 0) * 100)}%"></span></div></td></tr>`).join("")}
+      </tbody></table></div>` : `<p class="empty">Keine Abgaben in Bearbeitungsgruppen im Zeitraum ${esc(z.label)}.</p>`}
+      ${rueckList.length ? `<h2 style="margin-top:16px">Zurückgegebene Calls <span class="hint" style="font-weight:400">jüngste zuerst${abgOffen ? ` · ${fmtN.format(abgOffen)} Abgaben liegen noch in der Bearbeitung` : ""}</span></h2>
+      <div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Kunde</th><th>Titel</th><th>Status</th><th>Gruppe</th><th>abgegeben</th><th>zurück am</th><th class="ta-r">Zeit dort</th><th>zurück an</th><th>Weg</th></tr></thead><tbody>
+      ${rueckList.map(a => `<tr><td class="nowrap">${prioZelle(prioName(a.c.r.Prio))}</td><td class="tnum nowrap">${esc(a.c.r.Call)}</td><td class="nowrap">${esc(a.c.r.Kunde ?? "–")}${smBadge(a.c.r)}</td><td class="titlecell">${esc(a.c.r.Titel ?? "–")}</td><td class="nowrap">${esc(a.c.r.Status ?? "–")}${istGeschlossen(a.c.r) ? ' <span class="hint">zu</span>' : ""}</td><td class="nowrap">${esc(gruppeKurz(a.g))}</td><td class="tnum nowrap">${fmtDT.format(a.von)}</td><td class="tnum nowrap">${fmtDT.format(a.bis)}</td><td class="ta-r tnum nowrap">${fmtLiege(a.ms)}</td><td class="nowrap">${esc(gruppeKurz(a.zurueckAn))}</td><td class="wlpfad">${esc(a.c.pfad.map(gruppeKurz).join(" → "))}</td></tr>`).join("")}
+      </tbody></table></div>${rueck.length > rueckList.length ? `<div class="btnrow"><button class="small" id="btnWlAlleRl">Alle ${fmtN.format(rueck.length)} anzeigen</button></div>` : ""}` : (rueckStat.length ? `<p class="empty"><b>Keine Rückläufer</b> im Zeitraum ${esc(z.label)}.</p>` : "")}
     </div>
     <div class="card" id="wlStat"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Liegedauer je Monat <span class="hint" style="font-weight:400">${wlGz() ? "Geschäftszeit" : "Kalenderzeit"}</span>
       <button class="small" id="btnWlStatCopy" style="margin-left:auto" title="Als Tabelle fürs Protokoll kopieren">Tabelle kopieren</button></h2>
@@ -4434,7 +4475,7 @@ function renderWl(view) {
       ${vertTab(vertH, WL_NAME.H)}
     </div>`;
   view.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click", () => document.getElementById(b.dataset.goto)?.scrollIntoView({ behavior: "smooth", block: "start" })));
-  view.querySelector("#wlZeitraumSel").addEventListener("change", e => { wlZeitraum = e.target.value; wlAlle = false; render(); });
+  view.querySelector("#wlZeitraumSel").addEventListener("change", e => { wlZeitraum = e.target.value; wlAlle = false; wlAlleRl = false; render(); });
   view.querySelector("#wlMinSel").addEventListener("change", e => { wlMin = Number(e.target.value) || 2; wlAlle = false; render(); });
   view.querySelectorAll("[data-wlgz]").forEach(b => b.addEventListener("click", () => { uiPref.wlGz = b.dataset.wlgz === "1"; saveUiPref(); render(); }));
   view.querySelector("#btnWlAlle")?.addEventListener("click", () => { wlAlle = true; render(); });
@@ -4447,6 +4488,17 @@ function renderWl(view) {
     const zl = a => a.length ? [String(a.length), fmtLiege(mittel(a)), fmtLiege(median(a))] : ["", "", ""];
     const t = wlCopyTabelle(`Liegedauer je Monat (${wlGz() ? "Geschäftszeit" : "Kalenderzeit"})`, ["Monat", `${WL_NAME.H}: Calls`, "Ø", "Median", "Dispatcher: Calls", "Ø", "Median", "Bis Bearbeitung: Calls", "Ø", "Median"],
       zeilen.map(([k, label]) => { const e = stat.get(k); return [label, ...zl(e?.H ?? []), ...zl(e?.D ?? []), ...zl(e?.B ?? [])]; }), new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]));
+    copyHtml(t.html, t.plain, e.target);
+  });
+  view.querySelector("#btnWlAlleRl")?.addEventListener("click", () => { wlAlleRl = true; render(); });
+  view.querySelector("#btnWlRueckStatCopy").addEventListener("click", e => {
+    const t = wlCopyTabelle(`Rückläufer je Bearbeitungsgruppe – ${z.label}`, ["Bearbeitungsgruppe", "Abgaben", "zurück", "weiter / geschlossen", "noch dort", "Rücklaufquote", "Ø bis Rückgabe"],
+      rueckStat.map(x => [gruppeKurz(x.g), String(x.n), String(x.zurueck), String(x.weiter), String(x.offen), pct(x.quote), x.zurueck ? fmtLiege(x.avg) : ""]), new Set([1, 2, 3, 4, 5, 6]));
+    copyHtml(t.html, t.plain, e.target);
+  });
+  view.querySelector("#btnWlRueckCopy").addEventListener("click", e => {
+    const t = wlCopyTabelle(`Rückläufer aus der Bearbeitung – ${z.label}`, ["Prio", "Call", "Kunde", "Titel", "Status", "Gruppe", "abgegeben", "zurück am", "Zeit dort", "zurück an", "Weg"],
+      rueck.map(a => [prioText(a.c.r), String(a.c.r.Call ?? ""), a.c.r.Kunde ?? "", a.c.r.Titel ?? "", a.c.r.Status ?? "", gruppeKurz(a.g), fmtDT.format(a.von), fmtDT.format(a.bis), fmtLiege(a.ms), gruppeKurz(a.zurueckAn), a.c.pfad.map(gruppeKurz).join(" > ")]), new Set([8]));
     copyHtml(t.html, t.plain, e.target);
   });
   view.querySelector("#btnWlVertCopy").addEventListener("click", e => {
