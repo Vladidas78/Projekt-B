@@ -418,6 +418,31 @@ if (-not $Preview -and -not $Jetzt -and $NurWennAelterAlsMin -gt 0) {
     }
 }
 
+# --- Datei ersetzen (seit 2026-10-08) -----------------------------------------
+# Move-Item -Force scheitert auf dem Server an einer vorhandenen Datei ("Eine Datei kann
+# nicht erstellt werden, wenn sie bereits vorhanden ist"). Deshalb: File.Replace (ersetzt
+# in einem Zug), bei Fehler bis zu 5 Versuche im Abstand von 2 Sekunden (falls ein Leser die
+# alte Datei kurz offen haelt), zuletzt Kopieren mit Ueberschreiben.
+function Ersetze-Datei([string]$Neu, [string]$Ziel) {
+    if (-not (Test-Path -LiteralPath $Ziel)) { [System.IO.File]::Move($Neu, $Ziel); return }
+    $letzter = ''
+    for ($v = 1; $v -le 5; $v++) {
+        try { [System.IO.File]::Replace($Neu, $Ziel, $null); return }
+        catch {
+            $letzter = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
+            Start-Sleep -Seconds 2
+        }
+    }
+    try {
+        [System.IO.File]::Copy($Neu, $Ziel, $true)
+        Remove-Item -LiteralPath $Neu -Force -ErrorAction SilentlyContinue
+        Schreibe-Log "Ersetzen in einem Zug nicht moeglich ($($letzter.Trim())) - '$Ziel' wurde ueberschrieben." 'WARNUNG'
+    } catch {
+        $m = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
+        throw "Datei konnte nicht ersetzt werden: $($m.Trim()) (zuvor: $($letzter.Trim()))"
+    }
+}
+
 # --- Zusatzabfragen: je Call ein Wert (eigene Verbindung, eigene Transaktion, immer Rollback) ---
 # Liefert eine Hashtable Call -> Wert; bei einem Fehler eine leere Hashtable (Spalte bleibt leer, WARNUNG im Log).
 function Lade-Zusatz($z) {
@@ -565,7 +590,7 @@ try {
                 if (-not (Test-Path $zo)) { throw "Ordner nicht erreichbar: $zo" }
                 $zt = Join-Path $zo ('~SupportBoard-{0}.tmp' -f ([guid]::NewGuid().ToString('N')))
                 Copy-Item -Path $TempDatei -Destination $zt -Force
-                Move-Item -Path $zt -Destination $zp -Force
+                Ersetze-Datei $zt $zp
                 Schreibe-Log "Fertig ($art): $Zeilen Zeilen nach '$zp' geschrieben (von $env:COMPUTERNAME)."
                 $ok++
             } catch {
