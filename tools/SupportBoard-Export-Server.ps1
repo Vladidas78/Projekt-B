@@ -424,11 +424,13 @@ if (-not $Preview -and -not $Jetzt -and $NurWennAelterAlsMin -gt 0) {
 # werden, wenn sie bereits vorhanden ist". Deshalb: File.Replace (ersetzt in einem Zug), bei
 # Fehler bis zu 5 Versuche im Abstand von 2 Sekunden, zuletzt Kopieren mit Ueberschreiben;
 # klappt nichts davon, nennt die Meldung die echte Ursache.
+# [NullString]::Value statt $null: PowerShell macht aus $null bei .NET-Aufrufen sonst "",
+# und File.Replace scheitert dann mit "Der Pfad hat ein ungueltiges Format".
 function Ersetze-Datei([string]$Neu, [string]$Ziel) {
     if (-not (Test-Path -LiteralPath $Ziel)) { [System.IO.File]::Move($Neu, $Ziel); return }
     $letzter = ''
     for ($v = 1; $v -le 5; $v++) {
-        try { [System.IO.File]::Replace($Neu, $Ziel, $null); return }
+        try { [System.IO.File]::Replace($Neu, $Ziel, [NullString]::Value); return }
         catch {
             $letzter = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
             Start-Sleep -Seconds 2
