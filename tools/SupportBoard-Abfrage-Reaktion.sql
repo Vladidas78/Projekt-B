@@ -3,9 +3,19 @@
    NUR LESEND. Optional: Fehlt die Datei oder schlaegt die Abfrage fehl,
    schreibt das Exportskript die CSV trotzdem; die Spalte bleibt dann leer.
 
-   Das Skript nimmt Spalte 1 als Call-Nummer und Spalte 2 als Wert und haengt
-   ihn ueber die Call-Nummer an die Zeilen der Hauptabfrage an. Weitere
-   Spalten (erstellt, status) stoeren nicht, landen aber nicht in der CSV.
+   Das Skript nimmt Spalte 1 als Call-Nummer und die Spalte [Externe Reaktion]
+   (sonst Spalte 2) als Wert und haengt ihn ueber die Call-Nummer an die Zeilen
+   der Hauptabfrage an. Liefert die Abfrage zusaetzlich [Prioritaet_initial]
+   (Prioritaet bei Eroeffnung; die Fassung des Teams auf dem Server tut das),
+   reicht das Skript auch diese Spalte durch: Das Board bewertet die
+   Reaktionszeit dann gegen die Prioritaet bei Eroeffnung statt gegen die
+   aktuelle. Weitere Spalten (erstellt, status) stoeren nicht, landen aber
+   nicht in der CSV.
+
+   [Externe Reaktion] ist GESCHAEFTSZEIT (Omnitracker-Kalender, Feld
+   erste_ext_aktion_kalender in Sekunden - dieselbe Groesse wie "erste ext.
+   Aktion Kalender" in der Excel-Statistik), umgerechnet in Tage. Das Board
+   rechnet sie nicht noch einmal auf Geschaeftszeit um (seit v1.47).
 
    Diese Abfrage legt die GRUNDGESAMTHEIT der Reaktionszeit fest (Kunden,
    Kategorien, SLA-Vertrag): Calls ohne Zeile hier werden im Board nicht
@@ -20,6 +30,8 @@
 SELECT
     cs.callnr                                           AS Call,
     ISNULL(cs.erste_ext_aktion_kalender, 0) / 86400.0   AS [Externe Reaktion],
+    /* Fassung des Teams: hier zusaetzlich die Prioritaet bei Eroeffnung als
+       Spalte [Prioritaet_initial] (Feldname wie auf dem Server). */
     cs.erstellt,
     cs.status
 FROM call_statistics AS cs
@@ -33,6 +45,8 @@ UNION
 SELECT
     cs.callnr                                           AS Call,
     ISNULL(cs.erste_ext_aktion_kalender, 0) / 86400.0   AS [Externe Reaktion],
+    /* Fassung des Teams: hier zusaetzlich die Prioritaet bei Eroeffnung als
+       Spalte [Prioritaet_initial] (Feldname wie auf dem Server). */
     cs.erstellt,
     cs.status
 FROM call_statistics AS cs

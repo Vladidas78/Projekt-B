@@ -7,12 +7,14 @@
     im Team-Ordner ab. Das Board liest diese Datei wie gewohnt.
 
     Zusatzabfragen (optional): Liegen im Skriptordner die Dateien
-      SupportBoard-Abfrage-Reaktion.sql       (seit v1.41: Spalten Call, Externe Reaktion)
+      SupportBoard-Abfrage-Reaktion.sql       (seit v1.41: Spalten Call, Externe Reaktion; seit v1.47 optional Prioritaet_initial)
       SupportBoard-Abfrage-Weiterleitung.sql  (seit v1.43: Spalten Call, Weiterleitungen)
     werden sie zusaetzlich ausgefuehrt. Jede liefert je Call genau einen Wert
     (zwei Spalten: Call und Wert). Das Skript haengt den Wert ueber die
     Call-Nummer an die Zeilen der Hauptabfrage an - es entsteht weiterhin EINE
-    CSV mit einer Zeile je Call. Weitere Spalten der Reaktionsabfrage werden
+    CSV mit einer Zeile je Call. Liefert die Reaktionsabfrage zusaetzlich die
+    Spalte Prioritaet_initial (Prioritaet bei Eroeffnung), wird auch sie
+    angehaengt; alle anderen weiteren Spalten der Reaktionsabfrage werden
     ignoriert. Nur bei der Weiterleitungsabfrage gilt: Liefert sie mehr als
     zwei Spalten (Rohform: je Weiterleitung eine Zeile mit Call, Datum,
     vorherige Gruppe, vorheriger Bearbeiter, aktuelle Gruppe, aktueller
@@ -357,15 +359,16 @@ Pruefe-NurLesen $Sql 'Abfrage'
 
 # Zusatzabfragen (optional): werden genauso geprueft; Fehler beim Ausfuehren stoppen den Export NICHT.
 # Jede liefert zwei Spalten (Call, Wert); der Wert wird ueber die Call-Nummer an die Hauptabfrage angehaengt.
+# 'Weitere' nennt optionale Spalten, die mit angehaengt werden, wenn die Abfrage sie liefert (z. B. Prioritaet_initial).
 $Zusatz = @()
 foreach ($z in @(
-        @{ Datei = $AbfrageDateiReaktion;      Name = 'Reaktionsabfrage';      Spalte = 'Externe Reaktion'; Buendeln = $false },
+        @{ Datei = $AbfrageDateiReaktion;      Name = 'Reaktionsabfrage';      Spalte = 'Externe Reaktion'; Weitere = @('Prioritaet_initial'); Buendeln = $false },
         @{ Datei = $AbfrageDateiWeiterleitung; Name = 'Weiterleitungsabfrage'; Spalte = 'Weiterleitungen';   Buendeln = $true })) {
     if (-not (Test-Path $z.Datei)) { continue }
     $t = Get-Content -Path $z.Datei -Raw -Encoding UTF8
     if ([string]::IsNullOrWhiteSpace($t)) { continue }
     Pruefe-NurLesen $t $z.Name
-    $Zusatz += @{ Sql = $t; Name = $z.Name; Spalte = $z.Spalte; Buendeln = [bool]$z.Buendeln; Werte = @{} }
+    $Zusatz += @{ Sql = $t; Name = $z.Name; Spalte = $z.Spalte; Weitere = @($z.Weitere | Where-Object { $_ }); WeitereWerte = @{}; Buendeln = [bool]$z.Buendeln; Werte = @{} }
 }
 
 # --- Verbindungszeichenfolge ------------------------------------------------
@@ -388,7 +391,7 @@ function Format-Wert($Wert) {
     if ($null -eq $Wert -or $Wert -is [System.DBNull]) { return '' }
     if ($Wert -is [datetime]) { return $Wert.ToString('yyyy-MM-ddTHH:mm:ss', $INV) }
     if ($Wert -is [double] -or $Wert -is [decimal] -or $Wert -is [single]) {
-        return ([double]$Wert).ToString('0.####', $INV)   # Dezimalpunkt, sonst liest das Board die Zahl nicht
+        return ([double]$Wert).ToString('0.######', $INV)   # Dezimalpunkt, sonst liest das Board die Zahl nicht; 6 Stellen: Tage auf 0,1 s genau (v1.47)
     }
     if ($Wert -is [bool]) { return $(if ($Wert) { 'Ja' } else { 'Nein' }) }
     return [string]$Wert
@@ -461,12 +464,28 @@ function Lade-Zusatz($z) {
             for ($i = 1; $i -lt $fc; $i++) { if ($r2.GetName($i) -ieq $z.Spalte) { $wi = $i; break } }
             if ($r2.GetName($wi) -ine $z.Spalte) { Schreibe-Log "$($z.Name): keine Spalte '$($z.Spalte)' gefunden - es wird die Spalte '$($r2.GetName($wi))' angehaengt." 'WARNUNG' }
             $z.Spalte = $r2.GetName($wi)
+            # Optionale weitere Spalten (z. B. Prioritaet_initial): nur, wenn die Abfrage sie liefert; sonst stiller Verzicht.
+            $wIdx = @{}
+            foreach ($wn in @($z.Weitere)) {
+                for ($i = 1; $i -lt $fc; $i++) { if ($i -ne $wi -and $r2.GetName($i) -ieq $wn) { $wIdx[$r2.GetName($i)] = $i; break } }
+            }
+            foreach ($wn in @($wIdx.Keys)) { $z.WeitereWerte[$wn] = @{} }
             while ($r2.Read()) {
                 $k = [string]$r2.GetValue(0)
-                if ($k) { $k = $k.Trim(); if (-not $h.ContainsKey($k)) { $h[$k] = $r2.GetValue($wi) } }
+                if ($k) {
+                    $k = $k.Trim()
+                    if (-not $h.ContainsKey($k)) {
+                        $h[$k] = $r2.GetValue($wi)
+                        foreach ($wn in @($wIdx.Keys)) { $z.WeitereWerte[$wn][$k] = $r2.GetValue($wIdx[$wn]) }
+                    }
+                }
             }
             $r2.Close()
             Schreibe-Log "$($z.Name): $($h.Count) Calls mit Wert '$($z.Spalte)' - wird ueber die Call-Nummer angehaengt."
+            foreach ($wn in @($z.Weitere)) {
+                if ($wIdx.ContainsKey($wn)) { Schreibe-Log "$($z.Name): Spalte '$wn' wird zusaetzlich angehaengt." }
+                else { Schreibe-Log "$($z.Name): Spalte '$wn' liefert die Abfrage nicht - wird nicht angehaengt (optional)." }
+            }
         } else {
             # Rohform (v1.45, nur Weiterleitungsabfrage): je Weiterleitung eine Zeile - Spalte 1 Call, Spalte 2 Datum, danach die weiteren Felder.
             # Wird hier je Call zu EINEM Text gebuendelt: Felder mit |, Weiterleitungen mit " # ", sortiert nach Datum.
@@ -525,12 +544,17 @@ try {
     # Verknuepfung: Spalte "Call" der Hauptabfrage; jede Zusatzspalte wird angehaengt, sofern die Hauptabfrage sie nicht selbst liefert
     $CallIdx = -1
     for ($i = 0; $i -lt $Spalten.Count; $i++) { if ($Spalten[$i] -ieq 'Call') { $CallIdx = $i } }
+    # Anhang: je anzuhaengender Spalte ein Eintrag (Name der Abfrage, Spaltenname, Werte je Call) - der Hauptwert und die optionalen weiteren Spalten
     $Anhang = @()
     foreach ($z in $Zusatz) {
-        $sp = $z.Spalte
         if ($CallIdx -lt 0) { Schreibe-Log "Die Hauptabfrage hat keine Spalte 'Call' - die Werte der $($z.Name) koennen nicht zugeordnet werden." 'WARNUNG'; continue }
-        if ($Spalten | Where-Object { $_ -ieq $sp }) { Schreibe-Log "Die Hauptabfrage liefert die Spalte '$sp' selbst - die $($z.Name) wird nicht angehaengt."; continue }
-        $Anhang += $z
+        $teile = @(@{ Name = $z.Name; Spalte = $z.Spalte; Werte = $z.Werte })
+        foreach ($wn in @($z.WeitereWerte.Keys)) { $teile += @{ Name = $z.Name; Spalte = $wn; Werte = $z.WeitereWerte[$wn] } }
+        foreach ($a in $teile) {
+            $sp = $a.Spalte
+            if ($Spalten | Where-Object { $_ -ieq $sp }) { Schreibe-Log "Die Hauptabfrage liefert die Spalte '$sp' selbst - die $($z.Name) haengt sie nicht an."; continue }
+            $Anhang += $a
+        }
     }
     $SpaltenAus = @($Spalten)
     foreach ($z in $Anhang) { $SpaltenAus += $z.Spalte }

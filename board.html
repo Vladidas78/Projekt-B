@@ -467,7 +467,7 @@
 /*__SHEETJS__*/</script>
 <script>
 "use strict";
-const VERSION = "1.46";
+const VERSION = "1.47";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -921,9 +921,11 @@ const COLMAP = {
   "nicht werten für kd.komm.": "Haken", "nicht werten fuer kd.komm.": "Haken",
   "letzte info an kd.": "LetzteInfo", "tage ohne info an kd.": "TageOhneInfo",
   "letzte externe reaktion": "LetzteExtReaktion", "letzte ext. reaktion": "LetzteExtReaktion",
-  // „Externe Reaktion“ aus der Abfrage: Kalenderzeit von der Eröffnung bis zur ersten externen Aktion in Tagen (0 = noch keine)
+  // „Externe Reaktion“ aus der Abfrage: Geschäftszeit (Omnitracker-Kalender) von der Eröffnung bis zur ersten externen Aktion in Tagen (0 = noch keine)
   "externe reaktion": "ExtReaktionTage", "externe reaktion (tage)": "ExtReaktionTage", "erste ext. aktion kalender": "ExtReaktionTage", "erste ext. aktion": "ExtReaktionTage", "erste externe aktion": "ExtReaktionTage",
   "erste externe reaktion": "ErsteExtReaktion", "erste ext. reaktion": "ErsteExtReaktion", "erste_externe_reaktion": "ErsteExtReaktion", "erste reaktion": "ErsteExtReaktion",
+  // v1.47: Priorität bei Eröffnung aus der Reaktionsabfrage – die Reaktionszeit wird gegen sie bewertet, auch wenn die Prio später geändert wurde
+  "prioritaet_initial": "PrioInitial", "prioritaet initial": "PrioInitial", "priorität initial": "PrioInitial", "prio_initial": "PrioInitial", "prio initial": "PrioInitial", "initiale prio": "PrioInitial", "initiale priorität": "PrioInitial", "initiale prioritaet": "PrioInitial", "prio bei eröffnung": "PrioInitial", "prioritaet bei eroeffnung": "PrioInitial",
   // v1.41: Region des Kunden (USA / Asien / Europa) aus der Abfrage – ersetzt die Kürzellisten der Verwaltung
   "region": "Region", "kundenregion": "Region", "primäre kundenbetreuung": "Region", "primaere kundenbetreuung": "Region", "kundenbetreuung": "Region", "betreuung": "Region",
   // v1.41: Schließdatum (optional) – fehlt es, gilt bei geschlossenen Calls die letzte Änderung als Abschluss
@@ -970,10 +972,16 @@ function normalizeRows(raw) {
     }
     for (const dc of DATECOLS) r[dc] = datumAusWert(r[dc]);
     if (r.TageOhneInfo == null && r.LetzteInfo) r.TageOhneInfo = Math.max(0, daysSince(r.LetzteInfo) - 1);
-    // Erste externe Reaktion: entweder als Zeitstempel geliefert oder aus „Externe Reaktion“ (Tage ab Eröffnung) berechnet
+    // Erste externe Reaktion: entweder als Zeitstempel geliefert oder aus „Externe Reaktion“ berechnet. Der Wert ist
+    // Geschäftszeit in Tagen (Omnitracker-Kalender – dieselbe Größe wie „erste ext. Aktion Kalender“ in der
+    // Excel-Statistik), keine Kalenderzeit. Der Zeitpunkt entsteht deshalb über die Geschäftszeit-Uhr (v1.47).
+    // Bis v1.46 wurde der Wert als Kalendertage addiert und die Spanne danach noch einmal auf Geschäftszeit gekürzt;
+    // Reaktionen über Nacht oder übers Wochenende waren dadurch zu kurz, Durchschnitte und SLA-Quote zu gut.
     const tg = (r.ExtReaktionTage == null || r.ExtReaktionTage === "") ? NaN : Number(String(r.ExtReaktionTage).replace(",", "."));
     r.ExtReaktionTage = Number.isFinite(tg) ? tg : null;
-    if (!(r.ErsteExtReaktion instanceof Date) && r.ExtReaktionTage > 0 && r["Eröffnet"] instanceof Date) r.ErsteExtReaktion = new Date(r["Eröffnet"].getTime() + r.ExtReaktionTage * DAY);
+    r.ExtReaktionGz = r.ExtReaktionTage > 0 ? r.ExtReaktionTage * DAY : null; // Geschäftszeit in ms, direkt aus der Abfrage
+    if (!(r.ErsteExtReaktion instanceof Date) && r.ExtReaktionGz && r["Eröffnet"] instanceof Date) r.ErsteExtReaktion = geschaeftszeitEnde(r["Eröffnet"], r.ExtReaktionGz);
+    if (r.PrioInitial != null && String(r.PrioInitial).trim() === "") r.PrioInitial = null;
     const sc = (r.Score == null || r.Score === "") ? NaN : Number(r.Score);
     r.Score = Number.isFinite(sc) ? sc : null;
     r.TageOhneInfo = (r.TageOhneInfo == null || r.TageOhneInfo === "") ? null : Number(r.TageOhneInfo);
@@ -1979,6 +1987,14 @@ function prioName(p) {
   if (s.includes("grün") || s.includes("gruen") || s.trim().startsWith("3")) return "grün";
   return "";
 }
+/* v1.47: Priorität für die Reaktionszeit = Priorität bei Eröffnung (Spalte „Prioritaet_initial“ der Reaktionsabfrage),
+   sonst die aktuelle. Wird ein Call nach der Eröffnung umpriorisiert, bleibt die Reaktion bei der ursprünglichen Frist
+   (Ausnahmen pflegt das Team an der Quelle, indem es die initiale Priorität dort ändert). */
+function prioReakt(r) { return prioName(r?.PrioInitial) || prioName(r?.Prio); }
+function prioWechsel(r, p) {
+  const akt = prioName(r?.Prio);
+  return r?.PrioInitial != null && akt && akt !== p ? ` <span class="hint" title="Priorität nach der Eröffnung geändert – bewertet wird gegen die Priorität bei Eröffnung">jetzt ${akt[0].toUpperCase() + akt.slice(1)}</span>` : "";
+}
 function applyFilters(fkey, rows) {
   const f = state.filters[fkey] || {};
   return rows.filter(r => !fexcl(fkey, "status", r.Status) && !fexcl(fkey, "gruppe", r.Gruppe)
@@ -2720,10 +2736,12 @@ function loadDemo() {
     if (lt && lt < todayStart()) pts += daysSince(lt) > 7 ? 2 : 1;
     // erste externe Reaktion: meist innerhalb der Frist, ein Teil darüber, wenige noch ohne
     const reaktMin = prio.startsWith("1") ? Math.floor(rnd() * 50) : prio.startsWith("2") ? Math.floor(rnd() * 330) : Math.floor(rnd() * 70 * 60);
-    const erste = (age > 2 || rnd() < 0.7) ? new Date(er.getTime() + reaktMin * 60000) : null;
+    let erste = (age > 2 || rnd() < 0.7) ? geschaeftszeitEnde(er, reaktMin * 60000) : null; // Reaktion in Geschäftszeit, wie die Abfrage sie liefert
+    if (erste && erste > now()) erste = null;
     const kunde = pick(kunden);
+    const prioInit = rnd() < 0.06 ? pick(["1 - Rot", "2 - Blau", "3 - Grün"].filter(x => x !== prio)) : prio; // wenige Calls nach der Eröffnung umpriorisiert
     rows.push({
-      ErsteExtReaktion: erste, ExtReaktionTage: kunde === "MPDV" ? null : (erste ? (erste - er) / DAY : 0),
+      ErsteExtReaktion: erste, ExtReaktionTage: kunde === "MPDV" ? null : (erste ? reaktMin / 1440 : 0), PrioInitial: prioInit,
       Region: pickW([["Europa", 70], ["USA", 18], ["Asien", 12]]), Geschlossen: null,
       Quelle: quelleOf(gruppe), Prio: prio, Call: 900000 + i * 7 + Math.floor(rnd() * 6),
       "Eröffnet": er, Gruppe: gruppe, Bearbeiter: hx ? "HX-MP-UPDATE" : pick(bearb[gruppe]), Kunde: kunde,
@@ -2746,9 +2764,10 @@ function loadDemo() {
     const zu = new Date(Math.min(now().getTime() - 3600000, er.getTime() + laufzeit * DAY));
     const prio = pickW([["1 - Rot", 12], ["2 - Blau", 34], ["3 - Grün", 54]]);
     const reaktMin = prio.startsWith("1") ? Math.floor(rnd() * 45) : prio.startsWith("2") ? Math.floor(rnd() * 300) : Math.floor(rnd() * 60 * 60);
-    const erste = rnd() < 0.9 ? new Date(Math.min(zu.getTime(), er.getTime() + reaktMin * 60000)) : null;
+    const erste = rnd() < 0.9 ? new Date(Math.min(zu.getTime(), geschaeftszeitEnde(er, reaktMin * 60000).getTime())) : null;
+    const prioInit = rnd() < 0.06 ? pick(["1 - Rot", "2 - Blau", "3 - Grün"].filter(x => x !== prio)) : prio;
     rows.push({
-      ErsteExtReaktion: erste, ExtReaktionTage: erste ? (erste - er) / DAY : 0, Region: pickW([["Europa", 70], ["USA", 18], ["Asien", 12]]), Geschlossen: zu,
+      ErsteExtReaktion: erste, ExtReaktionTage: erste ? geschaeftszeit(er, erste) / DAY : 0, PrioInitial: prioInit, Region: pickW([["Europa", 70], ["USA", 18], ["Asien", 12]]), Geschlossen: zu,
       Quelle: quelleOf(gruppe), Prio: prio, Call: 800000 + i * 11 + Math.floor(rnd() * 9),
       "Eröffnet": er, Gruppe: gruppe, Bearbeiter: pick(bearb[gruppe]), Kunde: pick(kunden),
       Titel: pick(titles), SupMan: rnd() < 0.25 ? pick(["SM1", "SM2", "SM3", "SM4"]) : "", Status: rnd() < 0.6 ? "Geschlossen" : "Gelöst",
@@ -3427,7 +3446,7 @@ function slaKarte() {
   const wochen = slaPerioden().filter(x => x.art === "woche"), akt = wochen[wochen.length - 1];
   const kw = slaStat(akt, list);
   const ohne = allRows().filter(r => slaBewertet(r) && !r.ErsteExtReaktion && r["Eröffnet"] && slaRowOk(r));
-  const ueber = ohne.filter(r => geschaeftszeit(r["Eröffnet"], now()) > slaLimit(prioName(r.Prio))).length;
+  const ueber = ohne.filter(r => geschaeftszeit(r["Eröffnet"], now()) > slaLimit(prioReakt(r))).length;
   const bald = ohneReaktionRows().filter(x => x.stufe === "warn").length;
   return `<div class="card"><h2>Erste externe Reaktion <span class="hint" style="font-weight:400;margin-left:6px">Rot 30 Min. · Blau 4 Std. · Grün 48 Std. · in Geschäftszeit</span></h2>
     <div class="kpis" style="margin-bottom:0">
@@ -3784,6 +3803,25 @@ function geschaeftszeit(a, b) {
   }
   return sum;
 }
+/* Umkehrung (v1.47): der Zeitpunkt, an dem ab `a` die Geschäftszeit `ms` verstrichen ist – für Werte, die die Abfrage
+   bereits als Geschäftszeit liefert. Es gilt geschaeftszeit(a, geschaeftszeitEnde(a, ms)) === ms. */
+function geschaeftszeitEnde(a, ms) {
+  const von = a instanceof Date ? a.getTime() : +a;
+  let rest = Math.max(0, +ms || 0);
+  const d = new Date(von); d.setHours(0, 0, 0, 0);
+  for (let i = 0; i < 4000; i++) {
+    const w = GESCHAEFTSZEIT[d.getDay()];
+    if (w) {
+      const start = Math.max(von, d.getTime() + w[0] * 3600000), ende = d.getTime() + w[1] * 3600000;
+      if (ende > start) {
+        if (rest <= ende - start) return new Date(start + rest);
+        rest -= ende - start;
+      }
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return new Date(von + ms);
+}
 function monatKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
 function slaLimit(p) { return EXT_LIMITS[p] ?? EXT_LIMITS["grün"]; }
 function fmtDur(ms) {
@@ -3799,7 +3837,7 @@ function slaKundeAus(kunde) {
   const k = String(kunde ?? "").trim().toLowerCase();
   return !!k && ruleList(state.filters.sla?.kunden).some(x => k.includes(x));
 }
-function slaRowOk(r) { return applyFilters("sla", [r]).length === 1 && !slaKundeAus(r.Kunde); }
+function slaRowOk(r) { return applyFilters("sla", [r.PrioInitial != null ? { ...r, Prio: r.PrioInitial } : r]).length === 1 && !slaKundeAus(r.Kunde); } // Prio-Filter greift auf die Priorität bei Eröffnung (v1.47)
 /* v1.41: Die Reaktionsabfrage legt die Grundgesamtheit fest (Kunden, Kategorien, SLA-Vertrag). Ein Call ohne Wert
    (leere Spalte) gehört nicht dazu und wird nicht bewertet; 0 heißt „noch keine Reaktion“. Ein gelieferter
    Zeitstempel zählt immer. */
@@ -3832,7 +3870,7 @@ function recordReakt() {
     // zählt er nicht mehr – die Vergangenheit wird nicht nachgetragen). Nur bestehende Einzelfälle werden aktualisiert.
     if (!slaRowOk(r)) { if (state.reakt[mk]?.[call]) { delete state.reakt[mk][call]; touched.add(mk); } continue; } // ausgefiltert: nicht aufzeichnen, ggf. wieder entfernen
     if (r.ErsteExtReaktion && wocheStart(r["Eröffnet"]).getTime() < heuteWs && !state.reakt[mk]?.[call]) continue;
-    const rec = { e: r["Eröffnet"].getTime(), r: r.ErsteExtReaktion ? r.ErsteExtReaktion.getTime() : 0, p: prioName(r.Prio),
+    const rec = { e: r["Eröffnet"].getTime(), r: r.ErsteExtReaktion ? r.ErsteExtReaktion.getTime() : 0, p: prioReakt(r),
       k: String(r.Kunde ?? ""), g: String(r.Gruppe ?? ""), b: String(r.Bearbeiter ?? ""), rg: String(r.Region ?? "") };
     const m = state.reakt[mk] ??= {};
     const alt = m[call];
@@ -3933,9 +3971,9 @@ function reaktEintraege() {
       if (!r["Eröffnet"] || r["Eröffnet"].getTime() < grenze) continue;
       const call = String(r.Call); imExport.add(call);
       if (!slaBewertet(r) || !slaRowOk(r)) continue;
-      const e = r["Eröffnet"].getTime(), rz = r.ErsteExtReaktion ? r.ErsteExtReaktion.getTime() : 0, p = prioName(r.Prio), lim = slaLimit(p);
+      const e = r["Eröffnet"].getTime(), rz = r.ErsteExtReaktion ? r.ErsteExtReaktion.getTime() : 0, p = prioReakt(r), lim = slaLimit(p);
       const zu = istGeschlossen(r), row = zu ? null : r;
-      const dauer = rz ? geschaeftszeit(e, rz) : null;
+      const dauer = rz ? (r.ExtReaktionGz || geschaeftszeit(e, rz)) : null; // Geschäftszeit direkt aus der Abfrage; nur ein gelieferter Zeitstempel wird selbst gemessen
       let art;
       if (rz) art = dauer <= lim ? "ok" : "spaet";
       else if (!zu) art = geschaeftszeit(e, now()) > lim ? "offenUeber" : "offenInnen";
@@ -4031,7 +4069,7 @@ function slaGebrochen(per, list) {
 function slaWarnMs(p) { const m = Number(state.rules?.slaWarn?.[p] ?? DEFAULT_STATE.rules.slaWarn[p] ?? DEFAULT_STATE.rules.slaWarn["grün"]); return (Number.isFinite(m) && m > 0 ? m : DEFAULT_STATE.rules.slaWarn["grün"]) * 60000; }
 function ohneReaktionRows() {
   return applyFilters("sla", allRows().filter(r => slaBewertet(r) && !r.ErsteExtReaktion && r["Eröffnet"] && !slaKundeAus(r.Kunde)))
-    .map(r => { const p = prioName(r.Prio), lim = slaLimit(p), alter = geschaeftszeit(r["Eröffnet"], now());
+    .map(r => { const p = prioReakt(r), lim = slaLimit(p), alter = geschaeftszeit(r["Eröffnet"], now());
       const ueber = alter - lim, warn = alter >= slaWarnMs(p);
       return { r, p, lim, alter, ueber, warn, stufe: ueber > 0 ? "bruch" : warn ? "warn" : "" }; })
     .sort((a, b) => b.ueber - a.ueber);
@@ -4104,10 +4142,10 @@ function slaBruchTabelle(per, list) {
 }
 let slaWoche = null;
 function renderSla(view) {
-  const regeln = `SLA je Priorität: <b>Rot</b> 30 Minuten · <b>Blau</b> 4 Stunden · <b>Grün</b> 48 Stunden – gemessen von der Eröffnung bis zur ersten externen Reaktion, nur in Geschäftszeit (Mo–Do 08:00–17:30, Fr 08:00–16:30).`;
+  const regeln = `SLA je Priorität: <b>Rot</b> 30 Minuten · <b>Blau</b> 4 Stunden · <b>Grün</b> 48 Stunden – gemessen von der Eröffnung bis zur ersten externen Reaktion, nur in Geschäftszeit (Mo–Do 08:00–17:30, Fr 08:00–16:30). Die Zeit liefert die Abfrage bereits in Geschäftszeit; das Board rechnet sie nicht noch einmal um.${hatSpalte("PrioInitial") ? " Maßgeblich ist die Priorität bei Eröffnung – wird ein Call später umpriorisiert, bleibt die Reaktion bei der ursprünglichen Frist." : ""}`;
   if (!hatSpalte("ErsteExtReaktion")) {
     view.innerHTML = `<div class="card"><h2>Reaktionszeit</h2><p class="sub">${regeln}</p>
-      <p class="empty">Die Quelle liefert die Spalte <b>„Externe Reaktion“</b> (Tage bis zur ersten externen Aktion) noch nicht. Sobald die Abfrage sie enthält, füllt sich diese Ansicht automatisch – die Auswertung ist bereits eingebaut.</p></div>`;
+      <p class="empty">Die Quelle liefert die Spalte <b>„Externe Reaktion“</b> (Geschäftszeit bis zur ersten externen Aktion, in Tagen) noch nicht. Sobald die Abfrage sie enthält, füllt sich diese Ansicht automatisch – die Auswertung ist bereits eingebaut.</p></div>`;
     return;
   }
   const list = reaktEintraege();
@@ -4136,7 +4174,7 @@ function renderSla(view) {
       <button class="small${slaNotifyAktiv() ? " primary" : ""}" id="btnSlaNotify" style="margin-left:auto" title="${slaNotifyAktiv() ? "Desktop-Benachrichtigungen sind an – klicken zum Ausschalten" : "Der Browser meldet sich auf dem Desktop, sobald ein Call den Hinweiszeitpunkt erreicht (nur solange das Board geöffnet ist)"}">${slaNotifyAktiv() ? "Benachrichtigungen: an" : "Desktop-Benachrichtigungen einschalten"}</button></h2>
       <p class="sub">${regeln} Hinweis („kurz vor Frist“) ab Rot ${warnTxt("rot")} · Blau ${warnTxt("blau")} · Grün ${warnTxt("grün")} ohne Reaktion – einstellbar in der Verwaltung unter Grundregeln. Neue Fälle erscheinen als Zeile unten im Bild, als Zahl am Reiter „Reaktionszeit“, im Fenstertitel und auf Wunsch als Desktop-Benachrichtigung. Der Export läuft alle 10 Minuten und das Board prüft die Datei alle ${esc(KANAL_INFO.watchMin)} Minuten; so spät kann ein Hinweis frühestens kommen. Sortiert nach Überfälligkeit; Calls innerhalb der Frist stehen unten. Bewertet werden nur Calls, für die die Reaktionsabfrage eine Zeile liefert (Kunden, Kategorien und SLA-Vertrag legt die Abfrage fest).</p>
       ${ohne.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Gruppe</th><th>Bearbeiter</th><th>Kunde</th><th>Titel</th><th>Status</th><th>Eröffnet</th><th class="ta-r" title="in Geschäftszeit">Alter (GZ)</th><th class="ta-r">Frist</th><th class="ta-r">Rest / überfällig</th></tr></thead><tbody>
-      ${ohne.map(x => `<tr><td class="nowrap">${prioZelle(x.p)}</td><td class="tnum nowrap">${esc(x.r.Call)}${x.stufe === "warn" ? ' <span class="pill s-warn" style="font-size:10.5px">kurz vor Frist</span>' : ""}</td><td class="nowrap">${esc(gruppeKurz(x.r.Gruppe) || "–")}</td><td class="nowrap" title="${esc(resolveName(x.r.Bearbeiter) ?? "")}">${esc(x.r.Bearbeiter ?? "–")}</td><td class="nowrap">${esc(x.r.Kunde ?? "–")}${smBadge(x.r)}</td><td class="titlecell">${esc(x.r.Titel ?? "–")}</td><td class="nowrap">${esc(x.r.Status ?? "–")}</td><td class="tnum nowrap">${fmtDT.format(x.r["Eröffnet"])}</td><td class="ta-r tnum">${fmtAgo(x.alter)}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td><td class="ta-r tnum nowrap ${x.ueber > 0 ? "c-crit" : "c-warn"}">${x.ueber > 0 ? "überfällig seit " + fmtAgo(x.ueber) : "noch " + fmtAgo(-x.ueber)}</td></tr>`).join("")}
+      ${ohne.map(x => `<tr><td class="nowrap">${prioZelle(x.p)}${prioWechsel(x.r, x.p)}</td><td class="tnum nowrap">${esc(x.r.Call)}${x.stufe === "warn" ? ' <span class="pill s-warn" style="font-size:10.5px">kurz vor Frist</span>' : ""}</td><td class="nowrap">${esc(gruppeKurz(x.r.Gruppe) || "–")}</td><td class="nowrap" title="${esc(resolveName(x.r.Bearbeiter) ?? "")}">${esc(x.r.Bearbeiter ?? "–")}</td><td class="nowrap">${esc(x.r.Kunde ?? "–")}${smBadge(x.r)}</td><td class="titlecell">${esc(x.r.Titel ?? "–")}</td><td class="nowrap">${esc(x.r.Status ?? "–")}</td><td class="tnum nowrap">${fmtDT.format(x.r["Eröffnet"])}</td><td class="ta-r tnum">${fmtAgo(x.alter)}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td><td class="ta-r tnum nowrap ${x.ueber > 0 ? "c-crit" : "c-warn"}">${x.ueber > 0 ? "überfällig seit " + fmtAgo(x.ueber) : "noch " + fmtAgo(-x.ueber)}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="empty"><b>Alles beantwortet.</b> Jeder offene Call hat eine erste externe Reaktion.</p>`}
     </div>
     <div class="card" id="slaStat"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Erste ext. Reaktion (Durchschnitt)
@@ -4151,7 +4189,7 @@ function renderSla(view) {
       <button class="small" id="btnSlaBruchCopy" style="margin-left:auto" title="Als Tabelle fürs Supportmanager-Protokoll kopieren – mit Kommentar und leerer SupMan-Spalte">Tabelle kopieren</button></h2>
       <p class="sub">Calls der gewählten Woche (nach Eröffnung), deren erste Reaktion nach der Frist kam oder noch aussteht. Der Kommentar wird im Team geteilt und mitkopiert.</p>
       ${brk.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Kunde</th><th>Gruppe</th><th>Bearbeiter</th><th>Eröffnet</th><th class="ta-r">Reaktion nach</th><th class="ta-r">Frist</th><th style="min-width:260px">Kommentar</th></tr></thead><tbody>
-      ${brk.map(x => `<tr><td class="nowrap">${prioZelle(x.p)}</td><td class="tnum nowrap">${esc(x.call)}${x.row ? "" : ' <span class="hint" title="Call ist nicht mehr im Datenstand (geschlossen)">geschl.</span>'}</td><td class="nowrap">${esc(x.k || "–")}</td><td class="nowrap">${esc(x.g || "–")}</td><td class="nowrap" title="${esc(resolveName(x.b) ?? "")}">${esc(x.b || "–")}</td><td class="tnum nowrap">${fmtDT.format(new Date(x.e))}</td><td class="ta-r tnum nowrap c-crit">${x.dauer != null ? fmtDur(x.dauer) : "offen seit " + fmtDur(geschaeftszeit(x.e, now()))}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td><td><input type="text" data-slanote="${esc(x.call)}" value="${esc(state.slaNote?.[x.call] ?? "")}" placeholder="Kommentar fürs Meeting" style="width:100%"></td></tr>`).join("")}
+      ${brk.map(x => `<tr><td class="nowrap">${prioZelle(x.p)}${prioWechsel(x.row, x.p)}</td><td class="tnum nowrap">${esc(x.call)}${x.row ? "" : ' <span class="hint" title="Call ist nicht mehr im Datenstand (geschlossen)">geschl.</span>'}</td><td class="nowrap">${esc(x.k || "–")}</td><td class="nowrap">${esc(x.g || "–")}</td><td class="nowrap" title="${esc(resolveName(x.b) ?? "")}">${esc(x.b || "–")}</td><td class="tnum nowrap">${fmtDT.format(new Date(x.e))}</td><td class="ta-r tnum nowrap c-crit">${x.dauer != null ? fmtDur(x.dauer) : "offen seit " + fmtDur(geschaeftszeit(x.e, now()))}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td><td><input type="text" data-slanote="${esc(x.call)}" value="${esc(state.slaNote?.[x.call] ?? "")}" placeholder="Kommentar fürs Meeting" style="width:100%"></td></tr>`).join("")}
       </tbody></table></div>` : `<p class="empty">Keine Brüche in ${esc(wSel.label)}.</p>`}
     </div>`;
   view.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click", () => { const el = document.getElementById(b.dataset.goto === "ohne" ? "slaOhne" : "slaStat"); el?.scrollIntoView({ behavior: "smooth", block: "start" }); }));
