@@ -17,6 +17,10 @@
     --warn: #fab219; --warn-wash: rgba(250,178,25,0.20);
     --crit: #d03b3b; --crit-wash: rgba(208,59,59,0.16);
     --shadow: 0 1px 2px rgba(11,11,11,0.05), 0 4px 14px rgba(11,11,11,0.04);
+    /* v1.52: Stationen der Weiterleitung – bewusst nicht Rot/Blau/Grün (das sind die Prioritäten) */
+    --wl-h: #9a5b00; --wl-h-wash: rgba(232,150,40,0.20);   /* Hotline / 1st Level: Bernstein */
+    --wl-d: #5d43b8; --wl-d-wash: rgba(124,92,214,0.18);   /* Dispatcher: Violett */
+    --wl-b: #0b6f6b; --wl-b-wash: rgba(20,150,140,0.18);   /* Bearbeitung: Petrol */
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -29,6 +33,9 @@
       --warn: #fab219; --warn-wash: rgba(250,178,25,0.16);
       --crit: #e66767; --crit-wash: rgba(208,59,59,0.22);
       --shadow: none;
+      --wl-h: #f0b35a; --wl-h-wash: rgba(232,150,40,0.22);
+      --wl-d: #b9a7f2; --wl-d-wash: rgba(124,92,214,0.26);
+      --wl-b: #5ad0c8; --wl-b-wash: rgba(20,150,140,0.24);
     }
   }
   :root[data-theme="dark"] {
@@ -41,6 +48,9 @@
     --warn: #fab219; --warn-wash: rgba(250,178,25,0.16);
     --crit: #e66767; --crit-wash: rgba(208,59,59,0.22);
     --shadow: none;
+    --wl-h: #f0b35a; --wl-h-wash: rgba(232,150,40,0.22);
+    --wl-d: #b9a7f2; --wl-d-wash: rgba(124,92,214,0.26);
+    --wl-b: #5ad0c8; --wl-b-wash: rgba(20,150,140,0.24);
   }
   * { box-sizing: border-box; }
   :root {
@@ -362,6 +372,18 @@
   .vlist label { display: block; font-size: 12px; font-weight: 650; color: var(--ink-2); margin: 10px 0 3px; }
   .hint { font-size: 12px; color: var(--muted); }
   .wlpfad { font-size: 11.5px; color: var(--ink-2); min-width: 240px; }
+  /* v1.52: Stationen farblich getrennt – Tabellenspalten, Chips im Weg, Legende */
+  th.wl-h, td.wl-h { background: var(--wl-h-wash); } th.wl-d, td.wl-d { background: var(--wl-d-wash); } th.wl-b, td.wl-b { background: var(--wl-b-wash); }
+  .wlchip { display: inline-block; border-radius: 6px; padding: 0 6px; font-size: 11.5px; font-weight: 650; margin: 1px 0; white-space: nowrap; }
+  .wlchip small { font-weight: 400; opacity: 0.85; margin-left: 3px; }
+  .wlchip.h { background: var(--wl-h-wash); color: var(--wl-h); } .wlchip.d { background: var(--wl-d-wash); color: var(--wl-d); } .wlchip.b { background: var(--wl-b-wash); color: var(--wl-b); }
+  .wlarr { color: var(--muted); margin: 0 3px; font-size: 11px; }
+  .ppgrid { display: flex; align-items: flex-end; gap: 6px; padding: 6px 2px 2px; overflow-x: auto; }
+  .ppbar { width: 36px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .ppbar .ppn { font-size: 11.5px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+  .ppbar .ppfill { width: 100%; min-height: 2px; background: var(--baseline); border-radius: 4px 4px 0 0; }
+  .ppbar.on .ppfill { background: var(--crit); } .ppbar.on .ppn { color: var(--crit); }
+  .ppbar .pplbl { font-size: 11px; color: var(--muted); border-top: 1px solid var(--grid); width: 100%; text-align: center; padding-top: 2px; }
   .statusline { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: var(--ink); color: var(--page); border-radius: 999px; padding: 8px 18px; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.15s; pointer-events: none; z-index: 60; }
   .modal-back { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 70; display: flex; align-items: center; justify-content: center; padding: 20px; }
   .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px 26px; max-width: 460px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
@@ -497,7 +519,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.51";
+const VERSION = "1.52";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -2742,6 +2764,8 @@ function loadDemo() {
         const pp = rnd();
         if (pp < 0.14 && pfad.length > 1) pfad.push(start, "Dispatcher");
         if (pp < 0.05 && pfad.length > 1) pfad.push(start, "Dispatcher");
+        if (pp < 0.04 && pfad.length > 1) pfad.push(start, "Dispatcher"); // v1.52: einige echte Ping-Pong-Calls (7 und 9 Wechsel)
+        if (pp < 0.025 && pfad.length > 1) pfad.push(start, "Dispatcher");
         if (rnd() < 0.14 && pfad[pfad.length - 1] === "Dispatcher") pfad.push(pick(["2nd_CAQ", "2nd_MF", "2nd_HR", "3rd_SD"]), "Dispatcher"); // Rückläufer: aus der Bearbeitung zurück zum Dispatcher
         pfad.push(ziel);
       }
@@ -4257,23 +4281,25 @@ function slaLiegezeiten(r, bisMs) {
   if (!r || !hatWeiterleitungen() || !(r["Eröffnet"] instanceof Date)) return null;
   const segs = wlAufenthalte(r); if (!segs.length) return null;
   const von = r["Eröffnet"].getTime(), bis = bisMs || now().getTime();
-  const sum = { H: 0, D: 0, B: 0 }, weg = [];
+  const sum = { H: 0, D: 0, B: 0 }, weg = [], stationen = [];
   const last = segs[segs.length - 1];
   for (const x of segs) {
     // letzte Station reicht mindestens bis zur Reaktion – auch wenn der Abschluss im Datenstand früher liegt
     const a = Math.max(von, x.von.getTime()), b = Math.min(bis, x === last ? Math.max(x.bis.getTime(), bis) : x.bis.getTime());
     if (b <= a) continue;
-    sum[x.s || "B"] += geschaeftszeit(a, b);
+    const ms = geschaeftszeit(a, b);
+    sum[x.s || "B"] += ms;
     const label = gruppeKurz(x.g) || "?";
-    if (weg[weg.length - 1] !== label) weg.push(label);
+    if (weg[weg.length - 1] !== label) { weg.push(label); stationen.push({ g: x.g, s: x.s, ms }); } else stationen[stationen.length - 1].ms += ms;
   }
   const max = Math.max(sum.H, sum.D, sum.B);
-  return { h: sum.H, d: sum.D, b: sum.B, max, weg: weg.join(" → "), historie: (r.Wl || []).length > 0 };
+  return { h: sum.H, d: sum.D, b: sum.B, max, weg: weg.join(" → "), stationen, historie: (r.Wl || []).length > 0 };
 }
 function lzZelle(lz, k) {
-  if (!lz) return '<td class="ta-r tnum">–</td>';
+  const cls = `wl-${k}`;
+  if (!lz) return `<td class="ta-r tnum ${cls}">–</td>`;
   const v = lz[k], top = v > 0 && v === lz.max;
-  return `<td class="ta-r tnum${top ? " c-warn" : ""}"${top ? ' title="größter Anteil bis zur ersten Reaktion"' : ""}>${v > 0 ? (top ? "<b>" + fmtDur(v) + "</b>" : fmtDur(v)) : "–"}</td>`;
+  return `<td class="ta-r tnum ${cls}"${top ? ' title="größter Anteil bis zur ersten Reaktion"' : ""}>${v > 0 ? (top ? "<b>" + fmtDur(v) + "</b>" : fmtDur(v)) : "–"}</td>`;
 }
 let slaWoche = null;
 function renderSla(view) {
@@ -4325,8 +4351,8 @@ function renderSla(view) {
       <button class="small" id="btnSlaBruchCopy" style="margin-left:auto" title="Als Tabelle fürs Supportmanager-Protokoll kopieren – mit Kommentar und leerer SupMan-Spalte">Tabelle kopieren</button>
       <button class="small" id="btnSlaCallsCopy" title="Alle Calls der gewählten Woche mit Reaktionszeit, Prio bei Eröffnung und aktueller Prio – auch nicht gezählte Calls mit Grund. Zum Abgleich mit der Excel-Statistik Call für Call (in Excel einfügen, über die Call-Nummer vergleichen)">Calls der Woche kopieren</button></h2>
       <p class="sub">Calls der gewählten Woche (nach Eröffnung), deren erste Reaktion nach der Frist kam oder noch aussteht. Der Kommentar wird im Team geteilt und mitkopiert. „Calls der Woche kopieren“ liefert alle Calls der Woche mit Reaktionszeit in Geschäftszeit und Sekunden, dazu die Calls, die nicht zählen, mit Grund – zum Abgleich mit der Excel-Statistik.${wlDa ? " <b>Liegezeiten:</b> Geschäftszeit je Station von der Eröffnung bis zur ersten Reaktion (offene Calls: bis jetzt) aus der Weiterleitungs-Historie – H/1st = Hotline/1st Level, Disp. = Dispatcher, Bearb. = alle anderen Gruppen; der größte Anteil ist hervorgehoben. „Weg“ sind die Stationen bis zur ersten Reaktion." : ""}</p>
-      ${brk.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Kunde</th><th>Gruppe</th><th>Bearbeiter</th><th>Eröffnet</th><th class="ta-r">Reaktion nach</th><th class="ta-r">Frist</th>${wlDa ? `<th class="ta-r" title="Liegezeit auf Hotline/1st Level bis zur ersten Reaktion (Geschäftszeit)">H/1st</th><th class="ta-r" title="Liegezeit beim Dispatcher bis zur ersten Reaktion (Geschäftszeit)">Disp.</th><th class="ta-r" title="Zeit in Bearbeitungsgruppen bis zur ersten Reaktion (Geschäftszeit)">Bearb.</th><th title="Stationen von der Eröffnung bis zur ersten Reaktion">Weg</th>` : ""}<th style="min-width:260px">Kommentar</th></tr></thead><tbody>
-      ${brk.map(x => { const lz = wlDa ? slaLiegezeiten(x.src || x.row, x.r || null) : null; return `<tr><td class="nowrap">${prioZelle(x.p)}${prioWechsel(x.row, x.p)}</td><td class="tnum nowrap">${esc(x.call)}${x.row ? "" : ' <span class="hint" title="Call ist nicht mehr im Datenstand (geschlossen)">geschl.</span>'}</td><td class="nowrap">${esc(x.k || "–")}</td><td class="nowrap">${esc(x.g || "–")}</td><td class="nowrap" title="${esc(resolveName(x.b) ?? "")}">${esc(x.b || "–")}</td><td class="tnum nowrap">${fmtDT.format(new Date(x.e))}</td><td class="ta-r tnum nowrap c-crit">${x.dauer != null ? fmtDur(x.dauer) : "offen seit " + fmtDur(geschaeftszeit(x.e, now()))}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td>${wlDa ? lzZelle(lz, "h") + lzZelle(lz, "d") + lzZelle(lz, "b") + `<td class="wlpfad">${lz ? esc(lz.weg) + (lz.historie ? "" : ' <span class="hint" title="keine Weiterleitung in der Historie – Call liegt seit der Eröffnung in dieser Gruppe">ohne Weiterleitung</span>') : "–"}</td>` : ""}<td><input type="text" data-slanote="${esc(x.call)}" value="${esc(state.slaNote?.[x.call] ?? "")}" placeholder="Kommentar fürs Meeting" style="width:100%"></td></tr>`; }).join("")}
+      ${brk.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Kunde</th><th>Gruppe</th><th>Bearbeiter</th><th>Eröffnet</th><th class="ta-r">Reaktion nach</th><th class="ta-r">Frist</th>${wlDa ? `<th class="ta-r wl-h" title="Liegezeit auf Hotline/1st Level bis zur ersten Reaktion (Geschäftszeit)">H/1st</th><th class="ta-r wl-d" title="Liegezeit beim Dispatcher bis zur ersten Reaktion (Geschäftszeit)">Disp.</th><th class="ta-r wl-b" title="Zeit in Bearbeitungsgruppen bis zur ersten Reaktion (Geschäftszeit)">Bearb.</th><th title="Stationen von der Eröffnung bis zur ersten Reaktion, mit der Zeit je Station">Weg</th>` : ""}<th style="min-width:260px">Kommentar</th></tr></thead><tbody>
+      ${brk.map(x => { const lz = wlDa ? slaLiegezeiten(x.src || x.row, x.r || null) : null; return `<tr><td class="nowrap">${prioZelle(x.p)}${prioWechsel(x.row, x.p)}</td><td class="tnum nowrap">${esc(x.call)}${x.row ? "" : ' <span class="hint" title="Call ist nicht mehr im Datenstand (geschlossen)">geschl.</span>'}</td><td class="nowrap">${esc(x.k || "–")}</td><td class="nowrap">${esc(x.g || "–")}</td><td class="nowrap" title="${esc(resolveName(x.b) ?? "")}">${esc(x.b || "–")}</td><td class="tnum nowrap">${fmtDT.format(new Date(x.e))}</td><td class="ta-r tnum nowrap c-crit">${x.dauer != null ? fmtDur(x.dauer) : "offen seit " + fmtDur(geschaeftszeit(x.e, now()))}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td>${wlDa ? lzZelle(lz, "h") + lzZelle(lz, "d") + lzZelle(lz, "b") + `<td class="wlpfad">${lz ? wlWegChips(lz.stationen) + (lz.historie ? "" : ' <span class="hint" title="keine Weiterleitung in der Historie – Call liegt seit der Eröffnung in dieser Gruppe">ohne Weiterleitung</span>') : "–"}</td>` : ""}<td><input type="text" data-slanote="${esc(x.call)}" value="${esc(state.slaNote?.[x.call] ?? "")}" placeholder="Kommentar fürs Meeting" style="width:100%"></td></tr>`; }).join("")}
       </tbody></table></div>` : `<p class="empty">Keine Brüche in ${esc(wSel.label)}.</p>`}
     </div>`;
   view.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click", () => { const el = document.getElementById(b.dataset.goto === "ohne" ? "slaOhne" : "slaStat"); el?.scrollIntoView({ behavior: "smooth", block: "start" }); }));
@@ -4467,7 +4493,7 @@ function wlStapel(g) {
 }
 function hatWeiterleitungen() { return hatSpalte("WlText") || hatSpalte("WlDatum") || hatSpalte("WlNach") || hatSpalte("Wl"); }
 function wlGruppenImStand() { return [...new Set(alleZeilen().flatMap(r => (r.Wl || []).flatMap(w => [w.von, w.nach])).filter(Boolean))].sort((a, b) => a.localeCompare(b, "de")); }
-function wlGz() { return !!uiPref.wlGz; }
+function wlGz() { return true; } // v1.52: Liegezeiten nur noch in Geschäftszeit (Kalenderzeit entfernt)
 function wlDauer(a, b) { return wlGz() ? geschaeftszeit(a, b) : Math.max(0, b - a); }
 const fmtWl1 = new Intl.NumberFormat("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const fmtMonatLang = new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric" });
@@ -4512,12 +4538,12 @@ function wlCalls() {
     for (let i = 1; i < segs.length; i++) hops.push({ d: segs[i].von, von: segs[i - 1].g, nach: segs[i].g, sVon: segs[i - 1].s, sNach: segs[i].s, pp: (segs[i - 1].s === "H" && segs[i].s === "D") || (segs[i - 1].s === "D" && segs[i].s === "H") });
     const bearb = segs[0].s ? segs.find(x => !x.s) : null; // erste Ankunft in einer Bearbeitungsgruppe – nur für Calls, die auf einem Eingangsstapel eröffnet wurden
     let liegeHD = 0; for (const x of segs) if (x.s) liegeHD += wlDauer(x.von, x.bis);
-    calls.push({ r, segs, hops, pp: hops.filter(h => h.pp).length, rl: hops.filter(h => !h.sVon && h.sNach).length, bearbAb: bearb ? bearb.von : null, liegeHD, pfad: segs.map(x => x.g) });
+    calls.push({ r, segs, hops, pp: hops.filter(h => h.pp).length, rl: hops.filter(h => !h.sVon && h.sNach).length, bearbAb: bearb ? bearb.von : null, bisBearb: bearb && r["Eröffnet"] ? wlDauer(r["Eröffnet"], bearb.von) : null, liegeHD, pfad: segs.map(x => x.g) });
   }
   _wlCache = { src: sources.ALL.rows, n: sources.ALL.rows.length, key, calls };
   return calls;
 }
-let wlZeitraum = "jahr", wlMin = 2, wlAlle = false, wlAlleRl = false; // Zeitraum, Ping-Pong-Schwelle und „alle anzeigen“ – sitzungsweise
+let wlZeitraum = "jahr", wlMin = 6, wlAlle = false; // Zeitraum, Ping-Pong-Schwelle (Vorgabe 6, Eingabefeld) und „alle anzeigen“ – sitzungsweise
 function wlMonate() { // Monate, die der Export abdeckt (höchstens 13), jüngster zuerst
   let min = null; for (const r of alleZeilen()) if (r["Eröffnet"] instanceof Date && (!min || r["Eröffnet"] < min)) min = r["Eröffnet"];
   const out = [], d = new Date(todayStart()); d.setDate(1);
@@ -4574,18 +4600,57 @@ function wlRueckStat(abgaben) {
   return [...m.values()].map(e => ({ ...e, quote: (e.zurueck + e.weiter) ? e.zurueck / (e.zurueck + e.weiter) : null, avg: mittel(e.ms) }))
     .sort((a, b) => b.zurueck - a.zurueck || b.n - a.n || a.g.localeCompare(b.g, "de"));
 }
-/* Liegedauer je Monat: Aufenthalte auf H und D, die durch Weiterleitung endeten (Monat der Weiterleitung), und je Call
-   die Gesamtzeit von der Eröffnung bis zur ersten Bearbeitungsgruppe (Monat dieser Ankunft). Schlüssel "J<Jahr>" = Jahr bisher. */
+/* Liegedauer je Monat (v1.52): alle Zeit, die Calls im Monat auf H bzw. D lagen – in Geschäftszeit, egal wann der Aufenthalt
+   begann oder endete (Aufenthalte werden an Monatsgrenzen geschnitten, laufende bis jetzt). Weiterleitungen innerhalb desselben
+   Stapels laufen weiter, mit dem Wechsel auf den anderen Stapel wechselt die Uhr. Je Monat und Stapel: Summe, betroffene Calls,
+   je Call die Zeit im Monat (für Ø und Median). Auf dem Stapel geschlossene Calls zählen nicht (Bearbeitung, keine Liegezeit).
+   „B“ wie bisher: je Call die Zeit von der Eröffnung bis zur ersten Bearbeitungsgruppe, im Monat dieser Ankunft. "J<Jahr>" = Jahr bisher. */
 function wlMonatsStat(calls) {
   const rows = new Map();
-  const get = k => { if (!rows.has(k)) rows.set(k, { H: [], D: [], B: [] }); return rows.get(k); };
-  const jahr = String(todayStart().getFullYear());
-  const add = (d, art, ms) => { const k = monatKey(d); get(k)[art].push(ms); if (k.startsWith(jahr)) get("J" + jahr)[art].push(ms); };
+  const neu = () => ({ ms: 0, calls: new Set(), perCall: new Map() });
+  const get = k => { if (!rows.has(k)) rows.set(k, { H: neu(), D: neu(), B: [] }); return rows.get(k); };
+  const jahr = String(todayStart().getFullYear()), jetzt = now().getTime();
+  const addHD = (k, s, call, ms) => { const e = get(k)[s]; e.ms += ms; e.calls.add(call); e.perCall.set(call, (e.perCall.get(call) || 0) + ms); };
   for (const c of calls) {
-    for (const x of c.segs) if (x.s && x.art === "wl") add(x.bis, x.s, wlDauer(x.von, x.bis));
-    if (c.bearbAb) add(c.bearbAb, "B", wlDauer(c.r["Eröffnet"], c.bearbAb));
+    const call = String(c.r.Call);
+    for (const x of c.segs) {
+      if (!x.s || x.art === "zu") continue;
+      let a = x.von.getTime(); const b = Math.min(x.bis.getTime(), jetzt);
+      for (let i = 0; a < b && i < 200; i++) {
+        const d = new Date(a), mEnde = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime(), e = Math.min(b, mEnde);
+        const ms = geschaeftszeit(a, e), k = monatKey(d);
+        if (ms > 0) { addHD(k, x.s, call, ms); if (k.startsWith(jahr)) addHD("J" + jahr, x.s, call, ms); }
+        a = e;
+      }
+    }
+    if (c.bearbAb && c.bisBearb != null) { const k = monatKey(c.bearbAb); get(k).B.push(c.bisBearb); if (k.startsWith(jahr)) get("J" + jahr).B.push(c.bisBearb); }
   }
   return rows;
+}
+/* v1.52: Verteilung der Calls nach Zahl der Wechsel H ⇄ D – alle Calls mit mindestens einem Wechsel im Zeitraum */
+function wlPpVerteilung(calls, z) {
+  const m = new Map();
+  for (const c of calls) if (c.pp > 0 && c.hops.some(h => h.pp && h.d >= z.von && h.d < z.bis)) m.set(c.pp, (m.get(c.pp) || 0) + 1);
+  const max = Math.max(0, ...m.keys()), out = [];
+  for (let n = 1; n <= max; n++) out.push({ n, calls: m.get(n) || 0 });
+  return out;
+}
+/* v1.52: Untypische Weiterleitungen von Hotline/1st Level – direkt in eine Bearbeitungsgruppe statt an den Dispatcher */
+function wlUntypischH(calls, z) {
+  const out = [];
+  for (const c of calls) for (const h of c.hops) if (h.sVon === "H" && !h.sNach && h.d >= z.von && h.d < z.bis) {
+    const w = (c.r.Wl || []).find(w => w.d instanceof Date && w.d.getTime() === h.d.getTime() && String(w.nach ?? "").toLowerCase() === String(h.nach ?? "").toLowerCase());
+    out.push({ c, d: h.d, von: h.von, nach: h.nach, vonB: w?.vonB ?? "", nachB: w?.nachB ?? "", er: w?.er ?? "", st: w?.st ?? "" });
+  }
+  return out.sort((a, b) => b.d - a.d);
+}
+/* v1.52: Stationen als farbige Chips (H Bernstein, D Violett, Bearbeitung Petrol), optional mit Dauer */
+function wlChip(s, label, extra) {
+  const k = s === "H" ? "h" : s === "D" ? "d" : "b";
+  return `<span class="wlchip ${k}"${extra ? ` title="${esc(label)} – ${esc(extra)}"` : ""}>${esc(label)}${extra ? ` <small>${esc(extra)}</small>` : ""}</span>`;
+}
+function wlWegChips(segs) {
+  return segs.map(x => wlChip(x.s, gruppeKurz(x.g) || "?", x.ms != null ? fmtLiege(x.ms) : (x.von && x.bis ? fmtLiege(wlDauer(x.von, x.bis)) : ""))).join('<span class="wlarr">›</span>');
 }
 function wlCopyTabelle(titel, header, zeilen, rechts) {
   let html = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><b>${esc(titel)}</b> – Stand ${esc(fmtDT.format(new Date()))}<br><table style="${mailTableStyle()}"><tr>${header.map(v => th(v, MAIL_HDR)).join("")}</tr>`;
@@ -4604,93 +4669,89 @@ function renderWl(view) {
   const letzter = c => c.segs[c.segs.length - 1];
   const liegtAuf = s => calls.filter(c => letzter(c).art === "offen" && letzter(c).s === s).map(c => wlDauer(letzter(c).von, now()));
   const aufH = liegtAuf("H"), aufD = liegtAuf("D");
-  const pp = wlPingPong(calls, z), ppList = wlAlle ? pp : pp.slice(0, 30);
-  const vertD = wlVerteilung(calls, "D", z), vertH = wlVerteilung(calls, "H", z);
+  const pp = wlPingPong(calls, z), ppList = wlAlle ? pp : pp.slice(0, 30), ppVert = wlPpVerteilung(calls, z), ppVertMax = Math.max(1, ...ppVert.map(x => x.calls));
+  const vertD = wlVerteilung(calls, "D", z), vertH = wlVerteilung(calls, "H", z), untyp = wlUntypischH(calls, z);
   const zurueck = vertD.reduce((a, x) => a + (x.zurueck ? x.n : 0), 0), vertDtot = vertD.reduce((a, x) => a + x.n, 0);
   const stat = wlMonatsStat(calls);
-  const abgaben = wlAbgaben(calls, z), rueck = abgaben.filter(a => a.erg === "zurueck").sort((a, b) => b.bis - a.bis), rueckStat = wlRueckStat(abgaben);
-  const abgBeendet = abgaben.filter(a => a.erg !== "offen").length, abgOffen = abgaben.length - abgBeendet, rueckList = wlAlleRl ? rueck : rueck.slice(0, 30);
   const lueckig = calls.filter(c => c.r.WlLueckig).length;
   const zeilen = [["J" + jahr, `Jahr ${jahr} bisher`, true], ...monate.map(m => [m, wlMonatLabel(m), false])];
-  const statZelle = (e, art) => { const a = e?.[art] ?? []; return `<td class="ta-r tnum">${a.length ? fmtN.format(a.length) : "–"}</td><td class="ta-r tnum">${a.length ? fmtLiege(mittel(a)) : "–"}</td><td class="ta-r tnum">${a.length ? fmtLiege(median(a)) : "–"}</td>`; };
+  const statHD = (e, st) => { const a = e?.[st], n = a ? a.calls.size : 0, je = a ? [...a.perCall.values()] : [], cls = st === "H" ? "wl-h" : "wl-d";
+    return `<td class="ta-r tnum ${cls}">${n ? fmtN.format(n) : "–"}</td><td class="ta-r tnum ${cls}"><b>${n ? fmtLiege(a.ms) : "–"}</b></td><td class="ta-r tnum ${cls}">${n ? fmtLiege(mittel(je)) : "–"}</td><td class="ta-r tnum ${cls}">${n ? fmtLiege(median(je)) : "–"}</td>`; };
+  const statB = e => { const a = e?.B ?? []; return `<td class="ta-r tnum wl-b">${a.length ? fmtN.format(a.length) : "–"}</td><td class="ta-r tnum wl-b">${a.length ? fmtLiege(mittel(a)) : "–"}</td><td class="ta-r tnum wl-b">${a.length ? fmtLiege(median(a)) : "–"}</td>`; };
   const zOpt = [["jahr", `Jahr ${jahr} bisher`], ["12m", "letzte 12 Monate"], ["3m", "letzte 3 Monate"], ["alle", "gesamter Export"], ...monate.map(m => [m, wlMonatLabel(m)])];
-  const vertTab = (vert, name) => vert.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Ziel</th><th class="ta-r">Weiterleitungen</th><th class="ta-r">Anteil</th><th style="width:40%"></th></tr></thead><tbody>${vert.map(x => `<tr><td class="nowrap">${esc(x.label)}${x.zurueck ? ' <span class="pill s-warn" style="font-size:10.5px" title="zurück auf den Eingangsstapel – Ping-Pong">zurück</span>' : ""}</td><td class="ta-r tnum">${fmtN.format(x.n)}</td><td class="ta-r tnum">${pct(x.q)}</td><td class="lastcell"><div class="lb"><span class="lb-fill" style="width:${Math.round(x.q * 100)}%"></span></div></td></tr>`).join("")}</tbody></table></div>` : `<p class="empty">Keine Weiterleitungen von ${esc(name)} im Zeitraum ${esc(z.label)}.</p>`;
+  const vertTab = (vert, name, cls) => vert.length ? `<div class="tscroll"><table class="list"><thead><tr><th class="${cls}">Ziel</th><th class="ta-r ${cls}">Weiterleitungen</th><th class="ta-r ${cls}">Anteil</th><th class="${cls}" style="width:40%"></th></tr></thead><tbody>${vert.map(x => `<tr><td class="nowrap">${esc(x.label)}${x.zurueck ? ' <span class="pill s-warn" style="font-size:10.5px" title="zurück auf den Eingangsstapel – Ping-Pong">zurück</span>' : ""}</td><td class="ta-r tnum">${fmtN.format(x.n)}</td><td class="ta-r tnum">${pct(x.q)}</td><td class="lastcell"><div class="lb"><span class="lb-fill" style="width:${Math.round(x.q * 100)}%"></span></div></td></tr>`).join("")}</tbody></table></div>` : `<p class="empty">Keine Weiterleitungen von ${esc(name)} im Zeitraum ${esc(z.label)}.</p>`;
+  const legende = `<span class="hint" style="margin-right:4px">Farben:</span>${wlChip("H", WL_NAME.H)} ${wlChip("D", "Dispatcher")} ${wlChip("", "Bearbeitung")}`;
   view.innerHTML = `<div class="kpis">
       <button class="kpi" data-goto="wlStat"><div class="k-label">Liegt auf ${esc(WL_NAME.H)}</div><div class="k-value">${fmtN.format(aufH.length)}</div><div class="k-note">offene Calls · Ø seit ${fmtLiege(mittel(aufH))}</div></button>
       <button class="kpi" data-goto="wlStat"><div class="k-label">Liegt beim Dispatcher</div><div class="k-value">${fmtN.format(aufD.length)}</div><div class="k-note">offene Calls · Ø seit ${fmtLiege(mittel(aufD))}</div></button>
       <button class="kpi${pp.length ? " crit" : ""}" data-goto="wlPp"><div class="k-label">Ping-Pong-Calls</div><div class="k-value">${fmtN.format(pp.length)}</div><div class="k-note">${esc(z.label)} · ab ${wlMin} Wechseln Hotline ⇄ Dispatcher</div></button>
       <button class="kpi" data-goto="wlVert"><div class="k-label">Dispatcher → zurück an Hotline</div><div class="k-value">${pct(vertDtot ? zurueck / vertDtot : null)}</div><div class="k-note">${fmtN.format(zurueck)} von ${fmtN.format(vertDtot)} Weiterleitungen · ${esc(z.label)}</div></button>
-      <button class="kpi${rueck.length ? " crit" : ""}" data-goto="wlRueck"><div class="k-label">Rückläufer aus der Bearbeitung</div><div class="k-value">${fmtN.format(rueck.length)}</div><div class="k-note">${pct(abgBeendet ? rueck.length / abgBeendet : null)} von ${fmtN.format(abgBeendet)} beendeten Abgaben · ${esc(z.label)}</div></button>
+      <button class="kpi${untyp.length ? " crit" : ""}" data-goto="wlUntyp"><div class="k-label">Hotline direkt in die Bearbeitung</div><div class="k-value">${fmtN.format(untyp.length)}</div><div class="k-note">Weiterleitungen am Dispatcher vorbei · ${esc(z.label)}</div></button>
     </div>
-    <div class="card"><h2>Filter <span class="hint" style="font-weight:400;margin-left:6px">Zeitraum und Zeitmaß je Gerät, Ausblendungen teamweit</span></h2>
-      <p class="sub">${stapelTxt} Ab Werk ohne ${esc(state.internKunde || "MPDV")}-Calls (Chip unter „Sonstiges“). Gruppe, Status und Prio beziehen sich auf den heutigen Stand des Calls; geschlossene Calls zählen mit.${lueckig ? ` <b>Hinweis:</b> Bei ${fmtN.format(lueckig)} Calls liefert der Export weniger Weiterleitungen als „Gesamtanzahl Weiterleitungen“ angibt – die Abfrage muss je Weiterleitung eine Zeile liefern, sonst fehlen Wege und Liegezeiten.` : ""}</p>
+    <div class="card"><h2>Filter <span class="hint" style="font-weight:400;margin-left:6px">Zeitraum und Ping-Pong-Schwelle je Gerät, Ausblendungen teamweit</span></h2>
+      <p class="sub">${stapelTxt} Alle Zeiten in Geschäftszeit (Mo–Do 08:00–17:30, Fr 08:00–16:30). Ab Werk ohne ${esc(state.internKunde || "MPDV")}-Calls (Chip unter „Sonstiges“). Gruppe, Status und Prio beziehen sich auf den heutigen Stand des Calls; geschlossene Calls zählen mit.${lueckig ? ` <b>Hinweis:</b> Bei ${fmtN.format(lueckig)} Calls liefert der Export weniger Weiterleitungen als „Gesamtanzahl Weiterleitungen“ angibt – die Abfrage muss je Weiterleitung eine Zeile liefern, sonst fehlen Wege und Liegezeiten.` : ""}</p>
       <div class="frow"><span class="flabel">Zeitraum</span><select id="wlZeitraumSel" class="small">${zOpt.map(([v, l]) => `<option value="${v}"${v === wlZeitraum ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
-        <span class="flabel" style="width:auto;margin-left:14px">Ping-Pong ab</span><select id="wlMinSel" class="small">${[2, 3, 4, 5, 6].map(n => `<option value="${n}"${n === wlMin ? " selected" : ""}>${n} Wechseln</option>`).join("")}</select>
-        <span class="flabel" style="width:auto;margin-left:14px">Zeitmaß</span><button class="segbtn small${wlGz() ? "" : " seg-on"}" data-wlgz="0" title="Liegezeiten in Kalenderzeit – rund um die Uhr, Wochenende zählt mit">Kalenderzeit</button><button class="segbtn small${wlGz() ? " seg-on" : ""}" data-wlgz="1" title="Liegezeiten nur in Geschäftszeit (Mo–Do 08:00–17:30, Fr 08:00–16:30)">Geschäftszeit</button></div>
+        <span class="flabel" style="width:auto;margin-left:14px">Ping-Pong ab</span><input type="number" id="wlMinInp" class="small" min="2" max="15" step="1" value="${wlMin}" style="width:64px" title="Ab so vielen Wechseln Hotline ⇄ Dispatcher gilt ein Call als Ping-Pong (Vorgabe 6, 2 bis 15)"> <span class="hint">Wechseln (Vorgabe 6)</span>
+        <span style="margin-left:18px">${legende}</span></div>
       ${filterPanel("wl", alleZeilen())}
     </div>
     <div class="card" id="wlPp"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Ping-Pong-Calls <span class="pill ${pp.length ? "s-crit" : "s-ok"}">${pp.length}</span><span class="hint" style="font-weight:400">${esc(z.label)}</span>
       <button class="small" id="btnWlPpCopy" style="margin-left:auto" title="Als Tabelle fürs Protokoll kopieren (alle Zeilen)">Tabelle kopieren</button></h2>
-      <p class="sub">Calls, die mindestens ${wlMin}-mal zwischen ${esc(WL_NAME.H)} und Dispatcher gewechselt haben (Hotline → Dispatcher → Hotline sind zwei Wechsel), davon mindestens ein Wechsel im Zeitraum. Sortiert nach Zahl der Wechsel, dann nach Liegezeit auf den Eingangsstapeln (${wlGz() ? "Geschäftszeit" : "Kalenderzeit"}). „Weg“ zeigt alle Gruppenwechsel von der Eröffnung bis heute.</p>
-      ${ppList.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Kunde</th><th>Titel</th><th>Status</th><th>Eröffnet</th><th class="ta-r" title="Wechsel Hotline/1st Level ⇄ Dispatcher">Ping-Pong</th><th class="ta-r" title="alle Gruppenwechsel">Wechsel</th><th class="ta-r" title="Summe der Liegezeiten auf Hotline/1st Level und Dispatcher">Liegezeit Eingang</th><th>Weg</th></tr></thead><tbody>
-      ${ppList.map(c => `<tr><td class="nowrap">${prioZelle(prioName(c.r.Prio))}</td><td class="tnum nowrap">${esc(c.r.Call)}</td><td class="nowrap">${esc(c.r.Kunde ?? "–")}${smBadge(c.r)}</td><td class="titlecell">${esc(c.r.Titel ?? "–")}</td><td class="nowrap">${esc(c.r.Status ?? "–")}${istGeschlossen(c.r) ? ' <span class="hint">zu</span>' : ""}</td><td class="tnum nowrap">${c.r["Eröffnet"] ? fmtD.format(c.r["Eröffnet"]) : "–"}</td><td class="ta-r tnum"><span class="pill ${c.pp >= 4 ? "s-crit" : "s-warn"}">${c.pp}</span></td><td class="ta-r tnum">${c.hops.length}</td><td class="ta-r tnum nowrap">${fmtLiege(c.liegeHD)}</td><td class="wlpfad">${esc(c.pfad.map(gruppeKurz).join(" → "))}</td></tr>`).join("")}
-      </tbody></table></div>${pp.length > ppList.length ? `<div class="btnrow"><button class="small" id="btnWlAlle">Alle ${fmtN.format(pp.length)} anzeigen</button></div>` : ""}` : `<p class="empty"><b>Kein Ping-Pong</b> im Zeitraum ${esc(z.label)}.</p>`}
+      <p class="sub">Wie oft gehen Calls zwischen ${esc(WL_NAME.H)} und Dispatcher hin und her, bis die Bearbeitung beginnt? Die Verteilung zählt alle Calls mit mindestens einem Wechsel im Zeitraum nach der Gesamtzahl ihrer Wechsel (Hotline → Dispatcher → Hotline sind zwei); ab ${wlMin} Wechseln gilt ein Call als Ping-Pong und steht in der Liste – sortiert nach Wechseln, dann nach Liegezeit auf den Eingangsstapeln. „Weg“ zeigt alle Stationen von der Eröffnung bis heute, mit der Zeit je Station; „bis Bearbeitung“ = von der Eröffnung bis zur ersten Ankunft in einer Bearbeitungsgruppe.</p>
+      ${ppVert.length ? `<div class="ppgrid" title="Calls je Zahl der Wechsel Hotline ⇄ Dispatcher">${ppVert.map(x => `<div class="ppbar${x.n >= wlMin ? " on" : ""}" title="${fmtN.format(x.calls)} Calls mit ${x.n} Wechseln"><div class="ppn">${x.calls || ""}</div><div class="ppfill" style="height:${Math.max(2, Math.round(x.calls / ppVertMax * 70))}px"></div><div class="pplbl">${x.n}</div></div>`).join("")}<div class="hint" style="align-self:center;margin-left:8px">Wechsel →<br>rot = ab ${wlMin}</div></div>` : ""}
+      ${ppList.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Kunde</th><th>Titel</th><th>Status</th><th>Eröffnet</th><th class="ta-r" title="Wechsel Hotline/1st Level ⇄ Dispatcher">Ping-Pong</th><th class="ta-r" title="alle Gruppenwechsel">Wechsel</th><th class="ta-r" title="Summe der Liegezeiten auf Hotline/1st Level und Dispatcher">Liegezeit Eingang</th><th class="ta-r" title="von der Eröffnung bis zur ersten Bearbeitungsgruppe">bis Bearbeitung</th><th>Weg</th></tr></thead><tbody>
+      ${ppList.map(c => `<tr><td class="nowrap">${prioZelle(prioName(c.r.Prio))}</td><td class="tnum nowrap">${esc(c.r.Call)}</td><td class="nowrap">${esc(c.r.Kunde ?? "–")}${smBadge(c.r)}</td><td class="titlecell">${esc(c.r.Titel ?? "–")}</td><td class="nowrap">${esc(c.r.Status ?? "–")}${istGeschlossen(c.r) ? ' <span class="hint">zu</span>' : ""}</td><td class="tnum nowrap">${c.r["Eröffnet"] ? fmtD.format(c.r["Eröffnet"]) : "–"}</td><td class="ta-r tnum"><span class="pill ${c.pp >= wlMin + 2 ? "s-crit" : "s-warn"}">${c.pp}</span></td><td class="ta-r tnum">${c.hops.length}</td><td class="ta-r tnum nowrap">${fmtLiege(c.liegeHD)}</td><td class="ta-r tnum nowrap">${c.bisBearb != null ? fmtLiege(c.bisBearb) : '<span class="hint">noch nicht</span>'}</td><td class="wlpfad">${wlWegChips(c.segs)}</td></tr>`).join("")}
+      </tbody></table></div>${pp.length > ppList.length ? `<div class="btnrow"><button class="small" id="btnWlAlle">Alle ${fmtN.format(pp.length)} anzeigen</button></div>` : ""}` : `<p class="empty"><b>Kein Ping-Pong</b> ab ${wlMin} Wechseln im Zeitraum ${esc(z.label)}.</p>`}
     </div>
-    <div class="card" id="wlRueck"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Rückläufer aus der Bearbeitung <span class="pill ${rueck.length ? "s-crit" : "s-ok"}">${rueck.length}</span><span class="hint" style="font-weight:400">${esc(z.label)}</span>
-      <button class="small" id="btnWlRueckStatCopy" style="margin-left:auto" title="Tabelle je Bearbeitungsgruppe fürs Protokoll kopieren">Tabelle kopieren</button><button class="small" id="btnWlRueckCopy" title="Liste der Rückläufer fürs Protokoll kopieren (alle Zeilen)">Liste kopieren</button></h2>
-      <p class="sub">Eine Abgabe ist eine Weiterleitung vom Dispatcher oder von ${esc(WL_NAME.H)} in eine Bearbeitungsgruppe (2nd/3rd Level, Unterstützungsdienste …), gezählt nach dem Datum der Abgabe im Zeitraum. Rückläufer = die Bearbeitungsgruppe hat den Call wieder auf einen Eingangsstapel zurückgegeben. Quote = Rückläufer geteilt durch alle beendeten Abgaben (zurück oder weitergegeben/geschlossen); Calls, die noch in der Gruppe liegen, zählen nicht in die Quote. „Zeit dort“ in ${wlGz() ? "Geschäftszeit" : "Kalenderzeit"}.</p>
-      ${rueckStat.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Bearbeitungsgruppe</th><th class="ta-r">Abgaben</th><th class="ta-r">zurück</th><th class="ta-r">weiter / geschlossen</th><th class="ta-r">noch dort</th><th class="ta-r">Rücklaufquote</th><th class="ta-r" title="Durchschnittliche Zeit in der Gruppe bis zur Rückgabe">Ø bis Rückgabe</th><th style="width:25%"></th></tr></thead><tbody>
-      ${rueckStat.map(x => `<tr><td class="nowrap">${esc(gruppeKurz(x.g))}</td><td class="ta-r tnum">${fmtN.format(x.n)}</td><td class="ta-r tnum">${x.zurueck ? `<span class="pill s-warn">${fmtN.format(x.zurueck)}</span>` : "0"}</td><td class="ta-r tnum">${fmtN.format(x.weiter)}</td><td class="ta-r tnum">${fmtN.format(x.offen)}</td><td class="ta-r tnum">${pct(x.quote)}</td><td class="ta-r tnum nowrap">${x.zurueck ? fmtLiege(x.avg) : "–"}</td><td class="lastcell"><div class="lb"><span class="lb-fill" style="width:${Math.round((x.quote ?? 0) * 100)}%"></span></div></td></tr>`).join("")}
-      </tbody></table></div>` : `<p class="empty">Keine Abgaben in Bearbeitungsgruppen im Zeitraum ${esc(z.label)}.</p>`}
-      ${rueckList.length ? `<h2 style="margin-top:16px">Zurückgegebene Calls <span class="hint" style="font-weight:400">jüngste zuerst${abgOffen ? ` · ${fmtN.format(abgOffen)} Abgaben liegen noch in der Bearbeitung` : ""}</span></h2>
-      <div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Kunde</th><th>Titel</th><th>Status</th><th>Gruppe</th><th>abgegeben</th><th>zurück am</th><th class="ta-r">Zeit dort</th><th>zurück an</th><th>Weg</th></tr></thead><tbody>
-      ${rueckList.map(a => `<tr><td class="nowrap">${prioZelle(prioName(a.c.r.Prio))}</td><td class="tnum nowrap">${esc(a.c.r.Call)}</td><td class="nowrap">${esc(a.c.r.Kunde ?? "–")}${smBadge(a.c.r)}</td><td class="titlecell">${esc(a.c.r.Titel ?? "–")}</td><td class="nowrap">${esc(a.c.r.Status ?? "–")}${istGeschlossen(a.c.r) ? ' <span class="hint">zu</span>' : ""}</td><td class="nowrap">${esc(gruppeKurz(a.g))}</td><td class="tnum nowrap">${fmtDT.format(a.von)}</td><td class="tnum nowrap">${fmtDT.format(a.bis)}</td><td class="ta-r tnum nowrap">${fmtLiege(a.ms)}</td><td class="nowrap">${esc(gruppeKurz(a.zurueckAn))}</td><td class="wlpfad">${esc(a.c.pfad.map(gruppeKurz).join(" → "))}</td></tr>`).join("")}
-      </tbody></table></div>${rueck.length > rueckList.length ? `<div class="btnrow"><button class="small" id="btnWlAlleRl">Alle ${fmtN.format(rueck.length)} anzeigen</button></div>` : ""}` : (rueckStat.length ? `<p class="empty"><b>Keine Rückläufer</b> im Zeitraum ${esc(z.label)}.</p>` : "")}
-    </div>
-    <div class="card" id="wlStat"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Liegedauer je Monat <span class="hint" style="font-weight:400">${wlGz() ? "Geschäftszeit" : "Kalenderzeit"}</span>
+    <div class="card" id="wlStat"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Liegedauer je Monat <span class="hint" style="font-weight:400">Geschäftszeit</span>
       <button class="small" id="btnWlStatCopy" style="margin-left:auto" title="Als Tabelle fürs Protokoll kopieren">Tabelle kopieren</button></h2>
-      <p class="sub">Wie lange liegt ein Call auf ${esc(WL_NAME.H)} bzw. beim Dispatcher, bis er weitergereicht wird – je Monat der Weiterleitung. Ein Call, der mehrfach auf einem Stapel liegt, zählt jedes Mal; Calls, die auf einem Eingangsstapel geschlossen wurden, zählen nicht. „Bis Bearbeitung“: von der Eröffnung bis zur ersten Ankunft in einer Bearbeitungsgruppe (2nd/3rd Level, Unterstützungsdienste …), je Monat dieser Ankunft, nur für Calls, die auf einem Eingangsstapel eröffnet wurden.</p>
-      <div class="tscroll"><table class="list slatab"><thead><tr><th rowspan="2">Monat</th><th colspan="3" class="ta-r">${esc(WL_NAME.H)}</th><th colspan="3" class="ta-r">Dispatcher</th><th colspan="3" class="ta-r">Bis Bearbeitung (gesamt)</th></tr>
-      <tr><th class="ta-r">Calls</th><th class="ta-r">Ø</th><th class="ta-r">Median</th><th class="ta-r">Calls</th><th class="ta-r">Ø</th><th class="ta-r">Median</th><th class="ta-r">Calls</th><th class="ta-r">Ø</th><th class="ta-r">Median</th></tr></thead><tbody>
-      ${zeilen.map(([k, label, fett], i) => `${i === 1 ? '<tr class="sep"><td colspan="10"></td></tr>' : ""}<tr><td class="nowrap">${fett ? "<b>" + esc(label) + "</b>" : esc(label)}</td>${statZelle(stat.get(k), "H")}${statZelle(stat.get(k), "D")}${statZelle(stat.get(k), "B")}</tr>`).join("")}
+      <p class="sub">Alle Zeit, die Calls im Monat auf ${esc(WL_NAME.H)} bzw. beim Dispatcher lagen – egal, wann der Aufenthalt begann oder endete. Ein neuer Call auf der Hotline zählt ab der Eröffnung; reicht die Hotline ihn intern weiter, läuft die Uhr weiter; geht er zum Dispatcher, stoppt die Hotline-Uhr und die Dispatcher-Uhr beginnt. Calls, die noch liegen, zählen bis jetzt. <b>Calls</b> = betroffene Calls im Monat, <b>Liegezeit</b> = Summe, <b>Ø</b> und <b>Median</b> je betroffenem Call. Calls, die auf dem Eingangsstapel geschlossen wurden, zählen nicht (Bearbeitung durch den Stapel, keine Liegezeit). „Bis Bearbeitung“: von der Eröffnung bis zur ersten Ankunft in einer Bearbeitungsgruppe, je Monat dieser Ankunft, nur für Calls, die auf einem Eingangsstapel eröffnet wurden.</p>
+      <div class="tscroll"><table class="list slatab"><thead><tr><th rowspan="2">Monat</th><th colspan="4" class="ta-r wl-h">${esc(WL_NAME.H)}</th><th colspan="4" class="ta-r wl-d">Dispatcher</th><th colspan="3" class="ta-r wl-b">Bis Bearbeitung (gesamt)</th></tr>
+      <tr><th class="ta-r wl-h">Calls</th><th class="ta-r wl-h">Liegezeit</th><th class="ta-r wl-h">Ø je Call</th><th class="ta-r wl-h">Median</th><th class="ta-r wl-d">Calls</th><th class="ta-r wl-d">Liegezeit</th><th class="ta-r wl-d">Ø je Call</th><th class="ta-r wl-d">Median</th><th class="ta-r wl-b">Calls</th><th class="ta-r wl-b">Ø</th><th class="ta-r wl-b">Median</th></tr></thead><tbody>
+      ${zeilen.map(([k, label, fett], i) => `${i === 1 ? '<tr class="sep"><td colspan="12"></td></tr>' : ""}<tr><td class="nowrap">${fett ? "<b>" + esc(label) + "</b>" : esc(label)}</td>${statHD(stat.get(k), "H")}${statHD(stat.get(k), "D")}${statB(stat.get(k))}</tr>`).join("")}
       </tbody></table></div>
     </div>
     <div class="card" id="wlVert"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Wohin leitet der Dispatcher weiter? <span class="hint" style="font-weight:400">${esc(z.label)}</span>
       <button class="small" id="btnWlVertCopy" style="margin-left:auto" title="Als Tabelle fürs Protokoll kopieren">Tabelle kopieren</button></h2>
       <p class="sub">Alle Weiterleitungen vom Dispatcher weg im Zeitraum, nach Zielgruppe. Anteil = Weiterleitungen an diese Gruppe geteilt durch alle Weiterleitungen des Dispatchers. „zurück“ markiert Wege zurück auf ${esc(WL_NAME.H)} (Ping-Pong).</p>
-      ${vertTab(vertD, "Dispatcher")}
-      <h2 style="margin-top:16px">Wohin leitet ${esc(WL_NAME.H)} weiter?</h2>
-      ${vertTab(vertH, WL_NAME.H)}
+      ${vertTab(vertD, "Dispatcher", "wl-d")}
+      <h2 style="margin-top:16px;display:flex;align-items:center;flex-wrap:wrap;gap:8px">Wohin leitet ${esc(WL_NAME.H)} weiter? <button class="small" id="btnWlVertHCopy" style="margin-left:auto" title="Als Tabelle fürs Protokoll kopieren">Tabelle kopieren</button></h2>
+      ${vertTab(vertH, WL_NAME.H, "wl-h")}
+    </div>
+    <div class="card" id="wlUntyp"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Untypisch: ${esc(WL_NAME.H)} direkt in die Bearbeitung <span class="pill ${untyp.length ? "s-crit" : "s-ok"}">${untyp.length}</span><span class="hint" style="font-weight:400">${esc(z.label)}</span>
+      <button class="small" id="btnWlUntypCopy" style="margin-left:auto" title="Liste fürs Protokoll kopieren">Liste kopieren</button></h2>
+      <p class="sub">Weiterleitungen von ${esc(WL_NAME.H)} in eine Bearbeitungsgruppe (2nd/3rd Level, Unterstützungsdienste …) am Dispatcher vorbei – nicht prozesskonform, deshalb Call für Call, jüngste zuerst. Weiterleitungen innerhalb von ${esc(WL_NAME.H)} und an den Dispatcher stehen nicht hier.</p>
+      ${untyp.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Datum</th><th>Prio</th><th>Call</th><th>Kunde</th><th>Titel</th><th class="wl-h">von</th><th class="wl-b">nach</th><th>Ersteller</th><th>Status heute</th></tr></thead><tbody>
+      ${untyp.slice(0, 200).map(u => `<tr><td class="tnum nowrap">${fmtDT.format(u.d)}</td><td class="nowrap">${prioZelle(prioName(u.c.r.Prio))}</td><td class="tnum nowrap">${esc(u.c.r.Call)}</td><td class="nowrap">${esc(u.c.r.Kunde ?? "–")}${smBadge(u.c.r)}</td><td class="titlecell">${esc(u.c.r.Titel ?? "–")}</td><td class="nowrap wl-h">${esc(gruppeKurz(u.von))}${u.vonB ? ` <span class="hint">${esc(u.vonB)}</span>` : ""}</td><td class="nowrap wl-b">${esc(gruppeKurz(u.nach))}${u.nachB ? ` <span class="hint">${esc(u.nachB)}</span>` : ""}</td><td class="nowrap" title="${esc(resolveName(u.er) ?? "")}">${esc(u.er || "–")}</td><td class="nowrap">${esc(u.c.r.Status ?? "–")}${istGeschlossen(u.c.r) ? ' <span class="hint">zu</span>' : ""}</td></tr>`).join("")}
+      </tbody></table></div>${untyp.length > 200 ? `<p class="hint">Nur die jüngsten 200 von ${fmtN.format(untyp.length)} – die Kopie enthält alle.</p>` : ""}` : `<p class="empty"><b>Keine</b> untypischen Weiterleitungen von ${esc(WL_NAME.H)} im Zeitraum ${esc(z.label)}.</p>`}
     </div>`;
   view.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click", () => document.getElementById(b.dataset.goto)?.scrollIntoView({ behavior: "smooth", block: "start" })));
-  view.querySelector("#wlZeitraumSel").addEventListener("change", e => { wlZeitraum = e.target.value; wlAlle = false; wlAlleRl = false; render(); });
-  view.querySelector("#wlMinSel").addEventListener("change", e => { wlMin = Number(e.target.value) || 2; wlAlle = false; render(); });
-  view.querySelectorAll("[data-wlgz]").forEach(b => b.addEventListener("click", () => { uiPref.wlGz = b.dataset.wlgz === "1"; saveUiPref(); render(); }));
+  view.querySelector("#wlZeitraumSel").addEventListener("change", e => { wlZeitraum = e.target.value; wlAlle = false; render(); });
+  view.querySelector("#wlMinInp").addEventListener("change", e => { const n = Math.round(Number(e.target.value)); wlMin = Number.isFinite(n) ? Math.min(15, Math.max(2, n)) : 6; wlAlle = false; render(); });
   view.querySelector("#btnWlAlle")?.addEventListener("click", () => { wlAlle = true; render(); });
   view.querySelector("#btnWlPpCopy").addEventListener("click", e => {
-    const t = wlCopyTabelle(`Ping-Pong-Calls – ${z.label} (ab ${wlMin} Wechseln)`, ["Prio", "Call", "Kunde", "Titel", "Status", "Eröffnet", "Ping-Pong", "Wechsel", "Liegezeit Eingang", "Weg"],
-      pp.map(c => [prioText(c.r), String(c.r.Call ?? ""), c.r.Kunde ?? "", c.r.Titel ?? "", c.r.Status ?? "", c.r["Eröffnet"] ? fmtD.format(c.r["Eröffnet"]) : "", String(c.pp), String(c.hops.length), fmtLiege(c.liegeHD), c.pfad.map(gruppeKurz).join(" > ")]), new Set([6, 7, 8]));
+    const t = wlCopyTabelle(`Ping-Pong-Calls – ${z.label} (ab ${wlMin} Wechseln)`, ["Prio", "Call", "Kunde", "Titel", "Status", "Eröffnet", "Ping-Pong", "Wechsel", "Liegezeit Eingang", "bis Bearbeitung", "Weg"],
+      pp.map(c => [prioText(c.r), String(c.r.Call ?? ""), c.r.Kunde ?? "", c.r.Titel ?? "", c.r.Status ?? "", c.r["Eröffnet"] ? fmtD.format(c.r["Eröffnet"]) : "", String(c.pp), String(c.hops.length), fmtLiege(c.liegeHD), c.bisBearb != null ? fmtLiege(c.bisBearb) : "", c.segs.map(x => `${gruppeKurz(x.g)} ${fmtLiege(wlDauer(x.von, x.bis))}`).join(" > ")]), new Set([6, 7, 8, 9]));
     copyHtml(t.html, t.plain, e.target);
   });
   view.querySelector("#btnWlStatCopy").addEventListener("click", e => {
-    const zl = a => a.length ? [String(a.length), fmtLiege(mittel(a)), fmtLiege(median(a))] : ["", "", ""];
-    const t = wlCopyTabelle(`Liegedauer je Monat (${wlGz() ? "Geschäftszeit" : "Kalenderzeit"})`, ["Monat", `${WL_NAME.H}: Calls`, "Ø", "Median", "Dispatcher: Calls", "Ø", "Median", "Bis Bearbeitung: Calls", "Ø", "Median"],
-      zeilen.map(([k, label]) => { const e = stat.get(k); return [label, ...zl(e?.H ?? []), ...zl(e?.D ?? []), ...zl(e?.B ?? [])]; }), new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]));
-    copyHtml(t.html, t.plain, e.target);
-  });
-  view.querySelector("#btnWlAlleRl")?.addEventListener("click", () => { wlAlleRl = true; render(); });
-  view.querySelector("#btnWlRueckStatCopy").addEventListener("click", e => {
-    const t = wlCopyTabelle(`Rückläufer je Bearbeitungsgruppe – ${z.label}`, ["Bearbeitungsgruppe", "Abgaben", "zurück", "weiter / geschlossen", "noch dort", "Rücklaufquote", "Ø bis Rückgabe"],
-      rueckStat.map(x => [gruppeKurz(x.g), String(x.n), String(x.zurueck), String(x.weiter), String(x.offen), pct(x.quote), x.zurueck ? fmtLiege(x.avg) : ""]), new Set([1, 2, 3, 4, 5, 6]));
-    copyHtml(t.html, t.plain, e.target);
-  });
-  view.querySelector("#btnWlRueckCopy").addEventListener("click", e => {
-    const t = wlCopyTabelle(`Rückläufer aus der Bearbeitung – ${z.label}`, ["Prio", "Call", "Kunde", "Titel", "Status", "Gruppe", "abgegeben", "zurück am", "Zeit dort", "zurück an", "Weg"],
-      rueck.map(a => [prioText(a.c.r), String(a.c.r.Call ?? ""), a.c.r.Kunde ?? "", a.c.r.Titel ?? "", a.c.r.Status ?? "", gruppeKurz(a.g), fmtDT.format(a.von), fmtDT.format(a.bis), fmtLiege(a.ms), gruppeKurz(a.zurueckAn), a.c.pfad.map(gruppeKurz).join(" > ")]), new Set([8]));
+    const hd = a => a && a.calls.size ? [String(a.calls.size), fmtLiege(a.ms), fmtLiege(mittel([...a.perCall.values()])), fmtLiege(median([...a.perCall.values()]))] : ["", "", "", ""];
+    const bb = a => a.length ? [String(a.length), fmtLiege(mittel(a)), fmtLiege(median(a))] : ["", "", ""];
+    const t = wlCopyTabelle("Liegedauer je Monat (Geschäftszeit)", ["Monat", `${WL_NAME.H}: Calls`, "Liegezeit", "Ø je Call", "Median", "Dispatcher: Calls", "Liegezeit", "Ø je Call", "Median", "Bis Bearbeitung: Calls", "Ø", "Median"],
+      zeilen.map(([k, label]) => { const e = stat.get(k); return [label, ...hd(e?.H), ...hd(e?.D), ...bb(e?.B ?? [])]; }), new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]));
     copyHtml(t.html, t.plain, e.target);
   });
   view.querySelector("#btnWlVertCopy").addEventListener("click", e => {
     const t = wlCopyTabelle(`Weiterleitungen des Dispatchers – ${z.label}`, ["Ziel", "Weiterleitungen", "Anteil"], vertD.map(x => [x.label + (x.zurueck ? " (zurück)" : ""), String(x.n), pct(x.q)]), new Set([1, 2]));
+    copyHtml(t.html, t.plain, e.target);
+  });
+  view.querySelector("#btnWlVertHCopy").addEventListener("click", e => {
+    const t = wlCopyTabelle(`Weiterleitungen von ${WL_NAME.H} – ${z.label}`, ["Ziel", "Weiterleitungen", "Anteil"], vertH.map(x => [x.label, String(x.n), pct(x.q)]), new Set([1, 2]));
+    copyHtml(t.html, t.plain, e.target);
+  });
+  view.querySelector("#btnWlUntypCopy").addEventListener("click", e => {
+    const t = wlCopyTabelle(`Untypisch: ${WL_NAME.H} direkt in die Bearbeitung – ${z.label}`, ["Datum", "Prio", "Call", "Kunde", "Titel", "von", "nach", "Ersteller", "Status heute"],
+      untyp.map(u => [fmtDT.format(u.d), prioText(u.c.r), String(u.c.r.Call ?? ""), u.c.r.Kunde ?? "", u.c.r.Titel ?? "", gruppeKurz(u.von) + (u.vonB ? ` (${u.vonB})` : ""), gruppeKurz(u.nach) + (u.nachB ? ` (${u.nachB})` : ""), u.er, u.c.r.Status ?? ""]), new Set());
     copyHtml(t.html, t.plain, e.target);
   });
   bindFilterPanel(view);
