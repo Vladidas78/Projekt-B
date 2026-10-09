@@ -467,7 +467,7 @@
 /*__SHEETJS__*/</script>
 <script>
 "use strict";
-const VERSION = "1.49";
+const VERSION = "1.50";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -618,7 +618,7 @@ const DEFAULT_STATE = {
     haken:  { status: [], gruppe: [], prio: [], intern: true, hxmp: true },
     wartend: { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     udienst: { status: [], gruppe: [], prio: [], intern: false, hxmp: false },
-    sla:     { status: [], gruppe: [], prio: [], intern: true, hxmp: true, usa: true, asia: true, kunden: "" }, // kunden: Kürzel/Teile, Semikolon-getrennt – Calls dieser Kunden bleiben außen vor
+    sla:     { status: [], gruppe: [], prio: [], intern: true, hxmp: false, usa: true, asia: true, ohneRegion: true, kunden: "" }, // kunden: Kürzel/Teile, Semikolon-getrennt – Calls dieser Kunden bleiben außen vor. v1.50: wie die Excel-Statistik des Teams – nur Region Europa, kein Bearbeiter-Ausschluss
     last:    { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
     wl:      { status: [], gruppe: [], prio: [], intern: true, hxmp: true }, // v1.42: Weiterleitungen – interne Calls ab Werk außen vor
     mi:     { status: ["cc", "customer care", "update", "pre-update"], gruppe: [], prio: [], minDauer: "10", intern: false, hxmp: true },
@@ -760,6 +760,7 @@ function normalizeState() {
   if (!state.filters.sla.v35) { state.filters.sla.intern = true; state.filters.sla.v35 = 1; } // v1.35: interner Kunde ab Werk ausgeschlossen
   if (state.filters.extreakt) delete state.filters.extreakt;
   if (!state.filters.sla.v37) { state.filters.sla.usa = true; state.filters.sla.asia = true; state.filters.sla.v37 = 1; } // v1.37: USA/Asien ab Werk ausgeschlossen
+  if (!state.filters.sla.v50) { state.filters.sla.ohneRegion = true; state.filters.sla.hxmp = false; state.filters.sla.v50 = 1; } // v1.50: Grundgesamtheit wie die Excel-Statistik – nur erkannte Region Europa, Pseudo-Bearbeiter zählt mit
   slaVorgabenEinspielen();
   // v1.40: Spalte „Letzte Info an Kd.“ einmalig in eine bereits gespeicherte Auswahl von „Ohne Kd.-Komm.“ aufnehmen (vor „o. Info“)
   state.cols ??= {};
@@ -1961,7 +1962,8 @@ const KUNDENGRUPPEN = [
   { k: "saas", label: "SaaS", feld: "saasKunden", name: "SaaS-Kunden" },
   { k: "usa",  label: "USA",  feld: "usaKunden",  name: "USA-Kunden", region: "USA" },
   { k: "asia", label: "Asien", feld: "asiaKunden", name: "Asien-Kunden", region: "Asien" },
-  { k: "europa", label: "Europa", name: "Europa-Kunden", region: "Europa" } // nur mit Region-Spalte
+  { k: "europa", label: "Europa", name: "Europa-Kunden", region: "Europa" }, // nur mit Region-Spalte
+  { k: "ohneRegion", label: "ohne Region", name: "Calls ohne erkannte Region (Kundenbetreuung leer oder unbekannt)", region: "?" } // v1.50: nur mit Region-Spalte; in der Reaktionszeit ab Werk ausgeblendet
 ];
 function kundenListe(feld) { return String(state[feld] || "").split(/[;,\n]/).map(x => x.trim().toUpperCase()).filter(Boolean); }
 function isKundeIn(r, feld) { const k = String(r.Kunde ?? "").trim().toUpperCase(); return !!k && kundenListe(feld).includes(k); }
@@ -1970,6 +1972,7 @@ function isKundeIn(r, feld) { const k = String(r.Kunde ?? "").trim().toUpperCase
 function regionAktiv() { return hatSpalte("Region"); }
 function kundenGruppen() { return KUNDENGRUPPEN.filter(g => !g.region || g.feld || regionAktiv()); }
 function kundeInGruppe(r, g) {
+  if (g.k === "ohneRegion") return regionAktiv() && !REGIONEN.includes(regionNorm(r.Region));
   if (g.region && regionAktiv()) return regionNorm(r.Region) === g.region;
   return g.feld ? isKundeIn(r, g.feld) : false;
 }
@@ -4232,6 +4235,7 @@ function renderSla(view) {
   const ohne = ohneReaktionRows(), ueber = ohne.filter(x => x.ueber > 0), bald = ohne.filter(x => x.stufe === "warn");
   const warnTxt = p => { const m = slaWarnMs(p) / 60000; return m % 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")} h` : `${m / 60} h`; };
   const brk = slaGebrochen(wSel, list), wlDa = hatWeiterleitungen();
+  const ohneRegG = KUNDENGRUPPEN.find(g => g.k === "ohneRegion"), ohneRegN = regionAktiv() ? alleZeilen().filter(r => kundeInGruppe(r, ohneRegG)).length : 0;
   let artVor = null;
   const statZeilen = per.map(x => { const a = slaStat(x, list); const sep = artVor && x.art !== artVor ? `<tr class="sep"><td colspan="7"></td></tr>` : ""; artVor = x.art;
     const z = p => `<td class="ta-r tnum${a[p].fix ? " vorgabe" : ""}"${a[p].fix ? ' title="Vorgabewert aus der bisherigen Statistik – keine Zählung im Board"' : ""}>${p === "ges" ? "<b>" + fmtDur(a[p].avg) + "</b>" : fmtDur(a[p].avg)}</td>`;
@@ -4243,7 +4247,7 @@ function renderSla(view) {
       <button class="kpi" data-goto="stat"><div class="k-label">Ø Reaktionszeit ${esc(wochen[wochen.length - 1].label)}</div><div class="k-value" style="font-size:26px">${fmtDur(kw.ges.avg)}</div><div class="k-note">${kw.ges.n} Calls mit Reaktion</div></button>
     </div>
     <div class="card"><h2>Filter <span class="hint" style="font-weight:400;margin-left:6px">gilt für alle Zahlen dieses Reiters, teamweit</span></h2>
-      <p class="sub">Ausgeblendete Gruppen, Prioritäten, Regionen (Europa, USA, Asien – unter „Sonstiges“) und Kunden werden weder gezählt noch gelistet. Ab Werk ohne ${esc(state.internKunde || "MPDV")}-, USA- und Asien-Calls. ${slaVollmodus() ? "Wirkt sofort auf alle Zeiträume, die der Export abdeckt." : "Wirkt auf neue Aufzeichnungen; bereits eingefrorene Wochen bleiben, wie sie sind."}</p>
+      <p class="sub">Ausgeblendete Gruppen, Prioritäten, Regionen (Europa, USA, Asien – unter „Sonstiges“) und Kunden werden weder gezählt noch gelistet. Ab Werk ohne ${esc(state.internKunde || "MPDV")}-, USA- und Asien-Calls und ohne Calls ohne erkannte Region (Kundenbetreuung leer oder unbekannt) – dieselbe Grundgesamtheit wie die Excel-Statistik (Kundenbetreuung = Europa, Priorität bei Eröffnung, nur Calls mit Reaktion).${ohneRegN ? ` Im Export: ${fmtN.format(ohneRegN)} Calls ohne erkannte Region.` : ""} ${slaVollmodus() ? "Wirkt sofort auf alle Zeiträume, die der Export abdeckt." : "Wirkt auf neue Aufzeichnungen; bereits eingefrorene Wochen bleiben, wie sie sind."}</p>
       ${filterPanel("sla", allRows(), { text: "kunden", textLabel: "Kunden ausschließen", textHint: "Kürzel oder Namensteile, mit Semikolon – z. B. ASIA; USA" })}
     </div>
     <div class="card" id="slaOhne"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Ohne erste externe Reaktion <span class="pill ${ueber.length ? "s-crit" : "s-ok"}">${ueber.length} überfällig</span><span class="pill ${bald.length ? "s-warn" : "s-ok"}" title="Hinweiszeitpunkt erreicht, Frist noch nicht überschritten">${bald.length} kurz vor Frist</span>

@@ -6,8 +6,7 @@
    Das Skript nimmt Spalte 1 als Call-Nummer und die Spalte [Externe Reaktion]
    (sonst Spalte 2) als Wert und haengt ihn ueber die Call-Nummer an die Zeilen
    der Hauptabfrage an. Liefert die Abfrage zusaetzlich [Prioritaet_initial]
-   (Prioritaet bei Eroeffnung; die Fassung des Teams auf dem Server tut das),
-   reicht das Skript auch diese Spalte durch: Das Board bewertet die
+   (Prioritaet bei Eroeffnung), reicht das Skript auch diese Spalte durch: Das Board bewertet die
    Reaktionszeit dann gegen die Prioritaet bei Eroeffnung statt gegen die
    aktuelle. Weitere Spalten (erstellt, status) stoeren nicht, landen aber
    nicht in der CSV.
@@ -16,6 +15,12 @@
    erste_ext_aktion_kalender in Sekunden - dieselbe Groesse wie "erste ext.
    Aktion Kalender" in der Excel-Statistik), umgerechnet in Tage. Das Board
    rechnet sie nicht noch einmal auf Geschaeftszeit um (seit v1.47).
+
+   Die Fassung des Teams fuehrt zusaetzlich Jahr/Monat/KW der Eroeffnung
+   (fuer die Excel-Statistik); das Skript ignoriert diese Spalten. Das Board
+   bildet dieselbe Grundgesamtheit wie die Excel-Statistik: Kundenbetreuung =
+   Europa (ab Werk ohne USA, Asien und ohne erkannte Region), Prioritaet bei
+   Eroeffnung, Durchschnitt nur ueber Calls mit Reaktion > 0.
 
    Diese Abfrage legt die GRUNDGESAMTHEIT der Reaktionszeit fest (Kunden,
    Kategorien, SLA-Vertrag): Calls ohne Zeile hier werden im Board nicht
@@ -30,8 +35,7 @@
 SELECT
     cs.callnr                                           AS Call,
     ISNULL(cs.erste_ext_aktion_kalender, 0) / 86400.0   AS [Externe Reaktion],
-    /* Fassung des Teams: hier zusaetzlich die Prioritaet bei Eroeffnung als
-       Spalte [Prioritaet_initial] (Feldname wie auf dem Server). */
+    cs.prioritaet_initial                               AS [Prioritaet_initial],
     cs.erstellt,
     cs.status
 FROM call_statistics AS cs
@@ -45,8 +49,7 @@ UNION
 SELECT
     cs.callnr                                           AS Call,
     ISNULL(cs.erste_ext_aktion_kalender, 0) / 86400.0   AS [Externe Reaktion],
-    /* Fassung des Teams: hier zusaetzlich die Prioritaet bei Eroeffnung als
-       Spalte [Prioritaet_initial] (Feldname wie auf dem Server). */
+    cs.prioritaet_initial                               AS [Prioritaet_initial],
     cs.erstellt,
     cs.status
 FROM call_statistics AS cs
