@@ -467,7 +467,7 @@
 /*__SHEETJS__*/</script>
 <script>
 "use strict";
-const VERSION = "1.50";
+const VERSION = "1.51";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -1301,6 +1301,25 @@ function sharedPayload() {
   const cfg = {}; for (const c of SHARED_CFG) cfg[c] = state[c];
   return { v: 1, minVersion: "1.14", kanal: KANAL, touch: state.touch, maps, cfg, miHistory: state.miHistory };
 }
+/* v1.51: Statusgedächtnis wird je Call vereinigt statt je Monat ersetzt. Vorher gewann der jüngere Monatsstand
+   als Ganzes – erkannte Gerät A eine Wiedereröffnung und schrieb Gerät B kurz danach denselben Monat (jedes Gerät
+   berührt jeden Monat einmal am Tag), war die Wiedereröffnung verschwunden. Jetzt bleibt je Call das Wissen beider
+   Seiten erhalten: Zähler und Zeitpunkt der Wiedereröffnung nehmen nur zu, der aktuelle Zustand kommt von der Seite,
+   die den Call zuletzt gesehen hat. */
+function mergeCallStatusMonat(lokal, remote, remoteNeuer) {
+  const out = {};
+  for (const c of new Set([...Object.keys(lokal), ...Object.keys(remote)])) {
+    const x = lokal[c], y = remote[c];
+    if (!x || !y) { out[c] = x || y; continue; }
+    const yGewinnt = (y.ls || "") > (x.ls || "") || ((y.ls || "") === (x.ls || "") && remoteNeuer);
+    const e = yGewinnt ? { ...x, ...y } : { ...y, ...x };
+    const r = Math.max(x.r || 0, y.r || 0); if (r) e.r = r;
+    const rt = Math.max(x.rt || 0, y.rt || 0); if (rt) { e.rt = rt; e.rs = (x.rt || 0) >= (y.rt || 0) ? x.rs : y.rs; }
+    const cl = Math.max(x.c || 0, y.c || 0); if (cl) e.c = cl;
+    out[c] = e;
+  }
+  return out;
+}
 function mergeShared(remote) {
   const rt = remote.touch || {};
   let changed = false, localNewer = sharedDirty;
@@ -1309,6 +1328,13 @@ function mergeShared(remote) {
     for (const k of new Set([...Object.keys(state[m]), ...Object.keys(rm)])) {
       const tk = `${m === "acks" ? "acks" : m}|${k}`;
       const lt_ = state.touch[tk] || 0, rt_ = rt[tk] || 0;
+      if (m === "callStatus" && k in rm && state[m][k] && rt_ !== lt_) {
+        const merged = mergeCallStatusMonat(state[m][k], rm[k], rt_ > lt_), js = JSON.stringify(merged);
+        if (js !== JSON.stringify(state[m][k])) { state[m][k] = merged; changed = true; }
+        if (js !== JSON.stringify(rm[k])) { localNewer = true; state.touch[tk] = Math.max(lt_, rt_, Date.now()); } // die Vereinigung muss zurück in die Team-Datei
+        else state.touch[tk] = Math.max(lt_, rt_);
+        continue;
+      }
       if (rt_ > lt_) {
         if (k in rm) state[m][k] = rm[k]; else delete state[m][k];
         state.touch[tk] = rt_; changed = true;
