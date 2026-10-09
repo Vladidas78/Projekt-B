@@ -467,7 +467,7 @@
 /*__SHEETJS__*/</script>
 <script>
 "use strict";
-const VERSION = "1.48";
+const VERSION = "1.49";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -4128,14 +4128,19 @@ function slaStatTabelle(list) {
 }
 function slaBruchTabelle(per, list) {
   const rows = slaGebrochen(per, list);
-  const header = ["Prio", "Call", "Kunde", "Gruppe", "Bearbeiter", "Eröffnet", "Reaktion nach", "Frist", "Kommentar", "SupMan"];
+  const wlDa = hatWeiterleitungen();
+  const header = ["Prio", "Call", "Kunde", "Gruppe", "Bearbeiter", "Eröffnet", "Reaktion nach", "Frist"].concat(wlDa ? ["Hotline/1st", "Dispatcher", "Bearbeitung", "Weg"] : [], ["Kommentar", "SupMan"]);
   let html = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><b>SLA gebrochen – ${esc(per.label)}</b> (${esc(per.titel || "")})<br><table style="${mailTableStyle()}"><tr>${header.map(v => th(v, MAIL_HDR)).join("")}</tr>`;
   const plain = [`SLA gebrochen – ${per.label}`, header.join("\t")];
   rows.forEach((x, i) => {
     const zeb = i % 2 ? "background-color:#f2f2f2;" : "";
     const pz = x.p === "rot" ? `background:${MAILCLR.red};` : x.p === "blau" ? "background:#dbe5f1;" : `background:${MAILCLR.green};`;
-    const vals = [x.p ? x.p[0].toUpperCase() + x.p.slice(1) : "–", x.call, x.k, x.g, x.b, fmtDT.format(new Date(x.e)), x.dauer != null ? fmtDur(x.dauer) : `offen seit ${fmtDur(geschaeftszeit(x.e, now()))}`, extLimitLabel(x.p), state.slaNote?.[x.call] ?? ""];
-    html += "<tr>" + td(vals[0], pz, true) + vals.slice(1).map((v, j) => td(v, zeb, j !== 7)).join("") + td("", zeb) + "</tr>";
+    const lz = wlDa ? slaLiegezeiten(x.src || x.row, x.r || null) : null;
+    const lzv = v => v > 0 ? fmtDur(v) : "–";
+    const vals = [x.p ? x.p[0].toUpperCase() + x.p.slice(1) : "–", x.call, x.k, x.g, x.b, fmtDT.format(new Date(x.e)), x.dauer != null ? fmtDur(x.dauer) : `offen seit ${fmtDur(geschaeftszeit(x.e, now()))}`, extLimitLabel(x.p)]
+      .concat(wlDa ? (lz ? [lzv(lz.h), lzv(lz.d), lzv(lz.b), lz.weg] : ["–", "–", "–", "–"]) : [], [state.slaNote?.[x.call] ?? ""]);
+    const ki = vals.length - 1; // Kommentar: einzige umbrechende Spalte
+    html += "<tr>" + td(vals[0], pz, true) + vals.slice(1).map((v, j) => td(v, zeb + (wlDa && j >= 7 && j <= 9 ? "text-align:right;" : ""), j + 1 !== ki)).join("") + td("", zeb) + "</tr>";
     plain.push(vals.concat([""]).join("\t"));
   });
   if (!rows.length) { html += `<tr><td colspan="${header.length}" style="border:1px solid #999;padding:2px 6px;"><i>Keine Brüche in diesem Zeitraum.</i></td></tr>`; plain.push("Keine Brüche."); }
@@ -4186,6 +4191,31 @@ function slaCallsTabelle(per, list) {
   if (!rows.length) { html += `<tr><td colspan="${header.length}" style="border:1px solid #999;padding:2px 6px;"><i>Keine Calls in dieser Woche.</i></td></tr>`; plain.push("Keine Calls."); }
   return { html: html + "</table></div>", plain: plain.join("\n"), n: rows.length };
 }
+/* v1.49: Liegezeit bis zur ersten externen Reaktion je Station – aus der Weiterleitungs-Historie, in Geschäftszeit.
+   H = Hotline/1st Level, D = Dispatcher, B = alle anderen Gruppen (Bearbeitung). Offene Calls ohne Reaktion: bis jetzt.
+   Die Summe entspricht der Reaktionszeit (bis auf Kalenderunterschiede zur Abfrage). */
+function slaLiegezeiten(r, bisMs) {
+  if (!r || !hatWeiterleitungen() || !(r["Eröffnet"] instanceof Date)) return null;
+  const segs = wlAufenthalte(r); if (!segs.length) return null;
+  const von = r["Eröffnet"].getTime(), bis = bisMs || now().getTime();
+  const sum = { H: 0, D: 0, B: 0 }, weg = [];
+  const last = segs[segs.length - 1];
+  for (const x of segs) {
+    // letzte Station reicht mindestens bis zur Reaktion – auch wenn der Abschluss im Datenstand früher liegt
+    const a = Math.max(von, x.von.getTime()), b = Math.min(bis, x === last ? Math.max(x.bis.getTime(), bis) : x.bis.getTime());
+    if (b <= a) continue;
+    sum[x.s || "B"] += geschaeftszeit(a, b);
+    const label = gruppeKurz(x.g) || "?";
+    if (weg[weg.length - 1] !== label) weg.push(label);
+  }
+  const max = Math.max(sum.H, sum.D, sum.B);
+  return { h: sum.H, d: sum.D, b: sum.B, max, weg: weg.join(" → "), historie: (r.Wl || []).length > 0 };
+}
+function lzZelle(lz, k) {
+  if (!lz) return '<td class="ta-r tnum">–</td>';
+  const v = lz[k], top = v > 0 && v === lz.max;
+  return `<td class="ta-r tnum${top ? " c-warn" : ""}"${top ? ' title="größter Anteil bis zur ersten Reaktion"' : ""}>${v > 0 ? (top ? "<b>" + fmtDur(v) + "</b>" : fmtDur(v)) : "–"}</td>`;
+}
 let slaWoche = null;
 function renderSla(view) {
   const regeln = `SLA je Priorität: <b>Rot</b> 30 Minuten · <b>Blau</b> 4 Stunden · <b>Grün</b> 48 Stunden – gemessen von der Eröffnung bis zur ersten externen Reaktion, nur in Geschäftszeit (Mo–Do 08:00–17:30, Fr 08:00–16:30). Die Zeit liefert die Abfrage bereits in Geschäftszeit; das Board rechnet sie nicht noch einmal um.${hatSpalte("PrioInitial") ? " Maßgeblich ist die Priorität bei Eröffnung – wird ein Call später umpriorisiert, bleibt die Reaktion bei der ursprünglichen Frist." : ""}`;
@@ -4201,7 +4231,7 @@ function renderSla(view) {
   const kw = slaStat(wochen[wochen.length - 1], list);
   const ohne = ohneReaktionRows(), ueber = ohne.filter(x => x.ueber > 0), bald = ohne.filter(x => x.stufe === "warn");
   const warnTxt = p => { const m = slaWarnMs(p) / 60000; return m % 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")} h` : `${m / 60} h`; };
-  const brk = slaGebrochen(wSel, list);
+  const brk = slaGebrochen(wSel, list), wlDa = hatWeiterleitungen();
   let artVor = null;
   const statZeilen = per.map(x => { const a = slaStat(x, list); const sep = artVor && x.art !== artVor ? `<tr class="sep"><td colspan="7"></td></tr>` : ""; artVor = x.art;
     const z = p => `<td class="ta-r tnum${a[p].fix ? " vorgabe" : ""}"${a[p].fix ? ' title="Vorgabewert aus der bisherigen Statistik – keine Zählung im Board"' : ""}>${p === "ges" ? "<b>" + fmtDur(a[p].avg) + "</b>" : fmtDur(a[p].avg)}</td>`;
@@ -4234,9 +4264,9 @@ function renderSla(view) {
       <select id="slaWocheSel" class="small">${wochen.map(w => `<option value="${w.id}"${w.id === slaWoche ? " selected" : ""}>${esc(w.label)} (${esc(w.titel)})</option>`).join("")}</select>
       <button class="small" id="btnSlaBruchCopy" style="margin-left:auto" title="Als Tabelle fürs Supportmanager-Protokoll kopieren – mit Kommentar und leerer SupMan-Spalte">Tabelle kopieren</button>
       <button class="small" id="btnSlaCallsCopy" title="Alle Calls der gewählten Woche mit Reaktionszeit, Prio bei Eröffnung und aktueller Prio – auch nicht gezählte Calls mit Grund. Zum Abgleich mit der Excel-Statistik Call für Call (in Excel einfügen, über die Call-Nummer vergleichen)">Calls der Woche kopieren</button></h2>
-      <p class="sub">Calls der gewählten Woche (nach Eröffnung), deren erste Reaktion nach der Frist kam oder noch aussteht. Der Kommentar wird im Team geteilt und mitkopiert. „Calls der Woche kopieren“ liefert alle Calls der Woche mit Reaktionszeit in Geschäftszeit und Sekunden, dazu die Calls, die nicht zählen, mit Grund – zum Abgleich mit der Excel-Statistik.</p>
-      ${brk.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Kunde</th><th>Gruppe</th><th>Bearbeiter</th><th>Eröffnet</th><th class="ta-r">Reaktion nach</th><th class="ta-r">Frist</th><th style="min-width:260px">Kommentar</th></tr></thead><tbody>
-      ${brk.map(x => `<tr><td class="nowrap">${prioZelle(x.p)}${prioWechsel(x.row, x.p)}</td><td class="tnum nowrap">${esc(x.call)}${x.row ? "" : ' <span class="hint" title="Call ist nicht mehr im Datenstand (geschlossen)">geschl.</span>'}</td><td class="nowrap">${esc(x.k || "–")}</td><td class="nowrap">${esc(x.g || "–")}</td><td class="nowrap" title="${esc(resolveName(x.b) ?? "")}">${esc(x.b || "–")}</td><td class="tnum nowrap">${fmtDT.format(new Date(x.e))}</td><td class="ta-r tnum nowrap c-crit">${x.dauer != null ? fmtDur(x.dauer) : "offen seit " + fmtDur(geschaeftszeit(x.e, now()))}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td><td><input type="text" data-slanote="${esc(x.call)}" value="${esc(state.slaNote?.[x.call] ?? "")}" placeholder="Kommentar fürs Meeting" style="width:100%"></td></tr>`).join("")}
+      <p class="sub">Calls der gewählten Woche (nach Eröffnung), deren erste Reaktion nach der Frist kam oder noch aussteht. Der Kommentar wird im Team geteilt und mitkopiert. „Calls der Woche kopieren“ liefert alle Calls der Woche mit Reaktionszeit in Geschäftszeit und Sekunden, dazu die Calls, die nicht zählen, mit Grund – zum Abgleich mit der Excel-Statistik.${wlDa ? " <b>Liegezeiten:</b> Geschäftszeit je Station von der Eröffnung bis zur ersten Reaktion (offene Calls: bis jetzt) aus der Weiterleitungs-Historie – H/1st = Hotline/1st Level, Disp. = Dispatcher, Bearb. = alle anderen Gruppen; der größte Anteil ist hervorgehoben. „Weg“ sind die Stationen bis zur ersten Reaktion." : ""}</p>
+      ${brk.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Kunde</th><th>Gruppe</th><th>Bearbeiter</th><th>Eröffnet</th><th class="ta-r">Reaktion nach</th><th class="ta-r">Frist</th>${wlDa ? `<th class="ta-r" title="Liegezeit auf Hotline/1st Level bis zur ersten Reaktion (Geschäftszeit)">H/1st</th><th class="ta-r" title="Liegezeit beim Dispatcher bis zur ersten Reaktion (Geschäftszeit)">Disp.</th><th class="ta-r" title="Zeit in Bearbeitungsgruppen bis zur ersten Reaktion (Geschäftszeit)">Bearb.</th><th title="Stationen von der Eröffnung bis zur ersten Reaktion">Weg</th>` : ""}<th style="min-width:260px">Kommentar</th></tr></thead><tbody>
+      ${brk.map(x => { const lz = wlDa ? slaLiegezeiten(x.src || x.row, x.r || null) : null; return `<tr><td class="nowrap">${prioZelle(x.p)}${prioWechsel(x.row, x.p)}</td><td class="tnum nowrap">${esc(x.call)}${x.row ? "" : ' <span class="hint" title="Call ist nicht mehr im Datenstand (geschlossen)">geschl.</span>'}</td><td class="nowrap">${esc(x.k || "–")}</td><td class="nowrap">${esc(x.g || "–")}</td><td class="nowrap" title="${esc(resolveName(x.b) ?? "")}">${esc(x.b || "–")}</td><td class="tnum nowrap">${fmtDT.format(new Date(x.e))}</td><td class="ta-r tnum nowrap c-crit">${x.dauer != null ? fmtDur(x.dauer) : "offen seit " + fmtDur(geschaeftszeit(x.e, now()))}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td>${wlDa ? lzZelle(lz, "h") + lzZelle(lz, "d") + lzZelle(lz, "b") + `<td class="wlpfad">${lz ? esc(lz.weg) + (lz.historie ? "" : ' <span class="hint" title="keine Weiterleitung in der Historie – Call liegt seit der Eröffnung in dieser Gruppe">ohne Weiterleitung</span>') : "–"}</td>` : ""}<td><input type="text" data-slanote="${esc(x.call)}" value="${esc(state.slaNote?.[x.call] ?? "")}" placeholder="Kommentar fürs Meeting" style="width:100%"></td></tr>`; }).join("")}
       </tbody></table></div>` : `<p class="empty">Keine Brüche in ${esc(wSel.label)}.</p>`}
     </div>`;
   view.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click", () => { const el = document.getElementById(b.dataset.goto === "ohne" ? "slaOhne" : "slaStat"); el?.scrollIntoView({ behavior: "smooth", block: "start" }); }));
