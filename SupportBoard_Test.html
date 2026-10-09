@@ -521,7 +521,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.54";
+const VERSION = "1.55";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -642,6 +642,8 @@ const DEFAULT_STATE = {
            closedStatus: "Gelöst; Geschlossen; Abgeschlossen; Reviewer; Closed; Resolved; Solved", // Status, die als „zu“ gelten (v1.41: der Export liefert auch geschlossene Calls)
            regionAsien: "", regionUsa: "", // zusätzliche Werte der Spalte Kundenbetreuung, die als Asien bzw. USA gelten (Semikolon-getrennt)
            auslastungFuer: "SM1", // Kürzel (Semikolon-getrennt), die den Reiter „Auslastung“ sehen
+           zweiteFuer: "", // v1.55: Kürzel, die die Karte „Zweite externe Reaktion“ im Reiter Reaktionszeit sehen (leer = niemand)
+           wlAbMonat: "2026-09", // v1.55: Weiterleitungs-Auswertung erst ab diesem Monat (JJJJ-MM) – davor ist die Historie unvollständig
            wlHotline: "Hotline; 1st_Level", wlDispatcher: "Dispatcher", // v1.42: Eingangsstapel der Weiterleitungs-Auswertung (Ping-Pong, Liegedauer); alles andere gilt als Bearbeitung
            wlKeineBearb: "Reviewer; Customer_Care; Customer Care; Supportmanagement", // v1.53: Zielgruppen, die keine Bearbeitung sind – weder untypisch noch Abgabe noch Ende einer Liegezeit
            slaWarn: { rot: 60, blau: 210, "grün": 2850 } }, // Reaktionsfrist: Hinweis ab so vielen Minuten Geschäftszeit ohne erste Reaktion (Rot 1 h, Blau 3,5 h, Grün 47,5 h)
@@ -656,6 +658,7 @@ const DEFAULT_STATE = {
       intro: "Hallo,\n\nbitte die Calls heute in folgender Reihenfolge (sortiert nach „Letzte Aktion zum Kunden“) bearbeiten:",
       fuss: "Bitte auch die Calls im Status „Wartend“ prüfen, ob der Status noch korrekt ist bzw. ob die Calls ggf. geschlossen werden können.\n\nZu Calls, bei denen Unterstützung durch einen PSOD notwendig ist, den jeweiligen PSOD kontaktieren, siehe auch [link=file://SERVER/Pfad/CallDispatching_Dienstplan.xlsm]Dienstplan Call-Dispatching (Pfad in der Verwaltung eintragen)[/link]\n\nEine Übersichtsseite zum Thema Supporttag ist im Intranet zu finden: [link=https://INTRANET/Supporttag]Übersichtsseite Supporttag (Adresse in der Verwaltung eintragen)[/link]\n\nBitte anschließend bei den Calls, die auf WARTEND stehen und das „Wartend Bis“ Datum erreicht ist, prüfen, wie es weitergeht.\n\nBitte nach Abschluss der Tätigkeiten an die Statusmail denken.\n\nViele Grüße" }
   ],
+  reakt2: {},    // v1.55: "YYYY-MM" (Monat der Eröffnung) -> { call: {s, e, r1, r2, p, k, g, b, rg, zu} } – Lernliste zweite externe Reaktion (teamweit)
   reakt: {},     // "YYYY-MM" (Monat der Eröffnung) -> { call: {e, r, p, k, g, b} } – gemerkte erste externe Reaktion je Call (teamweit), Basis der Reaktionszeit-Statistik
   reaktAgg: {},  // "W<Montag>" / "M<YYYY-MM>" -> Summen je Prio (n, sum, ok, brk, unb) – eingefrorene Wochen/Monate; Wochen behalten 8 Wochen lang die Liste der Brüche
   slaNote: {},   // call -> Kommentar zu einem SLA-Bruch (Montagsmeeting)
@@ -792,6 +795,7 @@ function normalizeState() {
   state.udDone ??= {};
   state.saasKunden ??= ""; state.usaKunden ??= ""; state.asiaKunden ??= "";
   state.reakt ??= {};
+  state.reakt2 ??= {};
   state.reaktAgg ??= {};
   state.slaNote ??= {};
   state.callStatus ??= {};
@@ -810,6 +814,7 @@ function normalizeState() {
     if (fehlt.length) { state.rules.closedStatus = [...(state.rules.closedStatus ? [String(state.rules.closedStatus).trim().replace(/;\s*$/, "")] : []), ...fehlt].filter(Boolean).join("; "); _rowsCache = null; } }
   state.rules.regionAsien ??= ""; state.rules.regionUsa ??= "";
   state.rules.auslastungFuer ??= DEFAULT_STATE.rules.auslastungFuer;
+  state.rules.zweiteFuer ??= DEFAULT_STATE.rules.zweiteFuer; state.rules.wlAbMonat ??= DEFAULT_STATE.rules.wlAbMonat;
   state.rules.wlHotline ??= DEFAULT_STATE.rules.wlHotline; state.rules.wlDispatcher ??= DEFAULT_STATE.rules.wlDispatcher;
   state.rules.wlKeineBearb ??= DEFAULT_STATE.rules.wlKeineBearb;
   state.rules.slaWarn = { ...DEFAULT_STATE.rules.slaWarn, ...(state.rules.slaWarn && typeof state.rules.slaWarn === "object" ? state.rules.slaWarn : {}) };
@@ -1330,7 +1335,7 @@ async function resumeWatch() {
    Haken, Kommentare, Markierungen, Personen, Verteiler und Vorlagen werden mit einer
    JSON-Datei abgeglichen, die alle Boards im Team lesen und schreiben. Je Eintrag
    gewinnt die jüngste Änderung (Zeitstempel in state.touch). */
-const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll", "tagesstat", "udDone", "reakt", "reaktAgg", "slaNote", "callStatus", "topGeschl", "wfSeen"];
+const SHARED_MAPS = ["acks", "comments", "commentSrc", "commentMeta", "verbleib", "miMark", "hist", "protokoll", "tagesstat", "udDone", "reakt", "reaktAgg", "slaNote", "callStatus", "topGeschl", "wfSeen", "reakt2"];
 const SHARED_CFG = ["personen", "team", "verteiler", "intros", "templates", "internKunde", "staleWarnMin", "protoMinCalls", "rules", "filters", "cols", "gruppenFilter", "sort", "udienste", "saasKunden", "usaKunden", "asiaKunden"];
 let sharedHandle = null, pendingSharedHandle = null, sharedDirty = false, sharedBusy = false, sharedLastSync = null;
 /* Härtung v1.14: geschrieben wird NUR nach einem erfolgreichen Lese-/Merge-Zyklus.
@@ -1376,6 +1381,21 @@ function mergeCallStatusMonat(lokal, remote, remoteNeuer) {
   }
   return out;
 }
+function mergeReakt2Monat(lokal, remote, remoteNeuer) {
+  const out = {};
+  for (const c of new Set([...Object.keys(lokal), ...Object.keys(remote)])) {
+    const x = lokal[c], y = remote[c];
+    if (!x || !y) { out[c] = x || y; continue; }
+    const yGewinnt = (y.s || 0) > (x.s || 0) || ((y.s || 0) === (x.s || 0) && remoteNeuer);
+    const e = yGewinnt ? { ...x, ...y } : { ...y, ...x };
+    e.s = Math.max(x.s || 0, y.s || 0);
+    const r1 = Math.max(x.r1 || 0, y.r1 || 0); if (r1) e.r1 = r1;
+    const r2 = Math.max(x.r2 || 0, y.r2 || 0); if (r2) e.r2 = r2;
+    if (x.zu || y.zu) e.zu = 1;
+    out[c] = e;
+  }
+  return out;
+}
 function mergeShared(remote) {
   const rt = remote.touch || {};
   let changed = false, localNewer = sharedDirty;
@@ -1384,8 +1404,8 @@ function mergeShared(remote) {
     for (const k of new Set([...Object.keys(state[m]), ...Object.keys(rm)])) {
       const tk = `${m === "acks" ? "acks" : m}|${k}`;
       const lt_ = state.touch[tk] || 0, rt_ = rt[tk] || 0;
-      if (m === "callStatus" && k in rm && state[m][k] && rt_ !== lt_) {
-        const merged = mergeCallStatusMonat(state[m][k], rm[k], rt_ > lt_), js = JSON.stringify(merged);
+      if ((m === "callStatus" || m === "reakt2") && k in rm && state[m][k] && rt_ !== lt_) {
+        const merged = (m === "callStatus" ? mergeCallStatusMonat : mergeReakt2Monat)(state[m][k], rm[k], rt_ > lt_), js = JSON.stringify(merged);
         if (js !== JSON.stringify(state[m][k])) { state[m][k] = merged; changed = true; }
         if (js !== JSON.stringify(rm[k])) { localNewer = true; state.touch[tk] = Math.max(lt_, rt_, Date.now()); } // die Vereinigung muss zurück in die Team-Datei
         else state.touch[tk] = Math.max(lt_, rt_);
@@ -1885,6 +1905,7 @@ async function importCallFile(file, live) {
     recordCallStatus();
     recordWfSeen();
     recordReakt();
+    recordReakt2();
     render();
     snapshotKpis(computeKpis());
     cacheSources();
@@ -3929,6 +3950,58 @@ function slaRowOk(r) { return applyFilters("sla", [r.PrioInitial != null ? { ...
    (leere Spalte) gehört nicht dazu und wird nicht bewertet; 0 heißt „noch keine Reaktion“. Ein gelieferter
    Zeitstempel zählt immer. */
 function slaBewertet(r) { return r.ExtReaktionTage != null || r.ErsteExtReaktion instanceof Date; }
+/* v1.55: Zweite externe Reaktion – das Board lernt sie aus aufeinanderfolgenden Exporten, weil keine Quelle sie liefert.
+   Ein Call wird aufgenommen, solange er noch keine Reaktion hat (s 0). Bekommt er die erste, merkt sich das Board
+   „Letzte externe Reaktion“ als deren Zeitpunkt (s 1). Rückt „Letzte externe Reaktion“ danach weiter, ist das die zweite (s 2).
+   Calls, die beim ersten Sehen schon reagiert waren, bleiben außen vor – ihre Zahl der Reaktionen ist unbekannt. Zwei
+   Reaktionen innerhalb eines Export-Takts fallen zusammen. Teamweit (Team-Datei), je Eröffnungsmonat, 13 Monate. */
+function recordReakt2() {
+  if (sources.ALL.demo || !hatSpalte("ErsteExtReaktion") || !hatSpalte("LetzteExtReaktion")) return;
+  state.reakt2 ??= {};
+  const touched = new Set(), grenze = monatKey(new Date(todayStart().getTime() - 400 * DAY));
+  for (const r of alleZeilen()) {
+    if (!(r["Eröffnet"] instanceof Date) || !slaBewertet(r)) continue;
+    const mk = monatKey(r["Eröffnet"]), call = String(r.Call);
+    if (mk < grenze) continue;
+    const m = state.reakt2[mk] ??= {}, alt = m[call], zu = istGeschlossen(r) ? 1 : 0;
+    const letzte = r.LetzteExtReaktion instanceof Date ? r.LetzteExtReaktion.getTime() : 0, hatErste = r.ExtReaktionGz > 0 || r.ErsteExtReaktion instanceof Date;
+    if (!alt) {
+      if (hatErste || zu) continue; // schon reagiert oder zu: Zahl der Reaktionen unbekannt
+      m[call] = { s: 0, e: r["Eröffnet"].getTime(), p: prioReakt(r), k: String(r.Kunde ?? ""), g: String(r.Gruppe ?? ""), b: String(r.Bearbeiter ?? ""), rg: String(r.Region ?? "") };
+      touched.add(mk); continue;
+    }
+    let ch = false;
+    if (alt.s === 0 && hatErste && letzte) { alt.s = 1; alt.r1 = letzte; ch = true; }
+    else if (alt.s === 1 && letzte > (alt.r1 || 0) + 60000) { alt.s = 2; alt.r2 = letzte; ch = true; }
+    if ((alt.zu || 0) !== zu) { alt.zu = zu; ch = true; }
+    const p = prioReakt(r); if (alt.p !== p) { alt.p = p; ch = true; }
+    if (ch) touched.add(mk);
+  }
+  for (const k of Object.keys(state.reakt2)) if (k < grenze) { delete state.reakt2[k]; touched.add(k); }
+  if (touched.size) { for (const k of touched) touch("reakt2|" + k); saveState(); }
+}
+function darfZweite() { return ruleList(state.rules?.zweiteFuer).includes(String(currentUser().k || "").trim().toLowerCase()); }
+function zweiteEintraege() {
+  const out = [];
+  for (const m of Object.values(state.reakt2 || {})) for (const [call, rec] of Object.entries(m)) {
+    if (!rec || rec.s < 1 || !slaRecOk(rec)) continue;
+    out.push({ call, e: rec.e, p: rec.p || "", r1: rec.r1, r2: rec.r2 || 0, dauer: rec.s === 2 && rec.r1 && rec.r2 ? geschaeftszeit(rec.r1, rec.r2) : null, zu: !!rec.zu });
+  }
+  return out;
+}
+function zweiteStat(per, list) {
+  const mk = () => ({ n: 0, sum: 0, offen: 0, ohne: 0, avg: null }), agg = { rot: mk(), blau: mk(), "grün": mk(), ges: mk() };
+  for (const x of list) if (inPeriode(x, per)) for (const t of (agg[x.p] ? [agg[x.p], agg.ges] : [agg.ges])) {
+    if (x.dauer != null) { t.n++; t.sum += x.dauer; } else if (x.zu) t.ohne++; else t.offen++;
+  }
+  for (const t of Object.values(agg)) t.avg = t.n ? t.sum / t.n : null;
+  return agg;
+}
+function zweiteTabelle(list) {
+  const per = slaPerioden().filter(x => x.art !== "vorjahr");
+  const zeilen = per.map(x => { const a = zweiteStat(x, list); return [x.label, fmtDur(a.rot.avg), fmtDur(a.blau.avg), fmtDur(a["grün"].avg), fmtDur(a.ges.avg), String(a.ges.n), String(a.ges.offen), String(a.ges.ohne)]; });
+  return wlCopyTabelle("Zweite externe Reaktion – Zeit von der ersten bis zur zweiten (Geschäftszeit)", ["Zeitraum", "Rot", "Blau", "Grün", "Gesamt", "Calls", "noch ohne zweite", "geschlossen ohne zweite"], zeilen, new Set([1, 2, 3, 4, 5, 6, 7]));
+}
 function slaRecOk(rec) { return slaRowOk({ Gruppe: rec.g ?? "", Kunde: rec.k ?? "", Bearbeiter: rec.b ?? "", Status: "", Prio: rec.p ?? "", Region: rec.rg ?? "" }); }
 /* v1.41 „Vollmodus“: Liefert der Export auch die geschlossenen Calls (zwei Jahre), stehen Eröffnung und erste Reaktion
    für jeden Call direkt in den Daten – auch für Calls, die zwischen zwei Exporten aufgingen, beantwortet und geschlossen
@@ -4359,6 +4432,19 @@ function renderSla(view) {
       ${brk.map(x => { const lz = wlDa ? slaLiegezeiten(x.src || x.row, x.r || null) : null; return `<tr><td class="nowrap">${prioZelle(x.p)}${prioWechsel(x.row, x.p)}</td><td class="tnum nowrap">${esc(x.call)}${x.row ? "" : ' <span class="hint" title="Call ist nicht mehr im Datenstand (geschlossen)">geschl.</span>'}</td><td class="nowrap">${esc(x.k || "–")}</td><td class="nowrap">${esc(x.g || "–")}</td><td class="nowrap" title="${esc(resolveName(x.b) ?? "")}">${esc(x.b || "–")}</td><td class="tnum nowrap">${fmtDT.format(new Date(x.e))}</td><td class="ta-r tnum nowrap c-crit">${x.dauer != null ? fmtDur(x.dauer) : "offen seit " + fmtDur(geschaeftszeit(x.e, now()))}</td><td class="ta-r tnum">${extLimitLabel(x.p)}</td>${wlDa ? lzZelle(lz, "h") + lzZelle(lz, "d") + lzZelle(lz, "b") + `<td class="wlpfad">${lz ? wlWegChips(lz.stationen) + (lz.historie ? "" : ' <span class="hint" title="keine Weiterleitung in der Historie – Call liegt seit der Eröffnung in dieser Gruppe">ohne Weiterleitung</span>') : "–"}</td>` : ""}<td><input type="text" data-slanote="${esc(x.call)}" value="${esc(state.slaNote?.[x.call] ?? "")}" placeholder="Kommentar fürs Meeting" style="width:100%"></td></tr>`; }).join("")}
       </tbody></table></div>` : `<p class="empty">Keine Brüche in ${esc(wSel.label)}.</p>`}
     </div>`;
+  if (darfZweite()) {
+    const zl = zweiteEintraege(), zper = slaPerioden().filter(x => x.art !== "vorjahr");
+    let zArtVor = null;
+    const zZeilen = zper.map(x => { const a = zweiteStat(x, zl); const sep = zArtVor && x.art !== zArtVor ? '<tr class="sep"><td colspan="8"></td></tr>' : ""; zArtVor = x.art;
+      const z = p => `<td class="ta-r tnum">${p === "ges" ? "<b>" + fmtDur(a[p].avg) + "</b>" : fmtDur(a[p].avg)}</td>`;
+      return sep + `<tr class="${x.laufend ? "laufend" : ""}"${x.titel ? ` title="${esc(x.titel)}"` : ""}><td class="nowrap"><b>${esc(x.label)}</b>${x.laufend ? ' <span class="hint">bisher</span>' : ""}</td>${z("rot")}${z("blau")}${z("grün")}${z("ges")}<td class="ta-r tnum">${a.ges.n || "–"}</td><td class="ta-r tnum">${a.ges.offen || "–"}</td><td class="ta-r tnum">${a.ges.ohne || "–"}</td></tr>`; }).join("");
+    const beob = Object.values(state.reakt2 || {}).reduce((n, m) => n + Object.values(m).filter(x => x.s === 0 && !x.zu).length, 0);
+    view.insertAdjacentHTML("beforeend", `<div class="card" id="slaZweite"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Zweite externe Reaktion <span class="hint" style="font-weight:400">Zeit von der ersten bis zur zweiten · lernt seit v1.55 · sichtbar nur für dich</span>
+      <button class="small" id="btnSlaZweiteCopy" style="margin-left:auto" title="Als Tabelle kopieren">Tabelle kopieren</button></h2>
+      <p class="sub">Durchschnittliche Geschäftszeit von der ersten bis zur zweiten externen Reaktion, je Priorität bei Eröffnung, nach Eröffnungsdatum. Keine Quelle liefert die zweite Reaktion – das Board lernt sie aus den Exporten: Ein Call wird ab seiner Eröffnung beobachtet; bekommt er die erste Reaktion, gilt „Letzte externe Reaktion“ als deren Zeitpunkt; rückt dieser Zeitpunkt danach weiter, ist das die zweite. Calls, die beim ersten Sehen schon reagiert waren, zählen nicht (Zahl ihrer Reaktionen unbekannt); zwei Reaktionen innerhalb eines Export-Takts (10 Min.) fallen zusammen. „Noch ohne zweite“ = erste Reaktion da, Call offen; „geschlossen ohne zweite“ = mit einer Reaktion abgeschlossen. Gleicher Filter wie der Reiter, teamweit gespeichert. Aktuell beobachtet: ${fmtN.format(beob)} Calls ohne erste Reaktion.</p>
+      <div class="tscroll"><table class="list slatab"><thead><tr><th>Zeitraum</th><th class="ta-r">Rot</th><th class="ta-r">Blau</th><th class="ta-r">Grün</th><th class="ta-r">Gesamt</th><th class="ta-r" title="Calls mit zweiter Reaktion">Calls</th><th class="ta-r" title="erste Reaktion da, Call offen">noch ohne zweite</th><th class="ta-r" title="mit einer Reaktion geschlossen">geschl. ohne zweite</th></tr></thead><tbody>${zZeilen}</tbody></table></div></div>`);
+    view.querySelector("#btnSlaZweiteCopy").addEventListener("click", e => { const t = zweiteTabelle(zweiteEintraege()); copyHtml(t.html, t.plain, e.target); });
+  }
   view.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click", () => { const el = document.getElementById(b.dataset.goto === "ohne" ? "slaOhne" : "slaStat"); el?.scrollIntoView({ behavior: "smooth", block: "start" }); }));
   view.querySelector("#btnSlaStatCopy").addEventListener("click", e => { const t = slaStatTabelle(reaktEintraege()); copyHtml(t.html, t.plain, e.target); });
   view.querySelector("#btnSlaBruchCopy").addEventListener("click", e => { const t = slaBruchTabelle(wSel, reaktEintraege()); copyHtml(t.html, t.plain, e.target); });
@@ -4535,7 +4621,7 @@ function wlAufenthalte(r) {
 }
 let _wlCache = null; // je Datenstand, Regeln, Filter und Zeitmaß einmal gerechnet
 function wlCalls() {
-  const key = JSON.stringify([state.rules?.wlHotline, state.rules?.wlDispatcher, state.rules?.wlKeineBearb, state.rules?.closedStatus, state.internKunde, state.rules?.exclBearbeiter, state.filters?.wl, wlGz(), todayKey()]);
+  const key = JSON.stringify([state.rules?.wlHotline, state.rules?.wlDispatcher, state.rules?.wlKeineBearb, state.rules?.wlAbMonat, state.rules?.closedStatus, state.internKunde, state.rules?.exclBearbeiter, state.filters?.wl, wlGz(), todayKey()]);
   if (_wlCache && _wlCache.src === sources.ALL.rows && _wlCache.n === sources.ALL.rows.length && _wlCache.key === key) return _wlCache.calls;
   const calls = [];
   for (const r of applyFilters("wl", alleZeilen())) {
@@ -4555,20 +4641,23 @@ function wlCalls() {
   return calls;
 }
 let wlZeitraum = "jahr", wlMin = 6, wlAlle = false, wlStatMonat = null; // Zeitraum, Ping-Pong-Schwelle (Vorgabe 6, Eingabefeld), „alle anzeigen“, Monat der Liegedauer-Kopie – sitzungsweise
-function wlMonate() { // Monate, die der Export abdeckt (höchstens 13), jüngster zuerst
+function wlAbMonat() { const v = String(state.rules?.wlAbMonat ?? "").trim(); return /^\d{4}-\d{2}$/.test(v) ? v : ""; } // v1.55: Startmonat der Weiterleitungs-Auswertung
+function wlAbDatum() { const m = /^(\d{4})-(\d{2})$/.exec(wlAbMonat()); return m ? new Date(+m[1], +m[2] - 1, 1) : null; }
+function wlMonate() { // Monate, die der Export abdeckt (höchstens 13, ab dem Startmonat), jüngster zuerst
   let min = null; for (const r of alleZeilen()) if (r["Eröffnet"] instanceof Date && (!min || r["Eröffnet"] < min)) min = r["Eröffnet"];
-  const out = [], d = new Date(todayStart()); d.setDate(1);
-  for (let i = 0; i < 13; i++) { if (min && d < new Date(min.getFullYear(), min.getMonth(), 1)) break; out.push(monatKey(d)); d.setMonth(d.getMonth() - 1); }
+  const ab = wlAbMonat(), out = [], d = new Date(todayStart()); d.setDate(1);
+  for (let i = 0; i < 13; i++) { if (min && d < new Date(min.getFullYear(), min.getMonth(), 1)) break; const k = monatKey(d); if (ab && k < ab) break; out.push(k); d.setMonth(d.getMonth() - 1); }
   return out;
 }
-function wlZeitraumGrenzen() { // [von, bis) des gewählten Zeitraums
-  const t0 = todayStart(), bisAlles = new Date(t0.getTime() + DAY);
-  if (wlZeitraum === "jahr") return { von: new Date(t0.getFullYear(), 0, 1), bis: bisAlles, label: `Jahr ${t0.getFullYear()} bisher` };
-  if (wlZeitraum === "12m") { const v = new Date(t0); v.setMonth(v.getMonth() - 12); return { von: v, bis: bisAlles, label: "letzte 12 Monate" }; }
-  if (wlZeitraum === "3m") { const v = new Date(t0); v.setMonth(v.getMonth() - 3); return { von: v, bis: bisAlles, label: "letzte 3 Monate" }; }
-  const m = /^(\d{4})-(\d{2})$/.exec(wlZeitraum);
-  if (m) return { von: new Date(+m[1], +m[2] - 1, 1), bis: new Date(+m[1], +m[2], 1), label: wlMonatLabel(wlZeitraum) };
-  return { von: new Date(0), bis: bisAlles, label: "gesamter Export" };
+function wlZeitraumGrenzen() { // [von, bis) des gewählten Zeitraums – nie vor dem Startmonat (v1.55)
+  const t0 = todayStart(), bisAlles = new Date(t0.getTime() + DAY), ab = wlAbDatum();
+  let z;
+  if (wlZeitraum === "jahr") z = { von: new Date(t0.getFullYear(), 0, 1), bis: bisAlles, label: `Jahr ${t0.getFullYear()} bisher` };
+  else if (wlZeitraum === "12m") { const v = new Date(t0); v.setMonth(v.getMonth() - 12); z = { von: v, bis: bisAlles, label: "letzte 12 Monate" }; }
+  else if (wlZeitraum === "3m") { const v = new Date(t0); v.setMonth(v.getMonth() - 3); z = { von: v, bis: bisAlles, label: "letzte 3 Monate" }; }
+  else { const m = /^(\d{4})-(\d{2})$/.exec(wlZeitraum); z = m ? { von: new Date(+m[1], +m[2] - 1, 1), bis: new Date(+m[1], +m[2], 1), label: wlMonatLabel(wlZeitraum) } : { von: new Date(0), bis: bisAlles, label: "gesamter Export" }; }
+  if (ab && z.von < ab) { z.von = ab; z.label += ` (ab ${wlMonatLabel(wlAbMonat())})`; }
+  return z;
 }
 /* Ping-Pong-Calls im Zeitraum: mindestens wlMin Wechsel H ⇄ D insgesamt und mindestens einer davon im Zeitraum */
 function wlPingPong(calls, z) {
@@ -4620,11 +4709,12 @@ function wlRueckStat(abgaben) {
 function wlMonatsStat(calls) {
   const rows = new Map();
   const get = k => { if (!rows.has(k)) rows.set(k, { n: 0, h: [], d: [], s: [], ges: [], pp: [] }); return rows.get(k); };
-  const jahr = String(todayStart().getFullYear());
+  const jahr = String(todayStart().getFullYear()), ab = wlAbMonat();
   const add = (k, c) => { const e = get(k); e.n++; e.h.push(c.vorH); e.d.push(c.vorD); e.s.push(c.vorS); e.ges.push(c.bisBearb); e.pp.push(c.vorPp); };
   for (const c of calls) {
     if (!c.bearbAb || c.bisBearb == null) continue;
     const k = monatKey(c.bearbAb);
+    if (ab && k < ab) continue; // vor dem Startmonat: Historie unvollständig
     add(k, c); if (k.startsWith(jahr)) add("J" + jahr, c);
   }
   return rows;
@@ -4689,7 +4779,8 @@ function renderWl(view) {
   const zurueck = vertD.reduce((a, x) => a + (x.zurueck ? x.n : 0), 0), vertDtot = vertD.reduce((a, x) => a + x.n, 0);
   const stat = wlMonatsStat(calls);
   const lueckig = calls.filter(c => c.r.WlLueckig).length;
-  const zeilen = [["J" + jahr, `Jahr ${jahr} bisher`, true], ...monate.map(m => [m, wlMonatLabel(m), false])];
+  const ab = wlAbMonat(), jahrLabel = ab && ab.startsWith(jahr) && ab > `${jahr}-01` ? `${jahr} ab ${wlMonatLabel(ab)}` : `Jahr ${jahr} bisher`;
+  const zeilen = [["J" + jahr, jahrLabel, true], ...monate.map(m => [m, wlMonatLabel(m), false])];
   if (!zeilen.some(x => x[0] === wlStatMonat)) wlStatMonat = zeilen[1]?.[0] ?? zeilen[0][0];
   const lz = (a, fett) => { const v = mittel(a); return v == null ? "–" : v <= 0 ? "–" : fett ? "<b>" + fmtLiege(v) + "</b>" : fmtLiege(v); };
   const lzMed = a => { const v = median(a); return v == null || v <= 0 ? "–" : fmtLiege(v); };
@@ -4698,7 +4789,7 @@ function renderWl(view) {
   const offenN = allRows().length, zuN = closedRows().length, offenWl = allRows().filter(r => (r.Wl || []).length).length, zuWl = closedRows().filter(r => (r.Wl || []).length).length;
   const qOffen = offenN ? offenWl / offenN : 0, qZu = zuN ? zuWl / zuN : 0;
   const historieTxt = ` <b>Historie vorhanden bei</b> ${pct(qOffen)} der offenen und ${zuN ? pct(qZu) : "–"} der geschlossenen Calls.${zuN && qZu < qOffen / 2 ? " Geschlossene Calls haben deutlich seltener eine Historie – ältere Monate sind deshalb dünn besetzt. Vermutlich führt die Tabelle der Weiterleitungen in der Schattendatenbank nur offene oder jüngere Calls; das klärt der Tool-Verantwortliche an der Quelle." : ""}`;
-  const zOpt = [["jahr", `Jahr ${jahr} bisher`], ["12m", "letzte 12 Monate"], ["3m", "letzte 3 Monate"], ["alle", "gesamter Export"], ...monate.map(m => [m, wlMonatLabel(m)])];
+  const zOpt = [["jahr", jahrLabel], ["12m", "letzte 12 Monate"], ["3m", "letzte 3 Monate"], ["alle", ab ? `alles ab ${wlMonatLabel(ab)}` : "gesamter Export"], ...monate.map(m => [m, wlMonatLabel(m)])];
   const vertTab = (vert, name, cls) => vert.length ? `<div class="tscroll"><table class="list"><thead><tr><th class="${cls}">Ziel</th><th class="ta-r ${cls}">Weiterleitungen</th><th class="ta-r ${cls}">Anteil</th><th class="${cls}" style="width:40%"></th></tr></thead><tbody>${vert.map(x => `<tr><td class="nowrap">${esc(x.label)}${x.zurueck ? ' <span class="pill s-warn" style="font-size:10.5px" title="zurück auf den Eingangsstapel – Ping-Pong">zurück</span>' : ""}</td><td class="ta-r tnum">${fmtN.format(x.n)}</td><td class="ta-r tnum">${pct(x.q)}</td><td class="lastcell"><div class="lb"><span class="lb-fill" style="width:${Math.round(x.q * 100)}%"></span></div></td></tr>`).join("")}</tbody></table></div>` : `<p class="empty">Keine Weiterleitungen von ${esc(name)} im Zeitraum ${esc(z.label)}.</p>`;
   const legende = `<span class="hint" style="margin-right:4px">Farben:</span>${wlChip("H", WL_NAME.H)} ${wlChip("D", "Dispatcher")} ${wlChip("", "Bearbeitung")}`;
   view.innerHTML = `<div class="kpis">
@@ -4709,7 +4800,7 @@ function renderWl(view) {
       <button class="kpi${untyp.length ? " crit" : ""}" data-goto="wlUntyp"><div class="k-label">Hotline direkt in die Bearbeitung</div><div class="k-value">${fmtN.format(untyp.length)}</div><div class="k-note">Weiterleitungen am Dispatcher vorbei · ${esc(z.label)}</div></button>
     </div>
     <div class="card"><h2>Filter <span class="hint" style="font-weight:400;margin-left:6px">Zeitraum und Ping-Pong-Schwelle je Gerät, Ausblendungen teamweit</span></h2>
-      <p class="sub">${stapelTxt} Alle Zeiten in Geschäftszeit (Mo–Do 08:00–17:30, Fr 08:00–16:30). Ab Werk ohne ${esc(state.internKunde || "MPDV")}-Calls (Chip unter „Sonstiges“). Gruppe, Status und Prio beziehen sich auf den heutigen Stand des Calls; geschlossene Calls zählen mit.${lueckig ? ` <b>Hinweis:</b> Bei ${fmtN.format(lueckig)} Calls liefert der Export weniger Weiterleitungen als „Gesamtanzahl Weiterleitungen“ angibt – die Abfrage muss je Weiterleitung eine Zeile liefern, sonst fehlen Wege und Liegezeiten.` : ""}</p>
+      <p class="sub">${stapelTxt} Alle Zeiten in Geschäftszeit (Mo–Do 08:00–17:30, Fr 08:00–16:30).${ab ? ` <b>Auswertung ab ${esc(wlMonatLabel(ab))}</b> – davor ist die Historie unvollständig (Verwaltung → Grundregeln).` : ""} Ab Werk ohne ${esc(state.internKunde || "MPDV")}-Calls (Chip unter „Sonstiges“). Gruppe, Status und Prio beziehen sich auf den heutigen Stand des Calls; geschlossene Calls zählen mit.${lueckig ? ` <b>Hinweis:</b> Bei ${fmtN.format(lueckig)} Calls liefert der Export weniger Weiterleitungen als „Gesamtanzahl Weiterleitungen“ angibt – die Abfrage muss je Weiterleitung eine Zeile liefern, sonst fehlen Wege und Liegezeiten.` : ""}</p>
       <div class="frow"><span class="flabel">Zeitraum</span><select id="wlZeitraumSel" class="small">${zOpt.map(([v, l]) => `<option value="${v}"${v === wlZeitraum ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
         <span class="flabel" style="width:auto;margin-left:14px">Ping-Pong ab</span><input type="number" id="wlMinInp" class="small" min="2" max="15" step="1" value="${wlMin}" style="width:64px" title="Ab so vielen Wechseln Hotline ⇄ Dispatcher gilt ein Call als Ping-Pong (Vorgabe 6, 2 bis 15)"> <span class="hint">Wechseln (Vorgabe 6)</span>
         <span style="margin-left:18px">${legende}</span></div>
@@ -5213,6 +5304,8 @@ function renderAdmin(view) {
       <p class="sub">Sichtbarkeits-Filter stehen direkt in den jeweiligen Ansichten („Filter“) – dort lassen sich unter „Sonstiges“ auch ${esc(state.internKunde || "MPDV")}-Calls und ${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")} ein- und ausblenden.</p>
       <table class="grid"><tbody>
         <tr><td style="width:230px">Warnung „Datei unverändert“ ab (Min.)</td><td><input data-cfg="staleWarnMin" value="${esc(state.staleWarnMin)}" type="number" min="5" style="width:90px"></td></tr>
+        <tr><td>Zweite Reaktion sichtbar für (Kürzel)</td><td><input data-cfg="rules.zweiteFuer" value="${esc(state.rules.zweiteFuer ?? "")}" placeholder="Kürzel mit Semikolon" style="width:100%"><div class="hint">Die Karte „Zweite externe Reaktion“ im Reiter „Reaktionszeit“ sehen nur diese Kürzel. Gelernt wird für alle: Das Board merkt sich je Call die erste und die zweite externe Reaktion aus den Exporten (teamweit in der Team-Datei), weil keine Quelle diesen Wert liefert.</div></td></tr>
+        <tr><td>Weiterleitungen: Auswertung ab Monat</td><td><input data-cfg="rules.wlAbMonat" value="${esc(state.rules.wlAbMonat ?? "")}" placeholder="JJJJ-MM, z. B. 2026-09" style="width:100%"><div class="hint">Die Weiterleitungs-Historie ist erst ab diesem Monat vollständig. Frühere Monate erscheinen nicht in „Weg bis zur Bearbeitung“, und alle Zeiträume des Reiters beginnen frühestens hier. Leer = kein Startmonat.</div></td></tr>
         <tr><td>Auslastung sichtbar für (Kürzel)</td><td><input data-cfg="rules.auslastungFuer" value="${esc(state.rules.auslastungFuer ?? "")}" placeholder="Kürzel mit Semikolon" style="width:100%"><div class="hint">Der Reiter „Auslastung“ (Aufwand je Bearbeiter) erscheint nur für diese Anmelde-Kürzel.</div></td></tr>
         <tr><td>Reaktionsfrist: Hinweis ab (Min. Geschäftszeit)</td><td><div class="frow" style="margin:0">
           <span class="flabel" style="width:auto">Rot</span><input data-cfg="rules.slaWarn.rot" value="${esc(state.rules.slaWarn?.rot ?? 60)}" type="number" min="1" style="width:80px">
