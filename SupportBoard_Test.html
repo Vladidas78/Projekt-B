@@ -524,7 +524,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.58";
+const VERSION = "1.59";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -3106,14 +3106,25 @@ function topGeschlWoche(kind, scope = topScope(kind)) {
   const wk = weekKey(todayStart());
   state.topGeschl ??= {};
   const live = topGeschlLive(kind, scope);
-  if (sources.ALL.demo) return live;
+  // v1.59: Ohne geschlossene Calls im Datenstand (Beispieldaten, unvollständiger Browser-Cache, Export ohne Abschlüsse) wird
+  // nichts eingefroren. Die Vermutung „nicht mehr im Datenstand = geschlossen“ wäre sonst teamweit festgeschrieben worden –
+  // so kamen offene Calls ohne Kunde und Aufwand mit einem erfundenen Abschlussdatum in die Liste.
+  if (sources.ALL.demo || !hatGeschlossene()) return live;
   const e = state.topGeschl[wk] ??= {};
   const key = `${kind}_${scope}`; // ältere Schlüssel („dauer“/„alt“ ohne Trennung) werden nicht mehr gelesen
   let ch = false;
   if (!Array.isArray(e[key])) { e[key] = live; ch = true; }
   else { // eingefroren – nur ergänzen, was neu dazukommt (z. B. Abschluss erst nach dem Einfrieren im Export)
-    const seen = new Set(e[key].map(x => x.call));
+    const seen = new Set(e[key].map(x => x.call)), liveBy = new Map(live.map(x => [String(x.call), x]));
     for (const x of live) if (!seen.has(x.call)) { e[key].push(x); ch = true; }
+    // v1.59 Selbstheilung: Einträge, deren Call heute offen ist und nicht wiedereröffnet wurde, stammen aus einem
+    // unvollständigen Datenstand und fliegen raus; Einträge ohne Kunde/Wert werden aus dem Export nachgefüllt.
+    const offenJetzt = new Set(allRows().filter(r => !wiederGeoeffnet(r)).map(r => String(r.Call)));
+    const vorher = e[key].length;
+    e[key] = e[key].filter(x => !offenJetzt.has(String(x.call)));
+    if (e[key].length !== vorher) ch = true;
+    for (let i = 0; i < e[key].length; i++) { const x = e[key][i], l = liveBy.get(String(x.call)); if (l && (!x.kunde || !x.wert) && (l.kunde || l.wert)) { e[key][i] = l; ch = true; } }
+    if (ch) e[key].sort((a, b) => a.geschlossen - b.geschlossen);
   }
   if (ch) {
     touch("topGeschl|" + wk);
