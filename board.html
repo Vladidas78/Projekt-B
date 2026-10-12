@@ -276,6 +276,9 @@
   .bar.we { background: transparent; box-shadow: inset 0 0 0 1px var(--grid); }
   .bar .bf { display: block; width: 100%; border-radius: 4px; }
   .bar.leer .bf { display: none; }
+  .bar[data-tsd], .statbox[data-tsd] { cursor: pointer; }
+  .bar[data-tsd]:hover { box-shadow: inset 0 0 0 1px var(--accent); }
+  .bar.sel, .statbox.sel { box-shadow: inset 0 0 0 2px var(--accent); }
   .bf.b-neu { background: var(--accent); }
   .bf.b-geschl { background: var(--good); }
   .bf.b-wieder { background: var(--warn); }
@@ -491,7 +494,7 @@
 /*__SHEETJS__*/</script>
 <script>
 "use strict";
-const VERSION = "1.57";
+const VERSION = "1.58";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -612,6 +615,7 @@ const DEFAULT_STATE = {
            closedStatus: "Gelöst; Geschlossen; Abgeschlossen; Reviewer; Closed; Resolved; Solved", // Status, die als „zu“ gelten (v1.41: der Export liefert auch geschlossene Calls)
            regionAsien: "", regionUsa: "", // zusätzliche Werte der Spalte Kundenbetreuung, die als Asien bzw. USA gelten (Semikolon-getrennt)
            auslastungFuer: "SM1", // Kürzel (Semikolon-getrennt), die den Reiter „Auslastung“ sehen
+           auslastungAus: "", // v1.58: Bearbeiter-Kürzel (Semikolon-getrennt), die in „Auslastung 2nd Level“ nicht erscheinen (Kollegen außerhalb der Statistik)
            zweiteFuer: "", // v1.55: Kürzel, die die Karte „Zweite externe Reaktion“ im Reiter Reaktionszeit sehen (leer = niemand)
            wlAbMonat: "2026-09", // v1.55: Weiterleitungs-Auswertung erst ab diesem Monat (JJJJ-MM) – davor ist die Historie unvollständig
            wlHotline: "Hotline; 1st_Level", wlDispatcher: "Dispatcher", // v1.42: Eingangsstapel der Weiterleitungs-Auswertung (Ping-Pong, Liegedauer); alles andere gilt als Bearbeitung
@@ -784,6 +788,7 @@ function normalizeState() {
     if (fehlt.length) { state.rules.closedStatus = [...(state.rules.closedStatus ? [String(state.rules.closedStatus).trim().replace(/;\s*$/, "")] : []), ...fehlt].filter(Boolean).join("; "); _rowsCache = null; } }
   state.rules.regionAsien ??= ""; state.rules.regionUsa ??= "";
   state.rules.auslastungFuer ??= DEFAULT_STATE.rules.auslastungFuer;
+  state.rules.auslastungAus ??= DEFAULT_STATE.rules.auslastungAus;
   state.rules.zweiteFuer ??= DEFAULT_STATE.rules.zweiteFuer; state.rules.wlAbMonat ??= DEFAULT_STATE.rules.wlAbMonat;
   state.rules.wlHotline ??= DEFAULT_STATE.rules.wlHotline; state.rules.wlDispatcher ??= DEFAULT_STATE.rules.wlDispatcher;
   state.rules.wlKeineBearb ??= DEFAULT_STATE.rules.wlKeineBearb;
@@ -3500,6 +3505,9 @@ function renderHeute(view) {
   const list = trendKarten(rows);
   view.innerHTML = kpis + (rows.length ? list : `<div class="card"><p class="empty">Keine Daten. Dashboard-Datei in der Verwaltung verknüpfen, Datei hierher ziehen — oder <button class="small" id="btnDemo">Beispieldaten anzeigen</button>.</p></div>`);
   view.querySelectorAll("[data-goto]").forEach(el => el.addEventListener("click", () => { const id = el.dataset.goto; if (id !== "heute") { activeTab = id; render(); } }));
+  view.querySelectorAll("[data-tsd]").forEach(el => el.addEventListener("click", () => { const [feld, key] = el.dataset.tsd.split("|"); tsDetail = tsDetail && tsDetail.feld === feld && tsDetail.key === key ? null : { feld, key }; render(); if (tsDetail) document.getElementById("tsDetail")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }));
+  view.querySelector("#btnTsdClose")?.addEventListener("click", () => { tsDetail = null; render(); });
+  view.querySelector("#btnTsdCopy")?.addEventListener("click", e => { const t = tagesDetailTabelle(); copyHtml(t.html, t.plain, e.target); });
   view.querySelectorAll("[data-copytop]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); const t = topTabelleHtml(b.dataset.copytop); copyHtml(t.html, t.plain, b); }));
   view.querySelectorAll("[data-copytopgeschl]").forEach(b => b.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); const t = topGeschlTabelleHtml(b.dataset.copytopgeschl); copyHtml(t.html, t.plain, b); }));
   view.querySelectorAll("[data-colsbtn]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); openColsChooser(b, b.dataset.colsbtn); }));
@@ -3509,14 +3517,45 @@ function renderHeute(view) {
 }
 
 /* Startseite: Tagesstatistik, Auslastung 2nd Level, Top-Listen */
+let tsDetail = null; // v1.58: aufgeklappte Tagesstatistik – { feld: neu|geschl|wieder, key: "JJJJ-MM-TT" }, je Sitzung
+const TS_FELD = { neu: "Neu eröffnet", geschl: "Geschlossen", wieder: "Wieder geöffnet" };
 function miniBars(reihe, feld, cls, titel) {
-  const max = Math.max(1, ...reihe.map(x => x[feld] ?? 0));
-  return `<div class="bars" title="${esc(titel)}">${reihe.map(x => {
+  const max = Math.max(1, ...reihe.map(x => x[feld] ?? 0)), klick = feld in TS_FELD;
+  return `<div class="bars" title="${esc(titel)}${klick ? " – Balken anklicken zeigt die Calls" : ""}">${reihe.map(x => {
     const v = x[feld];
     const h = v == null ? 0 : Math.max(2, Math.round(v / max * 100));
     const lab = `${fmtD.format(x.d).slice(0, 6)}: ${v == null ? "kein Stand" : v}`;
-    return `<div class="bar${x.we ? " we" : ""}${v == null ? " leer" : ""}" title="${esc(lab)}"><span class="bf ${cls}" style="height:${h}%"></span><span class="bv">${v == null ? "" : v}</span></div>`;
+    const sel = tsDetail && tsDetail.feld === feld && tsDetail.key === x.key;
+    return `<div class="bar${x.we ? " we" : ""}${v == null ? " leer" : ""}${sel ? " sel" : ""}" title="${esc(lab)}"${klick && v != null ? ` data-tsd="${feld}|${x.key}" role="button"` : ""}><span class="bf ${cls}" style="height:${h}%"></span><span class="bv">${v == null ? "" : v}</span></div>`;
   }).join("")}</div>`;
+}
+/* v1.58: Calls hinter einem Tageswert – neu (Eröffnung am Tag), geschlossen (Abschluss am Tag), wieder geöffnet (Statusgedächtnis) */
+function tagesDetailRows(feld, key) {
+  const alle = alleZeilen();
+  if (feld === "neu") return alle.filter(r => r["Eröffnet"] instanceof Date && isoDateOf(r["Eröffnet"]) === key).map(r => ({ r, info: null }));
+  if (feld === "geschl") return closedRows().filter(r => { const g = geschlossenAm(r); return g && isoDateOf(g) === key; }).map(r => ({ r, info: geschlossenAm(r) }));
+  if (feld === "wieder") {
+    const d = new Date(key + "T00:00:00"), byCall = new Map(alle.map(r => [String(r.Call), r]));
+    return wiederGeoeffnetListe(d.getTime(), d.getTime() + DAY).map(x => ({ r: byCall.get(String(x.call)) || { Call: x.call, Status: x.e.rs ?? "" }, info: new Date(x.e.rt), e: x.e, fehlt: !byCall.has(String(x.call)) }));
+  }
+  return [];
+}
+function tagesDetailKarte() {
+  if (!tsDetail) return "";
+  const { feld, key } = tsDetail, d = new Date(key + "T00:00:00"), list = tagesDetailRows(feld, key);
+  const titel = `${TS_FELD[feld] || feld} am ${fmtD.format(d)}`;
+  const infoKopf = feld === "geschl" ? "Geschlossen am" : feld === "wieder" ? "Wieder geöffnet am" : "";
+  const zeile = x => `<tr><td class="nowrap">${prioZelle(prioName(x.r.Prio))}</td><td class="tnum nowrap">${esc(x.r.Call ?? "")}${x.fehlt ? ' <span class="hint" title="Call ist nicht mehr im Datenstand">nicht im Export</span>' : ""}</td><td class="nowrap">${esc(x.r.Kunde ?? "–")}</td><td class="titlecell">${esc(x.r.Titel ?? "–")}</td><td class="nowrap">${esc(gruppeKurz(x.r.Gruppe ?? "") || "–")}</td><td class="nowrap" title="${esc(resolveName(x.r.Bearbeiter) ?? "")}">${esc(x.r.Bearbeiter ?? "–")}</td><td class="nowrap">${esc(x.r.Status ?? "–")}${istGeschlossen(x.r) ? ' <span class="hint">zu</span>' : ""}</td><td class="tnum nowrap">${x.r["Eröffnet"] instanceof Date ? fmtDT.format(x.r["Eröffnet"]) : "–"}</td>${infoKopf ? `<td class="tnum nowrap">${x.info ? fmtDT.format(x.info) : "–"}${feld === "wieder" && x.e?.c ? ` <span class="hint" title="war geschlossen seit">zu seit ${esc(fmtD.format(new Date(x.e.c)))}</span>` : ""}${feld === "wieder" && x.e?.r > 1 ? ` <span class="hint">${x.e.r}. Mal</span>` : ""}</td>` : ""}</tr>`;
+  return `<div class="card" id="tsDetail"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">${esc(titel)} <span class="pill s-ok">${list.length}</span>
+      <button class="small" id="btnTsdCopy" style="margin-left:auto" title="Als Tabelle kopieren">Tabelle kopieren</button><button class="small" id="btnTsdClose" title="Liste schließen">Schließen</button></h2>
+    ${list.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Kunde</th><th>Titel</th><th>Gruppe</th><th>Bearbeiter</th><th>Status</th><th>Eröffnet</th>${infoKopf ? `<th>${infoKopf}</th>` : ""}</tr></thead><tbody>${list.map(zeile).join("")}</tbody></table></div>` : `<p class="empty">Keine Calls an diesem Tag.</p>`}
+  </div>`;
+}
+function tagesDetailTabelle() {
+  const { feld, key } = tsDetail, list = tagesDetailRows(feld, key), d = new Date(key + "T00:00:00");
+  const infoKopf = feld === "geschl" ? "Geschlossen am" : feld === "wieder" ? "Wieder geöffnet am" : null;
+  const header = ["Prio", "Call", "Kunde", "Titel", "Gruppe", "Bearbeiter", "Status", "Eröffnet"].concat(infoKopf ? [infoKopf] : []);
+  return wlCopyTabelle(`${TS_FELD[feld] || feld} am ${fmtD.format(d)}`, header, list.map(x => [prioText(x.r), String(x.r.Call ?? ""), x.r.Kunde ?? "", x.r.Titel ?? "", gruppeKurz(x.r.Gruppe ?? ""), x.r.Bearbeiter ?? "", x.r.Status ?? "", x.r["Eröffnet"] instanceof Date ? fmtDT.format(x.r["Eröffnet"]) : ""].concat(infoKopf ? [x.info ? fmtDT.format(x.info) : ""] : [])), new Set());
 }
 function zweiteLevelGruppen() {
   const def = gruppenFilterDefs().find(g => /2nd/i.test(g.name));
@@ -3554,9 +3593,9 @@ function trendKarten(rows) {
       ? `Neu = an dem Tag eröffnet, geschlossen = an dem Tag abgeschlossen (Status „zu“ laut Verwaltung, Abschlussdatum aus dem Export). Wieder geöffnet = stand auf Gelöst/Geschlossen und ist wieder in Bearbeitung – erkannt aus dem Statusgedächtnis des Boards; das zählt nicht als neuer Call.`
       : `Neu = an dem Tag eröffnet. Geschlossen = am Vortag im Datenstand, heute nicht mehr (dazu zählen auch Calls, die aus dem Auswertungsbereich gewandert sind). Sobald der Export geschlossene Calls mitliefert, rechnet die Statistik direkt mit Abschlussdatum und Status.`}</p>
     <div class="statgrid">
-      <div class="statbox"><div class="k-label">Heute neu</div><div class="k-value">${heute.neu ?? "–"}</div></div>
-      <div class="statbox"><div class="k-label">Heute geschlossen</div><div class="k-value">${heute.geschl ?? "–"}</div>${voll || heute.hatVortag ? "" : `<div class="k-note">ab morgen, wenn ein Vortag vorliegt</div>`}</div>
-      <div class="statbox" title="${esc(wiederHeute.map(x => x.call).join(", "))}"><div class="k-label">Heute wieder geöffnet</div><div class="k-value">${voll ? wiederHeute.length : "–"}</div>${voll ? "" : `<div class="k-note">braucht geschlossene Calls im Export</div>`}</div>
+      <div class="statbox${tsDetail?.feld === "neu" && tsDetail.key === heute.key ? " sel" : ""}" data-tsd="neu|${heute.key}" role="button" title="Klicken zeigt die heute eröffneten Calls"><div class="k-label">Heute neu</div><div class="k-value">${heute.neu ?? "–"}</div></div>
+      <div class="statbox${tsDetail?.feld === "geschl" && tsDetail.key === heute.key ? " sel" : ""}"${voll ? ` data-tsd="geschl|${heute.key}" role="button" title="Klicken zeigt die heute geschlossenen Calls"` : ""}><div class="k-label">Heute geschlossen</div><div class="k-value">${heute.geschl ?? "–"}</div>${voll || heute.hatVortag ? "" : `<div class="k-note">ab morgen, wenn ein Vortag vorliegt</div>`}</div>
+      <div class="statbox${tsDetail?.feld === "wieder" && tsDetail.key === heute.key ? " sel" : ""}"${voll ? ` data-tsd="wieder|${heute.key}" role="button" title="Klicken zeigt die heute wieder geöffneten Calls"` : ""}><div class="k-label">Heute wieder geöffnet</div><div class="k-value">${voll ? wiederHeute.length : "–"}</div>${voll ? "" : `<div class="k-note">braucht geschlossene Calls im Export</div>`}</div>
       <div class="statbox"><div class="k-label">Offen gesamt</div><div class="k-value">${fmtN.format(rows.length)}${vortag?.calls ? trendHtml.raw(rows.length - vortag.calls.length, "Vortag: " + vortag.calls.length) : ""}</div></div>
       ${wocheZu != null ? `<div class="statbox"><div class="k-label">Vorwoche geschlossen</div><div class="k-value">${fmtN.format(wocheZu)}</div><div class="k-note">Mo ${fmtD.format(vw.von).slice(0, 6)} – So ${fmtD.format(new Date(vw.bis.getTime() - DAY)).slice(0, 6)}</div></div>` : ""}
     </div>
@@ -3565,13 +3604,14 @@ function trendKarten(rows) {
     ${voll ? `<div class="barrow"><span class="blabel">Wieder</span>${miniBars(reihe, "wieder", "b-wieder", "Wieder geöffnete Calls je Tag")}</div>` : ""}
     <div class="barrow"><span class="blabel">Offen</span>${miniBars(reihe, "offen", "b-offen", "Offene Calls je Tag")}</div>
     <div class="barrow"><span class="blabel"></span><div class="bars bkal">${kalender}</div></div>
-  </div>`;
+    <p class="hint" style="margin:6px 0 0">Balken und Kacheln bei Neu, Geschl. und Wieder anklicken – darunter erscheinen die Calls des Tages.</p>
+  </div>${tagesDetailKarte()}`;
   // Auslastung 2nd Level je Mitarbeiter
-  const ist2nd = zweiteLevelGruppen();
+  const ist2nd = zweiteLevelGruppen(), auslAus = ruleList(state.rules?.auslastungAus);
   const by = new Map();
   for (const r of rows) {
     if (!ist2nd(r) || bearbeiterExcluded(r)) continue;
-    const k = String(r.Bearbeiter ?? "").trim().toUpperCase(); if (!k) continue;
+    const k = String(r.Bearbeiter ?? "").trim().toUpperCase(); if (!k || auslAus.includes(k.toLowerCase())) continue; // v1.58: ausgeblendete Kürzel (Verwaltung → Grundregeln)
     if (!by.has(k)) by.set(k, { k, calls: 0, dauer: 0, krit: 0, gruppen: new Set() });
     const e = by.get(k); e.calls++; e.dauer += Number(r.Dauer) || 0; if (severity(r.Score) === 2) e.krit++; if (r.Gruppe) e.gruppen.add(gruppeKurz(String(r.Gruppe).trim()));
   }
@@ -3580,7 +3620,7 @@ function trendKarten(rows) {
   const gesamt2nd = ma.reduce((a, d) => a + d.calls, 0);
   const vortag2nd = vortag?.bearb ? ma.reduce((a, d) => a + (vortag.bearb[d.k] || 0), 0) : null;
   const last = `<div class="card"><h2>Auslastung 2nd Level <span class="pill s-ok" style="margin-left:6px">${fmtN.format(gesamt2nd)} offen${vortag2nd != null ? trendHtml.raw(gesamt2nd - vortag2nd, "Vortag: " + vortag2nd) : ""}</span></h2>
-    <p class="sub">Offene Calls je Bearbeiter in den 2nd-Level-Gruppen (Filtergruppe „2nd Level“ aus der Verwaltung). Pfeil = Veränderung zum Vortag. Auslastung Dispatcher folgt, sobald die Abfrage die Daten dafür liefert.</p>
+    <p class="sub">Offene Calls je Bearbeiter in den 2nd-Level-Gruppen (Filtergruppe „2nd Level“ aus der Verwaltung). Pfeil = Veränderung zum Vortag.${auslAus.length ? ` Ausgeblendet (Verwaltung → Grundregeln): ${esc(auslAus.map(x => x.toUpperCase()).join(", "))}.` : ""} Auslastung Dispatcher folgt, sobald die Abfrage die Daten dafür liefert.</p>
     ${ma.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Bearbeiter</th><th>Gruppe</th><th class="ta-r">Offene Calls</th><th class="ta-r">Aufwand (h)</th><th class="ta-r">Kritische</th></tr></thead><tbody>
     ${ma.map(d => `<tr><td class="nowrap" title="${esc(resolveName(d.k) ?? "")}">${esc(d.k)}</td><td class="nowrap">${esc([...d.gruppen].sort().join(", ") || "–")}</td>
       <td class="lastcell"><div class="lb"><span class="lb-fill" style="width:${Math.round(d.calls / maxCalls * 100)}%"></span><span class="lb-val">${fmtN.format(d.calls)}${vortag?.bearb ? trendHtml.raw(d.calls - (vortag.bearb[d.k] || 0), "Vortag: " + (vortag.bearb[d.k] || 0)) : ""}</span></div></td>
@@ -5310,6 +5350,7 @@ function renderAdmin(view) {
         <tr><td style="width:230px">Warnung „Datei unverändert“ ab (Min.)</td><td><input data-cfg="staleWarnMin" value="${esc(state.staleWarnMin)}" type="number" min="5" style="width:90px"></td></tr>
         <tr><td>Zweite Reaktion sichtbar für (Kürzel)</td><td><input data-cfg="rules.zweiteFuer" value="${esc(state.rules.zweiteFuer ?? "")}" placeholder="Kürzel mit Semikolon" style="width:100%"><div class="hint">Die Karte „Zweite externe Reaktion“ im Reiter „Reaktionszeit“ sehen nur diese Kürzel; bleibt das Feld leer, sehen sie die Kürzel aus „Auslastung sichtbar für“. Gelernt wird für alle: Das Board merkt sich je Call die erste und die zweite externe Reaktion aus den Exporten (teamweit in der Team-Datei), weil keine Quelle diesen Wert liefert.</div></td></tr>
         <tr><td>Weiterleitungen: Auswertung ab Monat</td><td><input data-cfg="rules.wlAbMonat" value="${esc(state.rules.wlAbMonat ?? "")}" placeholder="JJJJ-MM, z. B. 2026-09" style="width:100%"><div class="hint">Die Weiterleitungs-Historie ist erst ab diesem Monat vollständig. Frühere Monate erscheinen nicht in „Weg bis zur Bearbeitung“, und alle Zeiträume des Reiters beginnen frühestens hier. Leer = kein Startmonat.</div></td></tr>
+        <tr><td>Auslastung 2nd Level: Bearbeiter ausblenden (Kürzel)</td><td><input data-cfg="rules.auslastungAus" value="${esc(state.rules.auslastungAus ?? "")}" placeholder="Kürzel mit Semikolon" style="width:100%"><div class="hint">Diese Bearbeiter erscheinen nicht in der Karte „Auslastung 2nd Level“ auf der Startseite und zählen dort nicht mit – z. B. Kollegen, die nicht zur Statistik gehören. Ihre Calls bleiben in allen Listen.</div></td></tr>
         <tr><td>Auslastung sichtbar für (Kürzel)</td><td><input data-cfg="rules.auslastungFuer" value="${esc(state.rules.auslastungFuer ?? "")}" placeholder="Kürzel mit Semikolon" style="width:100%"><div class="hint">Der Reiter „Auslastung“ (Aufwand je Bearbeiter) erscheint nur für diese Anmelde-Kürzel.</div></td></tr>
         <tr><td>Reaktionsfrist: Hinweis ab (Min. Geschäftszeit)</td><td><div class="frow" style="margin:0">
           <span class="flabel" style="width:auto">Rot</span><input data-cfg="rules.slaWarn.rot" value="${esc(state.rules.slaWarn?.rot ?? 60)}" type="number" min="1" style="width:80px">
