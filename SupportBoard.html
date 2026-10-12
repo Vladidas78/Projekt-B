@@ -521,7 +521,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.55";
+const VERSION = "1.56";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -4720,17 +4720,38 @@ function wlMonatsStat(calls) {
   return rows;
 }
 /* v1.54: Calls eines Monats – Call für Call, zum Nachvollziehen der Zahlen (Kopie) */
+function wlMonatPasst(k) { const jahr = /^J(\d{4})$/.exec(k)?.[1]; return d => d instanceof Date && (jahr ? String(d.getFullYear()) === jahr : monatKey(d) === k); }
 function wlMonatCalls(calls, k) {
-  const jahr = /^J(\d{4})$/.exec(k)?.[1], passt = d => jahr ? String(d.getFullYear()) === jahr : monatKey(d) === k;
+  const passt = wlMonatPasst(k);
   return calls.filter(c => c.bearbAb && c.bisBearb != null && passt(c.bearbAb)).sort((a, b) => b.bisBearb - a.bisBearb);
 }
+/* v1.56: Wo steht ein Call, der nicht (oder noch nicht) in der Bearbeitung angekommen ist? */
+function wlHerkunft(c) {
+  if (c.bearbAb) return "bearb";
+  const first = c.segs[0], last = c.segs[c.segs.length - 1];
+  if (!first.s) return "direkt";                                   // in einer Bearbeitungsgruppe (oder unbekannten Gruppe) eröffnet
+  if (last.s) return last.art === "offen" ? "liegt" : "stapelZu"; // liegt noch auf H/D bzw. dort geschlossen
+  return "keineBearb";                                              // Weg endet (bisher) bei Reviewer, Customer Care … ohne Bearbeitung
+}
+const WL_HERKUNFT_TXT = { bearb: "in der Bearbeitung angekommen", liegt: "liegt noch auf Eingangsstapel", stapelZu: "auf dem Eingangsstapel geschlossen", keineBearb: "nur bei Reviewer / Customer Care …", direkt: "direkt in Bearbeitungsgruppe eröffnet" };
+/* v1.56: Überleitung je Eröffnungsmonat – von allen eröffneten Calls zu den gezählten (Antwort auf „126 neu, aber nur 50 in der Tabelle“) */
+function wlMonatHerkunft(calls, k) {
+  const passt = wlMonatPasst(k), out = { gesamt: 0, n: 0, bearb: 0, bearbSpaeter: 0, liegt: 0, stapelZu: 0, keineBearb: 0, direkt: 0, aus: 0 };
+  for (const c of calls) if (passt(c.r["Eröffnet"])) { out.n++; const h = wlHerkunft(c); out[h]++; if (h === "bearb" && !passt(c.bearbAb)) out.bearbSpaeter++; }
+  for (const r of alleZeilen()) if (passt(r["Eröffnet"])) out.gesamt++;
+  out.aus = Math.max(0, out.gesamt - out.n);
+  return out;
+}
 function wlMonatCallsTabelle(k, calls, label) {
-  const list = wlMonatCalls(calls, k);
-  const header = ["Call", "Prio", "Kunde", "Titel", "Status heute", "Gruppe heute", "Eröffnet", "Ankunft Bearbeitung", "in Gruppe", `${WL_NAME.H}`, "Dispatcher", "Sonstige", "bis Bearbeitung", "Wechsel H⇄D", "Weg"];
-  const zeilen = list.map(c => [String(c.r.Call ?? ""), prioText(c.r), c.r.Kunde ?? "", c.r.Titel ?? "", c.r.Status ?? "", gruppeKurz(c.r.Gruppe ?? ""), c.r["Eröffnet"] ? fmtDT.format(c.r["Eröffnet"]) : "",
-    fmtDT.format(c.bearbAb), gruppeKurz(c.bearbIn), c.vorH ? fmtLiege(c.vorH) : "", c.vorD ? fmtLiege(c.vorD) : "", c.vorS ? fmtLiege(c.vorS) : "", fmtLiege(c.bisBearb), String(c.vorPp), c.segs.map(x => `${gruppeKurz(x.g)} ${fmtLiege(wlDauer(x.von, x.bis))}`).join(" > ")]);
-  const t = wlCopyTabelle(`Weg bis zur Bearbeitung ${label} – Calls mit Ankunft in der Bearbeitung (Geschäftszeit)`, header, zeilen, new Set([9, 10, 11, 12, 13]));
-  return { ...t, n: list.length };
+  const passt = wlMonatPasst(k), ank = wlMonatCalls(calls, k), seen = new Set(ank.map(c => c));
+  const rest = calls.filter(c => passt(c.r["Eröffnet"]) && !seen.has(c)).sort((a, b) => (a.r["Eröffnet"] ?? 0) - (b.r["Eröffnet"] ?? 0));
+  const header = ["Call", "Prio", "Kunde", "Titel", "Status heute", "Gruppe heute", "Eröffnet", "Einordnung", "Ankunft Bearbeitung", "in Gruppe", `${WL_NAME.H}`, "Dispatcher", "Sonstige", "bis Bearbeitung", "Wechsel H⇄D", "Weg"];
+  const zeile = (c, einordnung) => [String(c.r.Call ?? ""), prioText(c.r), c.r.Kunde ?? "", c.r.Titel ?? "", c.r.Status ?? "", gruppeKurz(c.r.Gruppe ?? ""), c.r["Eröffnet"] ? fmtDT.format(c.r["Eröffnet"]) : "", einordnung,
+    c.bearbAb ? fmtDT.format(c.bearbAb) : "", c.bearbAb ? gruppeKurz(c.bearbIn) : "", c.bearbAb && c.vorH ? fmtLiege(c.vorH) : "", c.bearbAb && c.vorD ? fmtLiege(c.vorD) : "", c.bearbAb && c.vorS ? fmtLiege(c.vorS) : "", c.bearbAb ? fmtLiege(c.bisBearb) : "", c.bearbAb ? String(c.vorPp) : "", c.segs.map(x => `${gruppeKurz(x.g)} ${fmtLiege(wlDauer(x.von, x.bis))}`).join(" > ")];
+  const zeilen = ank.map(c => zeile(c, "gezählt: angekommen" + (passt(c.r["Eröffnet"]) ? "" : ` (eröffnet ${wlMonatLabel(monatKey(c.r["Eröffnet"]))})`)))
+    .concat(rest.map(c => { const h = wlHerkunft(c); return zeile(c, h === "bearb" ? `angekommen erst ${wlMonatLabel(monatKey(c.bearbAb))}` : WL_HERKUNFT_TXT[h]); }));
+  const t = wlCopyTabelle(`Weg bis zur Bearbeitung ${label} – gezählte Calls (Ankunft im Monat) und übrige im Monat eröffnete Calls (Geschäftszeit)`, header, zeilen, new Set([10, 11, 12, 13, 14]));
+  return { ...t, n: ank.length, rest: rest.length };
 }
 /* v1.52: Verteilung der Calls nach Zahl der Wechsel H ⇄ D – alle Calls mit mindestens einem Wechsel im Zeitraum */
 function wlPpVerteilung(calls, z) {
@@ -4823,6 +4844,7 @@ function renderWl(view) {
       <tr><th class="ta-r wl-h">Ø</th><th class="ta-r wl-h">Median</th><th class="ta-r wl-d">Ø</th><th class="ta-r wl-d">Median</th><th class="ta-r wl-b">Ø</th><th class="ta-r wl-b">Median</th></tr></thead><tbody>
       ${zeilen.map(([k, label, fett], i) => `${i === 1 ? '<tr class="sep"><td colspan="10"></td></tr>' : ""}<tr><td class="nowrap">${fett ? "<b>" + esc(label) + "</b>" : esc(label)}</td>${statZeile(stat.get(k))}</tr>`).join("")}
       </tbody></table></div>
+      ${(() => { const hk = wlMonatHerkunft(calls, wlStatMonat), lbl = zeilen.find(x => x[0] === wlStatMonat)?.[1] ?? wlStatMonat; return `<p class="sub" id="wlHerkunft" style="margin-top:10px"><b>Überleitung ${esc(lbl)}:</b> Von den <b>${fmtN.format(hk.gesamt)}</b> in diesem Zeitraum eröffneten Calls sind <b>${fmtN.format(hk.bearb)}</b> in der Bearbeitung angekommen (${fmtN.format(hk.bearb - hk.bearbSpaeter)} noch im selben Zeitraum und damit hier gezählt, ${fmtN.format(hk.bearbSpaeter)} erst später) · ${fmtN.format(hk.liegt)} liegen noch auf ${esc(WL_NAME.H)} oder beim Dispatcher · ${fmtN.format(hk.stapelZu)} wurden auf dem Eingangsstapel geschlossen · ${fmtN.format(hk.keineBearb)} waren bisher nur bei Reviewer / Customer Care … · ${fmtN.format(hk.direkt)} wurden direkt in einer Bearbeitungsgruppe eröffnet · ${fmtN.format(hk.aus)} sind ausgefiltert (${esc(state.internKunde || "MPDV")}-Calls, Chips). Die Tabelle zählt nach dem Monat der Ankunft, die Tagesstatistik nach dem Tag der Eröffnung – deshalb stehen hier auch Calls aus dem Vormonat, und neue Calls fehlen, bis sie angekommen sind. „Calls kopieren“ listet beides mit Einordnung je Call.</p>`; })()}
     </div>
     <div class="card" id="wlVert"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Wohin leitet der Dispatcher weiter? <span class="hint" style="font-weight:400">${esc(z.label)}</span>
       <button class="small" id="btnWlVertCopy" style="margin-left:auto" title="Als Tabelle fürs Protokoll kopieren">Tabelle kopieren</button></h2>
@@ -4853,7 +4875,7 @@ function renderWl(view) {
       zeilen.map(([k, label]) => { const e = stat.get(k); return e ? [label, String(e.n), f(e.h), fm(e.h), f(e.d), fm(e.d), f(e.s), f(e.ges), fm(e.ges), fmtWl1.format(mittel(e.pp) ?? 0)] : [label, "", "", "", "", "", "", "", "", ""]; }), new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]));
     copyHtml(t.html, t.plain, e.target);
   });
-  view.querySelector("#wlStatMonat").addEventListener("change", e => { wlStatMonat = e.target.value; });
+  view.querySelector("#wlStatMonat").addEventListener("change", e => { wlStatMonat = e.target.value; render(); });
   view.querySelector("#btnWlStatCallsCopy").addEventListener("click", e => {
     const label = zeilen.find(x => x[0] === wlStatMonat)?.[1] ?? wlStatMonat;
     const t = wlMonatCallsTabelle(wlStatMonat, calls, label);
