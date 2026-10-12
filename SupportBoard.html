@@ -521,7 +521,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.56";
+const VERSION = "1.57";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -645,7 +645,7 @@ const DEFAULT_STATE = {
            zweiteFuer: "", // v1.55: Kürzel, die die Karte „Zweite externe Reaktion“ im Reiter Reaktionszeit sehen (leer = niemand)
            wlAbMonat: "2026-09", // v1.55: Weiterleitungs-Auswertung erst ab diesem Monat (JJJJ-MM) – davor ist die Historie unvollständig
            wlHotline: "Hotline; 1st_Level", wlDispatcher: "Dispatcher", // v1.42: Eingangsstapel der Weiterleitungs-Auswertung (Ping-Pong, Liegedauer); alles andere gilt als Bearbeitung
-           wlKeineBearb: "Reviewer; Customer_Care; Customer Care; Supportmanagement", // v1.53: Zielgruppen, die keine Bearbeitung sind – weder untypisch noch Abgabe noch Ende einer Liegezeit
+           wlKeineBearb: "Reviewer; Customer_Care; Customer Care; Supportmanagement; Geschlossen; Gelöst", // v1.53/v1.57: Zielgruppen, die keine Bearbeitung sind – weder untypisch noch Abgabe noch Ende einer Liegezeit
            slaWarn: { rot: 60, blau: 210, "grün": 2850 } }, // Reaktionsfrist: Hinweis ab so vielen Minuten Geschäftszeit ohne erste Reaktion (Rot 1 h, Blau 3,5 h, Grün 47,5 h)
   udienste: [ // Unterstützungsdienste: Tagesaufgabe „Mail an eingeplanten Kollegen“ (Verwaltung)
     { k: "IMP", name: "Implementation Services", gruppen: "ImplementationServices; Implementation Services; IMP",
@@ -817,6 +817,11 @@ function normalizeState() {
   state.rules.zweiteFuer ??= DEFAULT_STATE.rules.zweiteFuer; state.rules.wlAbMonat ??= DEFAULT_STATE.rules.wlAbMonat;
   state.rules.wlHotline ??= DEFAULT_STATE.rules.wlHotline; state.rules.wlDispatcher ??= DEFAULT_STATE.rules.wlDispatcher;
   state.rules.wlKeineBearb ??= DEFAULT_STATE.rules.wlKeineBearb;
+  if (!state.rules.wlKeineBearbV157) { // v1.57: Geschlossen und Gelöst gelten ebenfalls nicht als Bearbeitung (einmalig ergänzt)
+    const have = ruleList(state.rules.wlKeineBearb), add = ["Geschlossen", "Gelöst"].filter(x => !have.includes(x.toLowerCase()));
+    if (add.length) state.rules.wlKeineBearb = [String(state.rules.wlKeineBearb || "").trim(), ...add].filter(Boolean).join("; ");
+    state.rules.wlKeineBearbV157 = 1;
+  }
   state.rules.slaWarn = { ...DEFAULT_STATE.rules.slaWarn, ...(state.rules.slaWarn && typeof state.rules.slaWarn === "object" ? state.rules.slaWarn : {}) };
   if (!state.filters.sla.v35) { state.filters.sla.intern = true; state.filters.sla.v35 = 1; } // v1.35: interner Kunde ab Werk ausgeschlossen
   if (state.filters.extreakt) delete state.filters.extreakt;
@@ -3980,7 +3985,11 @@ function recordReakt2() {
   for (const k of Object.keys(state.reakt2)) if (k < grenze) { delete state.reakt2[k]; touched.add(k); }
   if (touched.size) { for (const k of touched) touch("reakt2|" + k); saveState(); }
 }
-function darfZweite() { return ruleList(state.rules?.zweiteFuer).includes(String(currentUser().k || "").trim().toLowerCase()); }
+/* Sichtbar für Kürzel aus „Zweite Reaktion sichtbar für“; ist das Feld leer, für die Kürzel aus „Auslastung sichtbar für“ (v1.57) */
+function darfZweite() {
+  const k = String(currentUser().k || "").trim().toLowerCase(), eigene = ruleList(state.rules?.zweiteFuer);
+  return eigene.length ? eigene.includes(k) : ruleList(state.rules?.auslastungFuer).includes(k);
+}
 function zweiteEintraege() {
   const out = [];
   for (const m of Object.values(state.reakt2 || {})) for (const [call, rec] of Object.entries(m)) {
@@ -4659,9 +4668,10 @@ function wlZeitraumGrenzen() { // [von, bis) des gewählten Zeitraums – nie vo
   if (ab && z.von < ab) { z.von = ab; z.label += ` (ab ${wlMonatLabel(wlAbMonat())})`; }
   return z;
 }
-/* Ping-Pong-Calls im Zeitraum: mindestens wlMin Wechsel H ⇄ D insgesamt und mindestens einer davon im Zeitraum */
+/* Ping-Pong-Calls: im Zeitraum eröffnet (offen und geschlossen), mindestens wlMin Wechsel H ⇄ D insgesamt (v1.57: nach Eröffnung) */
+function wlImZeitraumEroeffnet(c, z) { const e = c.r["Eröffnet"]; return e instanceof Date && e >= z.von && e < z.bis; }
 function wlPingPong(calls, z) {
-  return calls.filter(c => c.pp >= wlMin && c.hops.some(h => h.pp && h.d >= z.von && h.d < z.bis)).sort((a, b) => b.pp - a.pp || b.liegeHD - a.liegeHD);
+  return calls.filter(c => c.pp >= wlMin && wlImZeitraumEroeffnet(c, z)).sort((a, b) => b.pp - a.pp || b.liegeHD - a.liegeHD);
 }
 /* Wohin gehen die Weiterleitungen von einem Stapel weg? Anteil je Zielgruppe, „zurueck“ = vom Dispatcher zurück auf Hotline/1st Level */
 function wlVerteilung(calls, stapel, z) {
@@ -4712,8 +4722,8 @@ function wlMonatsStat(calls) {
   const jahr = String(todayStart().getFullYear()), ab = wlAbMonat();
   const add = (k, c) => { const e = get(k); e.n++; e.h.push(c.vorH); e.d.push(c.vorD); e.s.push(c.vorS); e.ges.push(c.bisBearb); e.pp.push(c.vorPp); };
   for (const c of calls) {
-    if (!c.bearbAb || c.bisBearb == null) continue;
-    const k = monatKey(c.bearbAb);
+    if (!c.bearbAb || c.bisBearb == null || !(c.r["Eröffnet"] instanceof Date)) continue;
+    const k = monatKey(c.r["Eröffnet"]); // v1.57: Monat der Eröffnung (vorher Monat der Ankunft)
     if (ab && k < ab) continue; // vor dem Startmonat: Historie unvollständig
     add(k, c); if (k.startsWith(jahr)) add("J" + jahr, c);
   }
@@ -4723,7 +4733,7 @@ function wlMonatsStat(calls) {
 function wlMonatPasst(k) { const jahr = /^J(\d{4})$/.exec(k)?.[1]; return d => d instanceof Date && (jahr ? String(d.getFullYear()) === jahr : monatKey(d) === k); }
 function wlMonatCalls(calls, k) {
   const passt = wlMonatPasst(k);
-  return calls.filter(c => c.bearbAb && c.bisBearb != null && passt(c.bearbAb)).sort((a, b) => b.bisBearb - a.bisBearb);
+  return calls.filter(c => c.bearbAb && c.bisBearb != null && passt(c.r["Eröffnet"])).sort((a, b) => b.bisBearb - a.bisBearb);
 }
 /* v1.56: Wo steht ein Call, der nicht (oder noch nicht) in der Bearbeitung angekommen ist? */
 function wlHerkunft(c) {
@@ -4748,15 +4758,15 @@ function wlMonatCallsTabelle(k, calls, label) {
   const header = ["Call", "Prio", "Kunde", "Titel", "Status heute", "Gruppe heute", "Eröffnet", "Einordnung", "Ankunft Bearbeitung", "in Gruppe", `${WL_NAME.H}`, "Dispatcher", "Sonstige", "bis Bearbeitung", "Wechsel H⇄D", "Weg"];
   const zeile = (c, einordnung) => [String(c.r.Call ?? ""), prioText(c.r), c.r.Kunde ?? "", c.r.Titel ?? "", c.r.Status ?? "", gruppeKurz(c.r.Gruppe ?? ""), c.r["Eröffnet"] ? fmtDT.format(c.r["Eröffnet"]) : "", einordnung,
     c.bearbAb ? fmtDT.format(c.bearbAb) : "", c.bearbAb ? gruppeKurz(c.bearbIn) : "", c.bearbAb && c.vorH ? fmtLiege(c.vorH) : "", c.bearbAb && c.vorD ? fmtLiege(c.vorD) : "", c.bearbAb && c.vorS ? fmtLiege(c.vorS) : "", c.bearbAb ? fmtLiege(c.bisBearb) : "", c.bearbAb ? String(c.vorPp) : "", c.segs.map(x => `${gruppeKurz(x.g)} ${fmtLiege(wlDauer(x.von, x.bis))}`).join(" > ")];
-  const zeilen = ank.map(c => zeile(c, "gezählt: angekommen" + (passt(c.r["Eröffnet"]) ? "" : ` (eröffnet ${wlMonatLabel(monatKey(c.r["Eröffnet"]))})`)))
-    .concat(rest.map(c => { const h = wlHerkunft(c); return zeile(c, h === "bearb" ? `angekommen erst ${wlMonatLabel(monatKey(c.bearbAb))}` : WL_HERKUNFT_TXT[h]); }));
-  const t = wlCopyTabelle(`Weg bis zur Bearbeitung ${label} – gezählte Calls (Ankunft im Monat) und übrige im Monat eröffnete Calls (Geschäftszeit)`, header, zeilen, new Set([10, 11, 12, 13, 14]));
+  const zeilen = ank.map(c => zeile(c, "gezählt: in der Bearbeitung angekommen"))
+    .concat(rest.map(c => zeile(c, WL_HERKUNFT_TXT[wlHerkunft(c)])));
+  const t = wlCopyTabelle(`Weg bis zur Bearbeitung ${label} – im Zeitraum eröffnete Calls, ohne USA/Asien und intern (Geschäftszeit)`, header, zeilen, new Set([10, 11, 12, 13, 14]));
   return { ...t, n: ank.length, rest: rest.length };
 }
-/* v1.52: Verteilung der Calls nach Zahl der Wechsel H ⇄ D – alle Calls mit mindestens einem Wechsel im Zeitraum */
+/* v1.52/v1.57: Verteilung der im Zeitraum eröffneten Calls nach Zahl der Wechsel H ⇄ D (mindestens einer) */
 function wlPpVerteilung(calls, z) {
   const m = new Map();
-  for (const c of calls) if (c.pp > 0 && c.hops.some(h => h.pp && h.d >= z.von && h.d < z.bis)) m.set(c.pp, (m.get(c.pp) || 0) + 1);
+  for (const c of calls) if (c.pp > 0 && wlImZeitraumEroeffnet(c, z)) m.set(c.pp, (m.get(c.pp) || 0) + 1);
   const max = Math.max(0, ...m.keys()), out = [];
   for (let n = 1; n <= max; n++) out.push({ n, calls: m.get(n) || 0 });
   return out;
@@ -4791,14 +4801,16 @@ function renderWl(view) {
       <p class="empty">Die Quelle liefert die Weiterleitungs-Historie noch nicht. Erwartet wird die Spalte <b>Weiterleitungen</b> (je Call ein Text, den der Export aus <b>SupportBoard-Abfrage-Weiterleitung.sql</b> anhängt: je Weiterleitung „Datum|vorherige Gruppe|vorheriger Bearbeiter|aktuelle Gruppe|aktueller Bearbeiter|Folgestatus|Ersteller“, Blöcke mit „#“ getrennt). Sobald die CSV sie enthält, füllt sich diese Ansicht automatisch – die Auswertung ist bereits eingebaut.</p></div>`;
     return;
   }
-  const calls = wlCalls(), z = wlZeitraumGrenzen(), monate = wlMonate(), jahr = String(todayStart().getFullYear());
+  // v1.57: Mengen je Tabelle – Ping-Pong, Weg bis zur Bearbeitung und Verteilung ohne USA-/Asien-Kunden (callsK); „Untypisch“ mit allen (calls).
+  // MPDV intern fällt über den Filter des Reiters ab Werk überall heraus.
+  const calls = wlCalls(), callsK = calls.filter(c => !istUsaAsien(c.r)), z = wlZeitraumGrenzen(), monate = wlMonate(), jahr = String(todayStart().getFullYear());
   const letzter = c => c.segs[c.segs.length - 1];
-  const liegtAuf = s => calls.filter(c => letzter(c).art === "offen" && letzter(c).s === s).map(c => wlDauer(letzter(c).von, now()));
+  const liegtAuf = s => callsK.filter(c => letzter(c).art === "offen" && letzter(c).s === s).map(c => wlDauer(letzter(c).von, now()));
   const aufH = liegtAuf("H"), aufD = liegtAuf("D");
-  const pp = wlPingPong(calls, z), ppList = wlAlle ? pp : pp.slice(0, 30), ppVert = wlPpVerteilung(calls, z), ppVertMax = Math.max(1, ...ppVert.map(x => x.calls));
-  const vertD = wlVerteilung(calls, "D", z), vertH = wlVerteilung(calls, "H", z), untyp = wlUntypischH(calls, z);
+  const pp = wlPingPong(callsK, z), ppList = wlAlle ? pp : pp.slice(0, 30), ppVert = wlPpVerteilung(callsK, z), ppVertMax = Math.max(1, ...ppVert.map(x => x.calls));
+  const vertD = wlVerteilung(callsK, "D", z), vertH = wlVerteilung(callsK, "H", z), untyp = wlUntypischH(calls, z);
   const zurueck = vertD.reduce((a, x) => a + (x.zurueck ? x.n : 0), 0), vertDtot = vertD.reduce((a, x) => a + x.n, 0);
-  const stat = wlMonatsStat(calls);
+  const stat = wlMonatsStat(callsK);
   const lueckig = calls.filter(c => c.r.WlLueckig).length;
   const ab = wlAbMonat(), jahrLabel = ab && ab.startsWith(jahr) && ab > `${jahr}-01` ? `${jahr} ab ${wlMonatLabel(ab)}` : `Jahr ${jahr} bisher`;
   const zeilen = [["J" + jahr, jahrLabel, true], ...monate.map(m => [m, wlMonatLabel(m), false])];
@@ -4821,7 +4833,7 @@ function renderWl(view) {
       <button class="kpi${untyp.length ? " crit" : ""}" data-goto="wlUntyp"><div class="k-label">Hotline direkt in die Bearbeitung</div><div class="k-value">${fmtN.format(untyp.length)}</div><div class="k-note">Weiterleitungen am Dispatcher vorbei · ${esc(z.label)}</div></button>
     </div>
     <div class="card"><h2>Filter <span class="hint" style="font-weight:400;margin-left:6px">Zeitraum und Ping-Pong-Schwelle je Gerät, Ausblendungen teamweit</span></h2>
-      <p class="sub">${stapelTxt} Alle Zeiten in Geschäftszeit (Mo–Do 08:00–17:30, Fr 08:00–16:30).${ab ? ` <b>Auswertung ab ${esc(wlMonatLabel(ab))}</b> – davor ist die Historie unvollständig (Verwaltung → Grundregeln).` : ""} Ab Werk ohne ${esc(state.internKunde || "MPDV")}-Calls (Chip unter „Sonstiges“). Gruppe, Status und Prio beziehen sich auf den heutigen Stand des Calls; geschlossene Calls zählen mit.${lueckig ? ` <b>Hinweis:</b> Bei ${fmtN.format(lueckig)} Calls liefert der Export weniger Weiterleitungen als „Gesamtanzahl Weiterleitungen“ angibt – die Abfrage muss je Weiterleitung eine Zeile liefern, sonst fehlen Wege und Liegezeiten.` : ""}</p>
+      <p class="sub">${stapelTxt} Alle Zeiten in Geschäftszeit (Mo–Do 08:00–17:30, Fr 08:00–16:30).${ab ? ` <b>Auswertung ab ${esc(wlMonatLabel(ab))}</b> – davor ist die Historie unvollständig (Verwaltung → Grundregeln).` : ""} <b>Mengen:</b> Ping-Pong, „Weg bis zur Bearbeitung“ und die Verteilungen rechnen ohne USA- und Asien-Kunden; „Untypisch“ mit ihnen. Ping-Pong und „Weg bis zur Bearbeitung“ ordnen Calls nach dem Monat der Eröffnung ein, die Verteilungen und „Untypisch“ nach dem Datum der Weiterleitung. Ab Werk ohne ${esc(state.internKunde || "MPDV")}-Calls (Chip unter „Sonstiges“). Gruppe, Status und Prio beziehen sich auf den heutigen Stand des Calls; geschlossene Calls zählen mit.${lueckig ? ` <b>Hinweis:</b> Bei ${fmtN.format(lueckig)} Calls liefert der Export weniger Weiterleitungen als „Gesamtanzahl Weiterleitungen“ angibt – die Abfrage muss je Weiterleitung eine Zeile liefern, sonst fehlen Wege und Liegezeiten.` : ""}</p>
       <div class="frow"><span class="flabel">Zeitraum</span><select id="wlZeitraumSel" class="small">${zOpt.map(([v, l]) => `<option value="${v}"${v === wlZeitraum ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
         <span class="flabel" style="width:auto;margin-left:14px">Ping-Pong ab</span><input type="number" id="wlMinInp" class="small" min="2" max="15" step="1" value="${wlMin}" style="width:64px" title="Ab so vielen Wechseln Hotline ⇄ Dispatcher gilt ein Call als Ping-Pong (Vorgabe 6, 2 bis 15)"> <span class="hint">Wechseln (Vorgabe 6)</span>
         <span style="margin-left:18px">${legende}</span></div>
@@ -4829,7 +4841,7 @@ function renderWl(view) {
     </div>
     <div class="card" id="wlPp"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Ping-Pong-Calls <span class="pill ${pp.length ? "s-crit" : "s-ok"}">${pp.length}</span><span class="hint" style="font-weight:400">${esc(z.label)}</span>
       <button class="small" id="btnWlPpCopy" style="margin-left:auto" title="Als Tabelle fürs Protokoll kopieren (alle Zeilen)">Tabelle kopieren</button></h2>
-      <p class="sub">Wie oft gehen Calls zwischen ${esc(WL_NAME.H)} und Dispatcher hin und her, bis die Bearbeitung beginnt? Die Verteilung zählt alle Calls mit mindestens einem Wechsel im Zeitraum nach der Gesamtzahl ihrer Wechsel (Hotline → Dispatcher → Hotline sind zwei); ab ${wlMin} Wechseln gilt ein Call als Ping-Pong und steht in der Liste – sortiert nach Wechseln, dann nach Liegezeit auf den Eingangsstapeln. „Weg“ zeigt alle Stationen von der Eröffnung bis heute, mit der Zeit je Station; „bis Bearbeitung“ = von der Eröffnung bis zur ersten Ankunft in einer Bearbeitungsgruppe.</p>
+      <p class="sub">Wie oft gehen Calls zwischen ${esc(WL_NAME.H)} und Dispatcher hin und her, bis die Bearbeitung beginnt? Gezählt werden alle im Zeitraum <b>eröffneten</b> Calls, offene und geschlossene, ohne USA- und Asien-Kunden. Die Verteilung zeigt die Calls mit mindestens einem Wechsel nach der Gesamtzahl ihrer Wechsel (Hotline → Dispatcher → Hotline sind zwei); ab ${wlMin} Wechseln gilt ein Call als Ping-Pong und steht in der Liste – sortiert nach Wechseln, dann nach Liegezeit auf den Eingangsstapeln. „Weg“ zeigt alle Stationen von der Eröffnung bis heute, mit der Zeit je Station; „bis Bearbeitung“ = von der Eröffnung bis zur ersten Ankunft in einer Bearbeitungsgruppe.</p>
       ${ppVert.length ? `<div class="ppgrid" title="Calls je Zahl der Wechsel Hotline ⇄ Dispatcher">${ppVert.map(x => `<div class="ppbar${x.n >= wlMin ? " on" : ""}" title="${fmtN.format(x.calls)} Calls mit ${x.n} Wechseln"><div class="ppn">${x.calls || ""}</div><div class="ppfill" style="height:${Math.max(2, Math.round(x.calls / ppVertMax * 70))}px"></div><div class="pplbl">${x.n}</div></div>`).join("")}<div class="hint" style="align-self:center;margin-left:8px">Wechsel →<br>rot = ab ${wlMin}</div></div>` : ""}
       ${ppList.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Prio</th><th>Call</th><th>Kunde</th><th>Titel</th><th>Status</th><th>Eröffnet</th><th class="ta-r" title="Wechsel Hotline/1st Level ⇄ Dispatcher">Ping-Pong</th><th class="ta-r" title="alle Gruppenwechsel">Wechsel</th><th class="ta-r" title="Summe der Liegezeiten auf Hotline/1st Level und Dispatcher">Liegezeit Eingang</th><th class="ta-r" title="von der Eröffnung bis zur ersten Bearbeitungsgruppe">bis Bearbeitung</th><th>Weg</th></tr></thead><tbody>
       ${ppList.map(c => `<tr><td class="nowrap">${prioZelle(prioName(c.r.Prio))}</td><td class="tnum nowrap">${esc(c.r.Call)}</td><td class="nowrap">${esc(c.r.Kunde ?? "–")}${smBadge(c.r)}</td><td class="titlecell">${esc(c.r.Titel ?? "–")}</td><td class="nowrap">${esc(c.r.Status ?? "–")}${istGeschlossen(c.r) ? ' <span class="hint">zu</span>' : ""}</td><td class="tnum nowrap">${c.r["Eröffnet"] ? fmtD.format(c.r["Eröffnet"]) : "–"}</td><td class="ta-r tnum"><span class="pill ${c.pp >= wlMin + 2 ? "s-crit" : "s-warn"}">${c.pp}</span></td><td class="ta-r tnum">${c.hops.length}</td><td class="ta-r tnum nowrap">${fmtLiege(c.liegeHD)}</td><td class="ta-r tnum nowrap">${c.bisBearb != null ? fmtLiege(c.bisBearb) : '<span class="hint">noch nicht</span>'}</td><td class="wlpfad">${wlWegChips(c.segs)}</td></tr>`).join("")}
@@ -4839,23 +4851,23 @@ function renderWl(view) {
       <button class="small" id="btnWlStatCopy" style="margin-left:auto" title="Als Tabelle fürs Protokoll kopieren">Tabelle kopieren</button>
       <select id="wlStatMonat" class="small" title="Monat für „Calls kopieren“">${zeilen.map(([k, label]) => `<option value="${k}"${k === wlStatMonat ? " selected" : ""}>${esc(label)}</option>`).join("")}</select>
       <button class="small" id="btnWlStatCallsCopy" title="Alle Calls des gewählten Monats mit den Anteilen ihres Weges, Wechseln und Stationen – zum Nachvollziehen der Zahlen">Calls kopieren</button></h2>
-      <p class="sub">Eine Menge, eine Rechnung: Calls, die auf ${esc(WL_NAME.H)} oder beim Dispatcher eröffnet wurden und im Monat zum ersten Mal in einer Bearbeitungsgruppe ankamen (2nd/3rd Level, Unterstützungsdienste …). Je Call der Weg von der Eröffnung bis dahin in Geschäftszeit, zerlegt in die Zeit auf ${esc(WL_NAME.H)}, beim Dispatcher und in sonstigen Gruppen (${esc(state.rules.wlKeineBearb || "–")}; Verwaltung → Grundregeln). Die drei Anteile ergeben zusammen „bis Bearbeitung“ – die Mittelwerte addieren sich genau, Mediane naturgemäß nicht. <b>Wechsel</b> = durchschnittliche Zahl der Wechsel ${esc(WL_NAME.H)} ⇄ Dispatcher auf dem Weg. Nicht enthalten: Calls, die noch auf einem Eingangsstapel liegen, dort geschlossen wurden oder direkt in einer Bearbeitungsgruppe eröffnet wurden.${historieTxt}</p>
+      <p class="sub">Eine Menge, eine Rechnung: Calls, die im Monat <b>eröffnet</b> wurden (offen und geschlossen, ohne USA-/Asien-Kunden und ohne ${esc(state.internKunde || "MPDV")} intern), auf ${esc(WL_NAME.H)} oder beim Dispatcher starteten und inzwischen zum ersten Mal in einer Bearbeitungsgruppe angekommen sind (2nd/3rd Level, Unterstützungsdienste …). Je Call der Weg von der Eröffnung bis dahin in Geschäftszeit, zerlegt in die Zeit auf ${esc(WL_NAME.H)}, beim Dispatcher und in sonstigen Gruppen (${esc(state.rules.wlKeineBearb || "–")}; Verwaltung → Grundregeln). Die drei Anteile ergeben zusammen „bis Bearbeitung“ – die Mittelwerte addieren sich genau, Mediane naturgemäß nicht. <b>Wechsel</b> = durchschnittliche Zahl der Wechsel ${esc(WL_NAME.H)} ⇄ Dispatcher auf dem Weg. Nicht enthalten: Calls, die noch auf einem Eingangsstapel liegen, dort geschlossen wurden oder direkt in einer Bearbeitungsgruppe eröffnet wurden.${historieTxt}</p>
       <div class="tscroll"><table class="list slatab"><thead><tr><th rowspan="2">Monat</th><th rowspan="2" class="ta-r">Calls</th><th colspan="2" class="ta-r wl-h">${esc(WL_NAME.H)}</th><th colspan="2" class="ta-r wl-d">Dispatcher</th><th rowspan="2" class="ta-r" title="Zeit in Gruppen, die keine Bearbeitung sind (Customer Care, Reviewer …)">Sonstige Ø</th><th colspan="2" class="ta-r wl-b">Bis Bearbeitung</th><th rowspan="2" class="ta-r" title="Wechsel Hotline ⇄ Dispatcher je Call, Durchschnitt">Wechsel Ø</th></tr>
       <tr><th class="ta-r wl-h">Ø</th><th class="ta-r wl-h">Median</th><th class="ta-r wl-d">Ø</th><th class="ta-r wl-d">Median</th><th class="ta-r wl-b">Ø</th><th class="ta-r wl-b">Median</th></tr></thead><tbody>
       ${zeilen.map(([k, label, fett], i) => `${i === 1 ? '<tr class="sep"><td colspan="10"></td></tr>' : ""}<tr><td class="nowrap">${fett ? "<b>" + esc(label) + "</b>" : esc(label)}</td>${statZeile(stat.get(k))}</tr>`).join("")}
       </tbody></table></div>
-      ${(() => { const hk = wlMonatHerkunft(calls, wlStatMonat), lbl = zeilen.find(x => x[0] === wlStatMonat)?.[1] ?? wlStatMonat; return `<p class="sub" id="wlHerkunft" style="margin-top:10px"><b>Überleitung ${esc(lbl)}:</b> Von den <b>${fmtN.format(hk.gesamt)}</b> in diesem Zeitraum eröffneten Calls sind <b>${fmtN.format(hk.bearb)}</b> in der Bearbeitung angekommen (${fmtN.format(hk.bearb - hk.bearbSpaeter)} noch im selben Zeitraum und damit hier gezählt, ${fmtN.format(hk.bearbSpaeter)} erst später) · ${fmtN.format(hk.liegt)} liegen noch auf ${esc(WL_NAME.H)} oder beim Dispatcher · ${fmtN.format(hk.stapelZu)} wurden auf dem Eingangsstapel geschlossen · ${fmtN.format(hk.keineBearb)} waren bisher nur bei Reviewer / Customer Care … · ${fmtN.format(hk.direkt)} wurden direkt in einer Bearbeitungsgruppe eröffnet · ${fmtN.format(hk.aus)} sind ausgefiltert (${esc(state.internKunde || "MPDV")}-Calls, Chips). Die Tabelle zählt nach dem Monat der Ankunft, die Tagesstatistik nach dem Tag der Eröffnung – deshalb stehen hier auch Calls aus dem Vormonat, und neue Calls fehlen, bis sie angekommen sind. „Calls kopieren“ listet beides mit Einordnung je Call.</p>`; })()}
+      ${(() => { const hk = wlMonatHerkunft(callsK, wlStatMonat), lbl = zeilen.find(x => x[0] === wlStatMonat)?.[1] ?? wlStatMonat; return `<p class="sub" id="wlHerkunft" style="margin-top:10px"><b>Überleitung ${esc(lbl)}:</b> Von den <b>${fmtN.format(hk.gesamt)}</b> in diesem Zeitraum eröffneten Calls sind <b>${fmtN.format(hk.bearb)}</b> in der Bearbeitung angekommen und damit hier gezählt · ${fmtN.format(hk.liegt)} liegen noch auf ${esc(WL_NAME.H)} oder beim Dispatcher · ${fmtN.format(hk.stapelZu)} wurden auf dem Eingangsstapel geschlossen · ${fmtN.format(hk.keineBearb)} waren bisher nur bei Reviewer / Customer Care / Gelöst … · ${fmtN.format(hk.direkt)} wurden direkt in einer Bearbeitungsgruppe eröffnet · ${fmtN.format(hk.aus)} sind ausgefiltert (${esc(state.internKunde || "MPDV")} intern, USA/Asien, Chips). Die Tagesstatistik zählt alle Calls am Tag der Eröffnung; neue Calls fehlen hier, bis sie in der Bearbeitung angekommen sind. „Calls kopieren“ listet alle eröffneten Calls des Zeitraums mit Einordnung.</p>`; })()}
     </div>
     <div class="card" id="wlVert"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Wohin leitet der Dispatcher weiter? <span class="hint" style="font-weight:400">${esc(z.label)}</span>
       <button class="small" id="btnWlVertCopy" style="margin-left:auto" title="Als Tabelle fürs Protokoll kopieren">Tabelle kopieren</button></h2>
-      <p class="sub">Alle Weiterleitungen vom Dispatcher weg im Zeitraum, nach Zielgruppe. Anteil = Weiterleitungen an diese Gruppe geteilt durch alle Weiterleitungen des Dispatchers. „zurück“ markiert Wege zurück auf ${esc(WL_NAME.H)} (Ping-Pong).</p>
+      <p class="sub">Alle Weiterleitungen vom Dispatcher weg im Zeitraum, nach Zielgruppe – ohne USA-/Asien-Kunden und ohne ${esc(state.internKunde || "MPDV")} intern. Anteil = Weiterleitungen an diese Gruppe geteilt durch alle Weiterleitungen des Dispatchers. „zurück“ markiert Wege zurück auf ${esc(WL_NAME.H)} (Ping-Pong).</p>
       ${vertTab(vertD, "Dispatcher", "wl-d")}
       <h2 style="margin-top:16px;display:flex;align-items:center;flex-wrap:wrap;gap:8px">Wohin leitet ${esc(WL_NAME.H)} weiter? <button class="small" id="btnWlVertHCopy" style="margin-left:auto" title="Als Tabelle fürs Protokoll kopieren">Tabelle kopieren</button></h2>
       ${vertTab(vertH, WL_NAME.H, "wl-h")}
     </div>
     <div class="card" id="wlUntyp"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Untypisch: ${esc(WL_NAME.H)} direkt in die Bearbeitung <span class="pill ${untyp.length ? "s-crit" : "s-ok"}">${untyp.length}</span><span class="hint" style="font-weight:400">${esc(z.label)}</span>
       <button class="small" id="btnWlUntypCopy" style="margin-left:auto" title="Liste fürs Protokoll kopieren">Liste kopieren</button></h2>
-      <p class="sub">Weiterleitungen von ${esc(WL_NAME.H)} in eine Bearbeitungsgruppe (2nd/3rd Level, Unterstützungsdienste …) am Dispatcher vorbei – nicht prozesskonform, deshalb Call für Call, jüngste zuerst. Nicht hier: Weiterleitungen innerhalb von ${esc(WL_NAME.H)}, an den Dispatcher und an Gruppen, die keine Bearbeitung sind (${esc(state.rules.wlKeineBearb || "–")}; Verwaltung → Grundregeln).</p>
+      <p class="sub">Weiterleitungen von ${esc(WL_NAME.H)} in eine Bearbeitungsgruppe (2nd/3rd Level, Unterstützungsdienste …) am Dispatcher vorbei – nicht prozesskonform, deshalb Call für Call, jüngste zuerst, USA- und Asien-Kunden eingeschlossen. Nicht hier: Weiterleitungen innerhalb von ${esc(WL_NAME.H)}, an den Dispatcher und an Gruppen, die keine Bearbeitung sind (${esc(state.rules.wlKeineBearb || "–")}; Verwaltung → Grundregeln).</p>
       ${untyp.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Datum</th><th>Prio</th><th>Call</th><th>Kunde</th><th>Titel</th><th class="wl-h">von</th><th class="wl-b">nach</th><th>Ersteller</th><th>Status heute</th></tr></thead><tbody>
       ${untyp.slice(0, 200).map(u => `<tr><td class="tnum nowrap">${fmtDT.format(u.d)}</td><td class="nowrap">${prioZelle(prioName(u.c.r.Prio))}</td><td class="tnum nowrap">${esc(u.c.r.Call)}</td><td class="nowrap">${esc(u.c.r.Kunde ?? "–")}${smBadge(u.c.r)}</td><td class="titlecell">${esc(u.c.r.Titel ?? "–")}</td><td class="nowrap wl-h">${esc(gruppeKurz(u.von))}${u.vonB ? ` <span class="hint">${esc(u.vonB)}</span>` : ""}</td><td class="nowrap wl-b">${esc(gruppeKurz(u.nach))}${u.nachB ? ` <span class="hint">${esc(u.nachB)}</span>` : ""}</td><td class="nowrap" title="${esc(resolveName(u.er) ?? "")}">${esc(u.er || "–")}</td><td class="nowrap">${esc(u.c.r.Status ?? "–")}${istGeschlossen(u.c.r) ? ' <span class="hint">zu</span>' : ""}</td></tr>`).join("")}
       </tbody></table></div>${untyp.length > 200 ? `<p class="hint">Nur die jüngsten 200 von ${fmtN.format(untyp.length)} – die Kopie enthält alle.</p>` : ""}` : `<p class="empty"><b>Keine</b> untypischen Weiterleitungen von ${esc(WL_NAME.H)} im Zeitraum ${esc(z.label)}.</p>`}
@@ -4878,7 +4890,7 @@ function renderWl(view) {
   view.querySelector("#wlStatMonat").addEventListener("change", e => { wlStatMonat = e.target.value; render(); });
   view.querySelector("#btnWlStatCallsCopy").addEventListener("click", e => {
     const label = zeilen.find(x => x[0] === wlStatMonat)?.[1] ?? wlStatMonat;
-    const t = wlMonatCallsTabelle(wlStatMonat, calls, label);
+    const t = wlMonatCallsTabelle(wlStatMonat, callsK, label);
     copyHtml(t.html, t.plain, e.target);
   });
   view.querySelector("#btnWlVertCopy").addEventListener("click", e => {
@@ -5326,7 +5338,7 @@ function renderAdmin(view) {
       <p class="sub">Sichtbarkeits-Filter stehen direkt in den jeweiligen Ansichten („Filter“) – dort lassen sich unter „Sonstiges“ auch ${esc(state.internKunde || "MPDV")}-Calls und ${esc(state.rules.exclBearbeiter || "HX-MP-UPDATE")} ein- und ausblenden.</p>
       <table class="grid"><tbody>
         <tr><td style="width:230px">Warnung „Datei unverändert“ ab (Min.)</td><td><input data-cfg="staleWarnMin" value="${esc(state.staleWarnMin)}" type="number" min="5" style="width:90px"></td></tr>
-        <tr><td>Zweite Reaktion sichtbar für (Kürzel)</td><td><input data-cfg="rules.zweiteFuer" value="${esc(state.rules.zweiteFuer ?? "")}" placeholder="Kürzel mit Semikolon" style="width:100%"><div class="hint">Die Karte „Zweite externe Reaktion“ im Reiter „Reaktionszeit“ sehen nur diese Kürzel. Gelernt wird für alle: Das Board merkt sich je Call die erste und die zweite externe Reaktion aus den Exporten (teamweit in der Team-Datei), weil keine Quelle diesen Wert liefert.</div></td></tr>
+        <tr><td>Zweite Reaktion sichtbar für (Kürzel)</td><td><input data-cfg="rules.zweiteFuer" value="${esc(state.rules.zweiteFuer ?? "")}" placeholder="Kürzel mit Semikolon" style="width:100%"><div class="hint">Die Karte „Zweite externe Reaktion“ im Reiter „Reaktionszeit“ sehen nur diese Kürzel; bleibt das Feld leer, sehen sie die Kürzel aus „Auslastung sichtbar für“. Gelernt wird für alle: Das Board merkt sich je Call die erste und die zweite externe Reaktion aus den Exporten (teamweit in der Team-Datei), weil keine Quelle diesen Wert liefert.</div></td></tr>
         <tr><td>Weiterleitungen: Auswertung ab Monat</td><td><input data-cfg="rules.wlAbMonat" value="${esc(state.rules.wlAbMonat ?? "")}" placeholder="JJJJ-MM, z. B. 2026-09" style="width:100%"><div class="hint">Die Weiterleitungs-Historie ist erst ab diesem Monat vollständig. Frühere Monate erscheinen nicht in „Weg bis zur Bearbeitung“, und alle Zeiträume des Reiters beginnen frühestens hier. Leer = kein Startmonat.</div></td></tr>
         <tr><td>Auslastung sichtbar für (Kürzel)</td><td><input data-cfg="rules.auslastungFuer" value="${esc(state.rules.auslastungFuer ?? "")}" placeholder="Kürzel mit Semikolon" style="width:100%"><div class="hint">Der Reiter „Auslastung“ (Aufwand je Bearbeiter) erscheint nur für diese Anmelde-Kürzel.</div></td></tr>
         <tr><td>Reaktionsfrist: Hinweis ab (Min. Geschäftszeit)</td><td><div class="frow" style="margin:0">
