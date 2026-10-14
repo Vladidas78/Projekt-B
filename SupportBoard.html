@@ -524,7 +524,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>
 "use strict";
-const VERSION = "1.59";
+const VERSION = "1.60";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -647,6 +647,7 @@ const DEFAULT_STATE = {
            auslastungFuer: "SM1", // Kürzel (Semikolon-getrennt), die den Reiter „Auslastung“ sehen
            auslastungAus: "", // v1.58: Bearbeiter-Kürzel (Semikolon-getrennt), die in „Auslastung 2nd Level“ nicht erscheinen (Kollegen außerhalb der Statistik)
            zweiteFuer: "", // v1.55: Kürzel, die die Karte „Zweite externe Reaktion“ im Reiter Reaktionszeit sehen (leer = niemand)
+           verteilungFuer: "", // v1.60: Kürzel, die die Karte „Dispatcher → 2nd Level je Bearbeiter“ im Reiter Weiterleitungen sehen (leer = wie „Auslastung sichtbar für“)
            wlAbMonat: "2026-09", // v1.55: Weiterleitungs-Auswertung erst ab diesem Monat (JJJJ-MM) – davor ist die Historie unvollständig
            wlHotline: "Hotline; 1st_Level", wlDispatcher: "Dispatcher", // v1.42: Eingangsstapel der Weiterleitungs-Auswertung (Ping-Pong, Liegedauer); alles andere gilt als Bearbeitung
            wlKeineBearb: "Reviewer; Customer_Care; Customer Care; Supportmanagement; Geschlossen; Gelöst", // v1.53/v1.57: Zielgruppen, die keine Bearbeitung sind – weder untypisch noch Abgabe noch Ende einer Liegezeit
@@ -820,6 +821,7 @@ function normalizeState() {
   state.rules.auslastungFuer ??= DEFAULT_STATE.rules.auslastungFuer;
   state.rules.auslastungAus ??= DEFAULT_STATE.rules.auslastungAus;
   state.rules.zweiteFuer ??= DEFAULT_STATE.rules.zweiteFuer; state.rules.wlAbMonat ??= DEFAULT_STATE.rules.wlAbMonat;
+  state.rules.verteilungFuer ??= DEFAULT_STATE.rules.verteilungFuer;
   state.rules.wlHotline ??= DEFAULT_STATE.rules.wlHotline; state.rules.wlDispatcher ??= DEFAULT_STATE.rules.wlDispatcher;
   state.rules.wlKeineBearb ??= DEFAULT_STATE.rules.wlKeineBearb;
   if (!state.rules.wlKeineBearbV157) { // v1.57: Geschlossen und Gelöst gelten ebenfalls nicht als Bearbeitung (einmalig ergänzt)
@@ -4831,6 +4833,33 @@ function wlUntypischH(calls, z) {
   }
   return out.sort((a, b) => b.d - a.d);
 }
+/* v1.60: Wen bedient der Dispatcher? Weiterleitungen vom Dispatcher in 2nd-Level-Gruppen je Zielbearbeiter und Priorität bei
+   Eröffnung, im Zeitraum nach Datum der Weiterleitung. Ohne Pseudo-Bearbeiter und ohne die in „Auslastung 2nd Level:
+   Bearbeiter ausblenden“ genannten Kürzel. Sichtbar nur für Kürzel aus „Dispatcher-Verteilung je Bearbeiter sichtbar für“,
+   ersatzweise aus „Auslastung sichtbar für“. */
+function darfVerteilung() {
+  const k = String(currentUser().k || "").trim().toLowerCase(), eigene = ruleList(state.rules?.verteilungFuer);
+  return eigene.length ? eigene.includes(k) : ruleList(state.rules?.auslastungFuer).includes(k);
+}
+function wlDispBearb(calls, z) {
+  const ist2nd = zweiteLevelGruppen(), aus = ruleList(state.rules?.auslastungAus), pseudo = ruleList(state.rules?.exclBearbeiter);
+  const m = new Map(); let tot = 0;
+  for (const c of calls) for (const w of (c.r.Wl || [])) {
+    if (!(w.d instanceof Date) || w.d < z.von || w.d >= z.bis || wlStapel(w.von) !== "D" || !ist2nd({ Gruppe: w.nach })) continue;
+    const k = String(w.nachB ?? "").trim().toUpperCase() || "(ohne Bearbeiter)";
+    if (aus.includes(k.toLowerCase()) || pseudo.includes(k.toLowerCase())) continue;
+    const e = m.get(k) ?? { k, gruppen: new Set(), rot: 0, blau: 0, "grün": 0, sonst: 0, ges: 0, calls: new Set() };
+    const p = prioReakt(c.r); if (p && e[p] != null) e[p]++; else e.sonst++;
+    e.ges++; tot++; e.gruppen.add(gruppeKurz(w.nach)); e.calls.add(String(c.r.Call)); m.set(k, e);
+  }
+  return { rows: [...m.values()].map(e => ({ ...e, q: tot ? e.ges / tot : 0 })).sort((a, b) => b.ges - a.ges || a.k.localeCompare(b.k, "de")), tot };
+}
+function wlDispBearbTabelle(v, z) {
+  const sum = p => v.rows.reduce((a, x) => a + x[p], 0);
+  const zeilen = v.rows.map(x => [x.k, [...x.gruppen].sort().join(", "), String(x.rot), String(x.blau), String(x["grün"]), String(x.ges), String(x.calls.size), pct(x.q)]);
+  zeilen.push(["Summe", "", String(sum("rot")), String(sum("blau")), String(sum("grün")), String(v.tot), "", v.tot ? "100 %" : "–"]);
+  return wlCopyTabelle(`Dispatcher → 2nd Level je Bearbeiter – ${z.label} (Weiterleitungen nach Priorität bei Eröffnung)`, ["Bearbeiter", "Gruppe", "Rot", "Blau", "Grün", "Gesamt", "Calls", "Anteil"], zeilen, new Set([2, 3, 4, 5, 6, 7]));
+}
 /* v1.52: Stationen als farbige Chips (H Bernstein, D Violett, Bearbeitung Petrol), optional mit Dauer */
 function wlChip(s, label, extra) {
   const k = s === "H" ? "h" : s === "D" ? "d" : "b";
@@ -4916,6 +4945,14 @@ function renderWl(view) {
       <h2 style="margin-top:16px;display:flex;align-items:center;flex-wrap:wrap;gap:8px">Wohin leitet ${esc(WL_NAME.H)} weiter? <button class="small" id="btnWlVertHCopy" style="margin-left:auto" title="Als Tabelle fürs Protokoll kopieren">Tabelle kopieren</button></h2>
       ${vertTab(vertH, WL_NAME.H, "wl-h")}
     </div>
+    ${darfVerteilung() ? (() => { const v = wlDispBearb(callsK, z), maxG = Math.max(1, ...v.rows.map(x => x.ges)), sum = p => v.rows.reduce((a, x) => a + x[p], 0); return `<div class="card" id="wlVertBearb"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Dispatcher → 2nd Level je Bearbeiter <span class="hint" style="font-weight:400">${esc(z.label)} · sichtbar nur für dich</span>
+      <button class="small" id="btnWlVertBearbCopy" style="margin-left:auto" title="Als Tabelle kopieren">Tabelle kopieren</button></h2>
+      <p class="sub">Welcher 2nd-Level-Kollege bekommt wie viele Calls vom Dispatcher? Gezählt wird jede Weiterleitung vom Dispatcher in eine 2nd-Level-Gruppe (Filtergruppe „2nd Level“ aus der Verwaltung) nach Zielbearbeiter und Priorität bei Eröffnung, im Zeitraum nach Datum der Weiterleitung – ohne USA-/Asien-Kunden, ohne ${esc(state.internKunde || "MPDV")} intern, ohne den Pseudo-Bearbeiter und ohne die unter „Auslastung 2nd Level: Bearbeiter ausblenden“ genannten Kürzel. Kommt ein Call mehrfach vom Dispatcher, zählt jede Weiterleitung; „Calls“ = verschiedene Calls. Anteil = an allen gezählten Weiterleitungen. Sichtbar nur für Kürzel aus Verwaltung → Grundregeln.</p>
+      ${v.rows.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Bearbeiter</th><th>Gruppe</th><th class="ta-r">Rot</th><th class="ta-r">Blau</th><th class="ta-r">Grün</th><th class="ta-r">Gesamt</th><th class="ta-r" title="verschiedene Calls">Calls</th><th class="ta-r">Anteil</th><th style="width:30%"></th></tr></thead><tbody>
+      ${v.rows.map(x => `<tr><td class="nowrap" title="${esc(resolveName(x.k) ?? "")}">${esc(x.k)}</td><td class="nowrap">${esc([...x.gruppen].sort().join(", "))}</td><td class="ta-r tnum">${x.rot || "–"}</td><td class="ta-r tnum">${x.blau || "–"}</td><td class="ta-r tnum">${x["grün"] || "–"}</td><td class="ta-r tnum"><b>${fmtN.format(x.ges)}</b>${x.sonst ? ` <span class="hint" title="ohne erkannte Priorität">+${x.sonst}</span>` : ""}</td><td class="ta-r tnum">${fmtN.format(x.calls.size)}</td><td class="ta-r tnum">${pct(x.q)}</td><td class="lastcell"><div class="lb"><span class="lb-fill" style="width:${Math.round(x.ges / maxG * 100)}%"></span></div></td></tr>`).join("")}
+      <tr><td><b>Summe</b></td><td></td><td class="ta-r tnum"><b>${sum("rot")}</b></td><td class="ta-r tnum"><b>${sum("blau")}</b></td><td class="ta-r tnum"><b>${sum("grün")}</b></td><td class="ta-r tnum"><b>${fmtN.format(v.tot)}</b></td><td></td><td class="ta-r tnum">100 %</td><td></td></tr>
+      </tbody></table></div>` : `<p class="empty">Keine Weiterleitungen vom Dispatcher in 2nd-Level-Gruppen im Zeitraum ${esc(z.label)}.</p>`}
+    </div>`; })() : ""}
     <div class="card" id="wlUntyp"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Untypisch: ${esc(WL_NAME.H)} direkt in die Bearbeitung <span class="pill ${untyp.length ? "s-crit" : "s-ok"}">${untyp.length}</span><span class="hint" style="font-weight:400">${esc(z.label)}</span>
       <button class="small" id="btnWlUntypCopy" style="margin-left:auto" title="Liste fürs Protokoll kopieren">Liste kopieren</button></h2>
       <p class="sub">Weiterleitungen von ${esc(WL_NAME.H)} in eine Bearbeitungsgruppe (2nd/3rd Level, Unterstützungsdienste …) am Dispatcher vorbei – nicht prozesskonform, deshalb Call für Call, jüngste zuerst, USA- und Asien-Kunden eingeschlossen. Nicht hier: Weiterleitungen innerhalb von ${esc(WL_NAME.H)}, an den Dispatcher und an Gruppen, die keine Bearbeitung sind (${esc(state.rules.wlKeineBearb || "–")}; Verwaltung → Grundregeln).</p>
@@ -4952,6 +4989,7 @@ function renderWl(view) {
     const t = wlCopyTabelle(`Weiterleitungen von ${WL_NAME.H} – ${z.label}`, ["Ziel", "Weiterleitungen", "Anteil"], vertH.map(x => [x.label, String(x.n), pct(x.q)]), new Set([1, 2]));
     copyHtml(t.html, t.plain, e.target);
   });
+  view.querySelector("#btnWlVertBearbCopy")?.addEventListener("click", e => { const t = wlDispBearbTabelle(wlDispBearb(callsK, z), z); copyHtml(t.html, t.plain, e.target); });
   view.querySelector("#btnWlUntypCopy").addEventListener("click", e => {
     const t = wlCopyTabelle(`Untypisch: ${WL_NAME.H} direkt in die Bearbeitung – ${z.label}`, ["Datum", "Prio", "Call", "Kunde", "Titel", "von", "nach", "Ersteller", "Status heute"],
       untyp.map(u => [fmtDT.format(u.d), prioText(u.c.r), String(u.c.r.Call ?? ""), u.c.r.Kunde ?? "", u.c.r.Titel ?? "", gruppeKurz(u.von) + (u.vonB ? ` (${u.vonB})` : ""), gruppeKurz(u.nach) + (u.nachB ? ` (${u.nachB})` : ""), u.er, u.c.r.Status ?? ""]), new Set());
@@ -5390,6 +5428,7 @@ function renderAdmin(view) {
       <table class="grid"><tbody>
         <tr><td style="width:230px">Warnung „Datei unverändert“ ab (Min.)</td><td><input data-cfg="staleWarnMin" value="${esc(state.staleWarnMin)}" type="number" min="5" style="width:90px"></td></tr>
         <tr><td>Zweite Reaktion sichtbar für (Kürzel)</td><td><input data-cfg="rules.zweiteFuer" value="${esc(state.rules.zweiteFuer ?? "")}" placeholder="Kürzel mit Semikolon" style="width:100%"><div class="hint">Die Karte „Zweite externe Reaktion“ im Reiter „Reaktionszeit“ sehen nur diese Kürzel; bleibt das Feld leer, sehen sie die Kürzel aus „Auslastung sichtbar für“. Gelernt wird für alle: Das Board merkt sich je Call die erste und die zweite externe Reaktion aus den Exporten (teamweit in der Team-Datei), weil keine Quelle diesen Wert liefert.</div></td></tr>
+        <tr><td>Dispatcher-Verteilung je Bearbeiter sichtbar für (Kürzel)</td><td><input data-cfg="rules.verteilungFuer" value="${esc(state.rules.verteilungFuer ?? "")}" placeholder="Kürzel mit Semikolon" style="width:100%"><div class="hint">Die Karte „Dispatcher → 2nd Level je Bearbeiter“ im Reiter „Weiterleitungen“ sehen nur diese Kürzel; bleibt das Feld leer, sehen sie die Kürzel aus „Auslastung sichtbar für“.</div></td></tr>
         <tr><td>Weiterleitungen: Auswertung ab Monat</td><td><input data-cfg="rules.wlAbMonat" value="${esc(state.rules.wlAbMonat ?? "")}" placeholder="JJJJ-MM, z. B. 2026-09" style="width:100%"><div class="hint">Die Weiterleitungs-Historie ist erst ab diesem Monat vollständig. Frühere Monate erscheinen nicht in „Weg bis zur Bearbeitung“, und alle Zeiträume des Reiters beginnen frühestens hier. Leer = kein Startmonat.</div></td></tr>
         <tr><td>Auslastung 2nd Level: Bearbeiter ausblenden (Kürzel)</td><td><input data-cfg="rules.auslastungAus" value="${esc(state.rules.auslastungAus ?? "")}" placeholder="Kürzel mit Semikolon" style="width:100%"><div class="hint">Diese Bearbeiter erscheinen nicht in der Karte „Auslastung 2nd Level“ auf der Startseite und zählen dort nicht mit – z. B. Kollegen, die nicht zur Statistik gehören. Ihre Calls bleiben in allen Listen.</div></td></tr>
         <tr><td>Auslastung sichtbar für (Kürzel)</td><td><input data-cfg="rules.auslastungFuer" value="${esc(state.rules.auslastungFuer ?? "")}" placeholder="Kürzel mit Semikolon" style="width:100%"><div class="hint">Der Reiter „Auslastung“ (Aufwand je Bearbeiter) erscheint nur für diese Anmelde-Kürzel.</div></td></tr>
