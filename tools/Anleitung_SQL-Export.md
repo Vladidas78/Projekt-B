@@ -108,14 +108,14 @@ Für den Reiter „Weiterleitungen“ (Ping-Pong zwischen Hotline/1st Level und 
 
 Die dritte Abfrage liefert entweder die **Rohform** (Stand des Teams, Datei im Repo) oder **zwei Spalten**.
 
-**Rohform** (ab v1.45 vom Skript gebündelt): je Weiterleitung eine Zeile mit genau dieser Spaltenreihenfolge: `Call`, `Datum`, `vorherige Gruppe`, `vorheriger Bearbeiter`, `aktuelle Gruppe`, `aktueller Bearbeiter`, `Folgestatus`, `Ersteller`. Die Spaltennamen sind frei, die Reihenfolge nicht: Spalte 1 ist der Schlüssel, Spalte 2 das Datum (nach ihm wird sortiert), die übrigen Spalten werden in dieser Reihenfolge mit `|` zusammengesetzt. Das Skript ersetzt `|` und `#` in den Werten, sortiert je Call nach Datum und schreibt den Text in die Spalte `Weiterleitungen`. Im Log steht „Rohform mit 8 Spalten, N Zeilen zu M Calls gebuendelt“.
+**Rohform** (ab v1.45 vom Skript gebündelt): je Weiterleitung eine Zeile mit genau dieser Spaltenreihenfolge: `Call`, `Datum`, `vorherige Gruppe`, `vorheriger Bearbeiter`, `aktuelle Gruppe`, `aktueller Bearbeiter`, `Folgestatus`, `Ersteller`. Die Spaltennamen sind frei, die Reihenfolge nicht: Spalte 1 ist der Schlüssel, Spalte 2 das Datum (nach ihm wird sortiert), die übrigen Spalten werden in dieser Reihenfolge mit `|` zusammengesetzt. Das Skript ersetzt `|` und `#` in den Werten, sortiert je Call nach Datum und schreibt den Text in die Spalte `Weiterleitungen`. Im Log steht „Rohform mit 8 Spalten, N Zeilen zu M Calls gebuendelt“. **Optional (ab v1.61):** eine 9. Spalte mit der Priorität zum Zeitpunkt der Weiterleitung (falls die Tabelle `forwardings` sie führt, zum Beispiel `prioritaet`); das Skript hängt sie unverändert als 8. Feld an, das Board zählt die Karte „Dispatcher → 2nd Level je Bearbeiter“ dann nach ihr statt nach der aktuellen Priorität des Calls. Im Log steht dann „Rohform mit 9 Spalten …“.
 
 **Gebündelte Form** (zwei Spalten, zum Beispiel per `STRING_AGG`, Fassung als Kommentar in der Datei):
 
 | Spalte | Inhalt |
 |---|---|
 | `Call` | Call-Nummer, Schlüssel für das Anhängen. |
-| `Weiterleitungen` | Ein Text je Call: je Weiterleitung ein Block `Datum\|vorherige Gruppe\|vorheriger Bearbeiter\|aktuelle Gruppe\|aktueller Bearbeiter\|Folgestatus\|Ersteller`, Blöcke mit ` # ` getrennt, älteste zuerst. Datum als `JJJJ-MM-TTThh:mm:ss`. Leeres Feld = kein Wert; `\|` und `#` dürfen in den Werten nicht vorkommen (die Vorlage ersetzt sie). |
+| `Weiterleitungen` | Ein Text je Call: je Weiterleitung ein Block `Datum\|vorherige Gruppe\|vorheriger Bearbeiter\|aktuelle Gruppe\|aktueller Bearbeiter\|Folgestatus\|Ersteller`, Blöcke mit ` # ` getrennt, älteste zuerst. Datum als `JJJJ-MM-TTThh:mm:ss`. Optional (ab v1.61) ein 8. Feld `\|Priorität` je Block = Priorität zum Zeitpunkt der Weiterleitung. Leeres Feld = kein Wert; `\|` und `#` dürfen in den Werten nicht vorkommen (die Vorlage ersetzt sie). |
 
 Beispiel für einen Call mit zwei Weiterleitungen:
 

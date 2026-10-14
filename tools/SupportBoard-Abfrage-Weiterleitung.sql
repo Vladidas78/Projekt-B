@@ -17,6 +17,12 @@
      Datum|vorherige Gruppe|vorheriger Bearbeiter|aktuelle Gruppe|aktueller Bearbeiter|Folgestatus|Ersteller
    Die Zeichen | und # ersetzt das Skript in den Werten.
 
+   Optional (Board ab v1.61): eine 9. Spalte mit der Prioritaet zum Zeitpunkt der
+   Weiterleitung, falls die Tabelle forwardings sie fuehrt (z. B. "prioritaet AS
+   [Prioritaet]" hinter Ersteller). Das Skript haengt sie als 8. Feld an; die Karte
+   "Dispatcher -> 2nd Level je Bearbeiter" zaehlt dann nach ihr statt nach der
+   aktuellen Prioritaet des Calls. Ohne die Spalte bleibt alles wie bisher.
+
    Die WHERE-Klausel laesst die Hotline-/1st-Level-Gruppen USA und Asien
    aussen vor (Stand des Teams; NULL in der Gruppe zaehlt nicht als Treffer).
    Hinweis: Ohne diese Einschraenkung wuerde das Board die Calls ueber den

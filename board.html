@@ -494,7 +494,7 @@
 /*__SHEETJS__*/</script>
 <script>
 "use strict";
-const VERSION = "1.60";
+const VERSION = "1.61";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -653,7 +653,7 @@ const DEFAULT_STATE = {
     udienst: { status: [], gruppe: [], prio: [], intern: false, hxmp: false },
     sla:     { status: [], gruppe: [], prio: [], intern: true, hxmp: false, usa: true, asia: true, ohneRegion: true, kunden: "" }, // kunden: Kürzel/Teile, Semikolon-getrennt – Calls dieser Kunden bleiben außen vor. v1.50: wie die Excel-Statistik des Teams – nur Region Europa, kein Bearbeiter-Ausschluss
     last:    { status: [], gruppe: [], prio: [], intern: false, hxmp: true },
-    wl:      { status: [], gruppe: [], prio: [], intern: true, hxmp: true }, // v1.42: Weiterleitungen – interne Calls ab Werk außen vor
+    wl:      { status: [], gruppe: [], prio: [], intern: true, hxmp: false }, // v1.42: Weiterleitungen – interne Calls ab Werk außen vor; v1.61: der Pseudo-Bearbeiter von heute blendet keinen Call aus
     mi:     { status: ["cc", "customer care", "update", "pre-update"], gruppe: [], prio: [], minDauer: "10", intern: false, hxmp: true },
     fr:     { status: [], gruppe: [], prio: [], intern: false, hxmp: true }
   },
@@ -803,7 +803,8 @@ function normalizeState() {
   if (!state.filters.sla.v35) { state.filters.sla.intern = true; state.filters.sla.v35 = 1; } // v1.35: interner Kunde ab Werk ausgeschlossen
   if (state.filters.extreakt) delete state.filters.extreakt;
   if (!state.filters.sla.v37) { state.filters.sla.usa = true; state.filters.sla.asia = true; state.filters.sla.v37 = 1; } // v1.37: USA/Asien ab Werk ausgeschlossen
-  if (!state.filters.sla.v50) { state.filters.sla.ohneRegion = true; state.filters.sla.hxmp = false; state.filters.sla.v50 = 1; } // v1.50: Grundgesamtheit wie die Excel-Statistik – nur erkannte Region Europa, Pseudo-Bearbeiter zählt mit
+  if (!state.filters.sla.v50) { state.filters.sla.ohneRegion = true; state.filters.sla.hxmp = false; state.filters.sla.v50 = 1; }
+  if (!state.filters.wl.v61) { state.filters.wl.hxmp = false; state.filters.wl.v61 = 1; } // v1.61: Weiterleitungen – wer den Call heute hält, ändert seinen Weg nicht; mit dem Pseudo-Bearbeiter (Status Update) fehlten Calls in allen Weiterleitungs-Statistiken // v1.50: Grundgesamtheit wie die Excel-Statistik – nur erkannte Region Europa, Pseudo-Bearbeiter zählt mit
   slaVorgabenEinspielen();
   // v1.40: Spalte „Letzte Info an Kd.“ einmalig in eine bereits gespeicherte Auswahl von „Ohne Kd.-Komm.“ aufnehmen (vor „o. Info“)
   state.cols ??= {};
@@ -1049,7 +1050,8 @@ function datumAusWert(v) {
 /* v1.43: Weiterleitungs-Historie als Textspalte „Weiterleitungen“ (Abfrage SupportBoard-Abfrage-Weiterleitung.sql, vom Export
    über die Call-Nummer angehängt – eine Zeile je Call bleibt). Je Weiterleitung ein Block
    „Datum|vorherige Gruppe|vorheriger Bearbeiter|aktuelle Gruppe|aktueller Bearbeiter|Folgestatus|Ersteller“,
-   Blöcke mit „ # “ getrennt, in zeitlicher Reihenfolge. Leere Spalte = keine Weiterleitung. */
+   Blöcke mit „ # “ getrennt, in zeitlicher Reihenfolge. Leere Spalte = keine Weiterleitung.
+   v1.61: optionales 8. Feld = Priorität zum Zeitpunkt der Weiterleitung (liefert die Abfrage sie als 9. Spalte, hängt das Skript sie an). */
 function parseWlText(r) {
   const wl = [];
   for (const blk of String(r.WlText ?? "").split(/\s*#\s*/)) {
@@ -1057,7 +1059,7 @@ function parseWlText(r) {
     const f = blk.split("|").map(x => x.trim());
     const d = datumAusWert(f[0]);
     if (!(d instanceof Date) || isNaN(d)) continue;
-    wl.push({ nr: 0, d, von: f[1] ?? "", vonB: f[2] ?? "", nach: f[3] ?? "", nachB: f[4] ?? "", st: f[5] ?? "", er: f[6] ?? "" });
+    wl.push({ nr: 0, d, von: f[1] ?? "", vonB: f[2] ?? "", nach: f[3] ?? "", nachB: f[4] ?? "", st: f[5] ?? "", er: f[6] ?? "", pr: f[7] ?? "" });
   }
   wl.sort((a, b) => a.d - b.d); wl.forEach((w, i) => { w.nr = i + 1; });
   r.Wl = wl; r.WlAusText = true;
@@ -3573,7 +3575,8 @@ function tagesDetailTabelle() {
 function zweiteLevelGruppen() {
   const def = gruppenFilterDefs().find(g => /2nd/i.test(g.name));
   const m = def ? def.members.map(x => x.toLowerCase()) : [];
-  return r => { const g = String(r.Gruppe ?? "").trim().toLowerCase(); return m.length ? m.includes(g) : g.startsWith("2nd_"); };
+  // v1.61: Mitglied der Filtergruppe ODER Gruppenname „2nd_…“ – so fehlt keine 2nd-Level-Gruppe, die in der Verwaltung noch nicht eingetragen ist
+  return r => { const g = String(r.Gruppe ?? "").trim().toLowerCase(); return g.startsWith("2nd_") || m.includes(g); };
 }
 function slaKarte() {
   if (!hatSpalte("ErsteExtReaktion")) return "";
@@ -4811,24 +4814,58 @@ function darfVerteilung() {
   const k = String(currentUser().k || "").trim().toLowerCase(), eigene = ruleList(state.rules?.verteilungFuer);
   return eigene.length ? eigene.includes(k) : ruleList(state.rules?.auslastungFuer).includes(k);
 }
+/* v1.61: Priorität einer Weiterleitung – die Priorität zum Zeitpunkt der Weiterleitung, wenn die Abfrage sie liefert (8. Feld), sonst die
+   aktuelle Priorität des Calls (so zählt auch ein Omnitracker-Filter auf die Call-Priorität). Die Priorität bei Eröffnung zählt hier nicht. */
+function wlPrio(r, w) { return prioName(w?.pr) || prioName(r?.Prio); }
 function wlDispBearb(calls, z) {
   const ist2nd = zweiteLevelGruppen(), aus = ruleList(state.rules?.auslastungAus), pseudo = ruleList(state.rules?.exclBearbeiter);
-  const m = new Map(); let tot = 0;
+  const m = new Map(); let tot = 0, prWl = 0;
   for (const c of calls) for (const w of (c.r.Wl || [])) {
     if (!(w.d instanceof Date) || w.d < z.von || w.d >= z.bis || wlStapel(w.von) !== "D" || !ist2nd({ Gruppe: w.nach })) continue;
     const k = String(w.nachB ?? "").trim().toUpperCase() || "(ohne Bearbeiter)";
     if (aus.includes(k.toLowerCase()) || pseudo.includes(k.toLowerCase())) continue;
     const e = m.get(k) ?? { k, gruppen: new Set(), rot: 0, blau: 0, "grün": 0, sonst: 0, ges: 0, calls: new Set() };
-    const p = prioReakt(c.r); if (p && e[p] != null) e[p]++; else e.sonst++;
+    const p = wlPrio(c.r, w); if (p && e[p] != null) e[p]++; else e.sonst++;
+    if (prioName(w.pr)) prWl++;
     e.ges++; tot++; e.gruppen.add(gruppeKurz(w.nach)); e.calls.add(String(c.r.Call)); m.set(k, e);
   }
-  return { rows: [...m.values()].map(e => ({ ...e, q: tot ? e.ges / tot : 0 })).sort((a, b) => b.ges - a.ges || a.k.localeCompare(b.k, "de")), tot };
+  return { rows: [...m.values()].map(e => ({ ...e, q: tot ? e.ges / tot : 0 })).sort((a, b) => b.ges - a.ges || a.k.localeCompare(b.k, "de")), tot, prWl };
 }
 function wlDispBearbTabelle(v, z) {
   const sum = p => v.rows.reduce((a, x) => a + x[p], 0);
   const zeilen = v.rows.map(x => [x.k, [...x.gruppen].sort().join(", "), String(x.rot), String(x.blau), String(x["grün"]), String(x.ges), String(x.calls.size), pct(x.q)]);
   zeilen.push(["Summe", "", String(sum("rot")), String(sum("blau")), String(sum("grün")), String(v.tot), "", v.tot ? "100 %" : "–"]);
-  return wlCopyTabelle(`Dispatcher → 2nd Level je Bearbeiter – ${z.label} (Weiterleitungen nach Priorität bei Eröffnung)`, ["Bearbeiter", "Gruppe", "Rot", "Blau", "Grün", "Gesamt", "Calls", "Anteil"], zeilen, new Set([2, 3, 4, 5, 6, 7]));
+  return wlCopyTabelle(`Dispatcher → 2nd Level je Bearbeiter – ${z.label} (Weiterleitungen nach ${v.prWl ? "Priorität bei der Weiterleitung" : "aktueller Priorität"})`, ["Bearbeiter", "Gruppe", "Rot", "Blau", "Grün", "Gesamt", "Calls", "Anteil"], zeilen, new Set([2, 3, 4, 5, 6, 7]));
+}
+/* v1.61: Überleitung der Karte – jede Weiterleitung Dispatcher → 2nd Level im Export (vor allen Filtern) mit dem Grund, warum sie nicht zählt.
+   Dieselben Regeln wie wlCalls() (Filter-Chips des Reiters) und wlDispBearb(); "" = gezählt. Zum Abgleich mit dem Omnitracker-Filter. */
+function wlDispBearbGrund(r, w, ctx) {
+  const f = state.filters.wl || {};
+  if (istUsaAsien(r)) return "USA-/Asien-Kunde";
+  if (f.intern && isInternKunde(r)) return `${state.internKunde || "MPDV"} intern (Reiterfilter)`;
+  if (f.hxmp && bearbeiterExcluded(r)) return "Call liegt heute beim Pseudo-Bearbeiter (Reiterfilter)";
+  if (fexcl("wl", "status", r.Status) || fexcl("wl", "gruppe", r.Gruppe) || (f.prio ?? []).includes(prioName(r.Prio))) return "Status-/Gruppen-/Prio-Chip des Reiters";
+  if (kundenGruppen().some(g => f[g.k] && kundeInGruppe(r, g))) return "Kundengruppen-Chip des Reiters";
+  const k = String(w.nachB ?? "").trim().toLowerCase();
+  if (ctx.pseudo.includes(k)) return "Zielbearbeiter ist der Pseudo-Bearbeiter";
+  if (ctx.aus.includes(k)) return "Zielbearbeiter ausgeblendet (Auslastung 2nd Level)";
+  return "";
+}
+function wlDispBearbUeberleitung(z) {
+  const ist2nd = zweiteLevelGruppen(), ctx = { aus: ruleList(state.rules?.auslastungAus), pseudo: ruleList(state.rules?.exclBearbeiter) };
+  const liste = [], gruende = new Map(); let gez = 0;
+  for (const r of alleZeilen()) for (const w of (r.Wl || [])) {
+    if (!(w.d instanceof Date) || w.d < z.von || w.d >= z.bis || wlStapel(w.von) !== "D" || !ist2nd({ Gruppe: w.nach })) continue;
+    const grund = wlDispBearbGrund(r, w, ctx);
+    if (grund) gruende.set(grund, (gruende.get(grund) ?? 0) + 1); else gez++;
+    liste.push({ r, w, grund });
+  }
+  liste.sort((a, b) => b.w.d - a.w.d);
+  return { liste, gruende, ges: liste.length, gez, calls: new Set(liste.map(x => String(x.r.Call))).size };
+}
+function wlDispBearbListe(u, z) {
+  const zeilen = u.liste.map(x => [fmtDT.format(x.w.d), String(x.r.Call ?? ""), x.r.Kunde ?? "", prioText(x.r), String(x.r.PrioInitial ?? ""), String(x.w.pr ?? ""), x.w.vonB ?? "", gruppeKurz(x.w.nach), x.w.nachB ?? "", x.r.Status ?? "", String(x.r.Bearbeiter ?? ""), x.grund || "gezählt"]);
+  return { ...wlCopyTabelle(`Dispatcher → 2nd Level, jede Weiterleitung – ${z.label}`, ["Datum", "Call", "Kunde", "Prio heute", "Prio initial", "Prio bei Weiterleitung", "von Bearbeiter", "nach Gruppe", "nach Bearbeiter", "Status heute", "Bearbeiter heute", "Einordnung"], zeilen, new Set()), n: zeilen.length };
 }
 /* v1.52: Stationen als farbige Chips (H Bernstein, D Violett, Bearbeitung Petrol), optional mit Dauer */
 function wlChip(s, label, extra) {
@@ -4915,9 +4952,10 @@ function renderWl(view) {
       <h2 style="margin-top:16px;display:flex;align-items:center;flex-wrap:wrap;gap:8px">Wohin leitet ${esc(WL_NAME.H)} weiter? <button class="small" id="btnWlVertHCopy" style="margin-left:auto" title="Als Tabelle fürs Protokoll kopieren">Tabelle kopieren</button></h2>
       ${vertTab(vertH, WL_NAME.H, "wl-h")}
     </div>
-    ${darfVerteilung() ? (() => { const v = wlDispBearb(callsK, z), maxG = Math.max(1, ...v.rows.map(x => x.ges)), sum = p => v.rows.reduce((a, x) => a + x[p], 0); return `<div class="card" id="wlVertBearb"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Dispatcher → 2nd Level je Bearbeiter <span class="hint" style="font-weight:400">${esc(z.label)} · sichtbar nur für dich</span>
-      <button class="small" id="btnWlVertBearbCopy" style="margin-left:auto" title="Als Tabelle kopieren">Tabelle kopieren</button></h2>
-      <p class="sub">Welcher 2nd-Level-Kollege bekommt wie viele Calls vom Dispatcher? Gezählt wird jede Weiterleitung vom Dispatcher in eine 2nd-Level-Gruppe (Filtergruppe „2nd Level“ aus der Verwaltung) nach Zielbearbeiter und Priorität bei Eröffnung, im Zeitraum nach Datum der Weiterleitung – ohne USA-/Asien-Kunden, ohne ${esc(state.internKunde || "MPDV")} intern, ohne den Pseudo-Bearbeiter und ohne die unter „Auslastung 2nd Level: Bearbeiter ausblenden“ genannten Kürzel. Kommt ein Call mehrfach vom Dispatcher, zählt jede Weiterleitung; „Calls“ = verschiedene Calls. Anteil = an allen gezählten Weiterleitungen. Sichtbar nur für Kürzel aus Verwaltung → Grundregeln.</p>
+    ${darfVerteilung() ? (() => { const v = wlDispBearb(callsK, z), u = wlDispBearbUeberleitung(z), maxG = Math.max(1, ...v.rows.map(x => x.ges)), sum = p => v.rows.reduce((a, x) => a + x[p], 0); return `<div class="card" id="wlVertBearb"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">Dispatcher → 2nd Level je Bearbeiter <span class="hint" style="font-weight:400">${esc(z.label)} · sichtbar nur für dich</span>
+      <span style="margin-left:auto;display:flex;gap:6px"><button class="small" id="btnWlVertBearbListe" title="Jede Weiterleitung Dispatcher → 2nd Level im Zeitraum mit Einordnung (gezählt / Grund) – zum Abgleich mit dem Omnitracker">Liste kopieren</button><button class="small" id="btnWlVertBearbCopy" title="Als Tabelle kopieren">Tabelle kopieren</button></span></h2>
+      <p class="sub">Welcher 2nd-Level-Kollege bekommt wie viele Calls vom Dispatcher? Gezählt wird jede Weiterleitung vom Dispatcher in eine 2nd-Level-Gruppe (Filtergruppe „2nd Level“ aus der Verwaltung oder Gruppenname „2nd_…“) nach Zielbearbeiter, im Zeitraum nach Datum der Weiterleitung. <b>Priorität:</b> ${v.prWl ? "die Priorität zum Zeitpunkt der Weiterleitung aus der Weiterleitungsabfrage" : "die aktuelle Priorität des Calls, wie ein Omnitracker-Filter auf die Call-Priorität – liefert die Weiterleitungsabfrage als 8. Feld die Priorität zum Zeitpunkt der Weiterleitung, zählt diese"}; die Priorität bei Eröffnung spielt hier keine Rolle. Nicht gezählt: USA-/Asien-Kunden, ${esc(state.internKunde || "MPDV")} intern, Weiterleitungen an den Pseudo-Bearbeiter und an die unter „Auslastung 2nd Level: Bearbeiter ausblenden“ genannten Kürzel sowie Calls, die die Filter-Chips dieses Reiters ausblenden. Kommt ein Call mehrfach vom Dispatcher, zählt jede Weiterleitung; „Calls“ = verschiedene Calls. Anteil = an allen gezählten Weiterleitungen. Sichtbar nur für Kürzel aus Verwaltung → Grundregeln.</p>
+      <p class="sub" id="wlVertBearbUeb"><b>Überleitung:</b> Im Export stehen <b>${fmtN.format(u.ges)}</b> Weiterleitungen vom Dispatcher in 2nd-Level-Gruppen im Zeitraum ${esc(z.label)} (${fmtN.format(u.calls)} Calls, vor allen Filtern). Davon hier gezählt: <b>${fmtN.format(u.gez)}</b>.${u.gruende.size ? ` Nicht gezählt: ${[...u.gruende].sort((a, b) => b[1] - a[1]).map(([g, n]) => `<b>${fmtN.format(n)}</b> × ${esc(g)}`).join(" · ")}.` : ""} Weicht die Zahl im Export von der im Omnitracker ab, fehlen Weiterleitungen schon in der CSV (Abfrage oder Skript), nicht im Board – „Liste kopieren“ führt jede Weiterleitung mit ihrer Einordnung.</p>
       ${v.rows.length ? `<div class="tscroll"><table class="list"><thead><tr><th>Bearbeiter</th><th>Gruppe</th><th class="ta-r">Rot</th><th class="ta-r">Blau</th><th class="ta-r">Grün</th><th class="ta-r">Gesamt</th><th class="ta-r" title="verschiedene Calls">Calls</th><th class="ta-r">Anteil</th><th style="width:30%"></th></tr></thead><tbody>
       ${v.rows.map(x => `<tr><td class="nowrap" title="${esc(resolveName(x.k) ?? "")}">${esc(x.k)}</td><td class="nowrap">${esc([...x.gruppen].sort().join(", "))}</td><td class="ta-r tnum">${x.rot || "–"}</td><td class="ta-r tnum">${x.blau || "–"}</td><td class="ta-r tnum">${x["grün"] || "–"}</td><td class="ta-r tnum"><b>${fmtN.format(x.ges)}</b>${x.sonst ? ` <span class="hint" title="ohne erkannte Priorität">+${x.sonst}</span>` : ""}</td><td class="ta-r tnum">${fmtN.format(x.calls.size)}</td><td class="ta-r tnum">${pct(x.q)}</td><td class="lastcell"><div class="lb"><span class="lb-fill" style="width:${Math.round(x.ges / maxG * 100)}%"></span></div></td></tr>`).join("")}
       <tr><td><b>Summe</b></td><td></td><td class="ta-r tnum"><b>${sum("rot")}</b></td><td class="ta-r tnum"><b>${sum("blau")}</b></td><td class="ta-r tnum"><b>${sum("grün")}</b></td><td class="ta-r tnum"><b>${fmtN.format(v.tot)}</b></td><td></td><td class="ta-r tnum">100 %</td><td></td></tr>
@@ -4960,6 +4998,7 @@ function renderWl(view) {
     copyHtml(t.html, t.plain, e.target);
   });
   view.querySelector("#btnWlVertBearbCopy")?.addEventListener("click", e => { const t = wlDispBearbTabelle(wlDispBearb(callsK, z), z); copyHtml(t.html, t.plain, e.target); });
+  view.querySelector("#btnWlVertBearbListe")?.addEventListener("click", e => { const t = wlDispBearbListe(wlDispBearbUeberleitung(z), z); copyHtml(t.html, t.plain, e.target); });
   view.querySelector("#btnWlUntypCopy").addEventListener("click", e => {
     const t = wlCopyTabelle(`Untypisch: ${WL_NAME.H} direkt in die Bearbeitung – ${z.label}`, ["Datum", "Prio", "Call", "Kunde", "Titel", "von", "nach", "Ersteller", "Status heute"],
       untyp.map(u => [fmtDT.format(u.d), prioText(u.c.r), String(u.c.r.Call ?? ""), u.c.r.Kunde ?? "", u.c.r.Titel ?? "", gruppeKurz(u.von) + (u.vonB ? ` (${u.vonB})` : ""), gruppeKurz(u.nach) + (u.nachB ? ` (${u.nachB})` : ""), u.er, u.c.r.Status ?? ""]), new Set());
