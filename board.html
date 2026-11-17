@@ -509,7 +509,7 @@
 /*__SHEETJS__*/</script>
 <script>
 "use strict";
-const VERSION = "1.62";
+const VERSION = "1.63";
 /* Kanal: "prod" = Produktivversion, "sqltest" = parallele Testversion mit den Daten des SQL-Exports.
    Wird beim Bauen gesetzt (Platzhalter am Zeilenende). Beide Kanäle nutzen getrennte Browser-Speicher
    (localStorage, IndexedDB mit den Datei-Handles) und eigene Team-Dateien – sie kommen sich nie in die Quere,
@@ -648,7 +648,7 @@ const DEFAULT_STATE = {
       intro: "Hallo,\n\nbitte die Calls heute in folgender Reihenfolge (sortiert nach „Letzte Aktion zum Kunden“) bearbeiten:",
       fuss: "Bitte auch die Calls im Status „Wartend“ prüfen, ob der Status noch korrekt ist bzw. ob die Calls ggf. geschlossen werden können.\n\nZu Calls, bei denen Unterstützung durch einen PSOD notwendig ist, den jeweiligen PSOD kontaktieren, siehe auch [link=file://SERVER/Pfad/CallDispatching_Dienstplan.xlsm]Dienstplan Call-Dispatching (Pfad in der Verwaltung eintragen)[/link]\n\nEine Übersichtsseite zum Thema Supporttag ist im Intranet zu finden: [link=https://INTRANET/Supporttag]Übersichtsseite Supporttag (Adresse in der Verwaltung eintragen)[/link]\n\nBitte anschließend bei den Calls, die auf WARTEND stehen und das „Wartend Bis“ Datum erreicht ist, prüfen, wie es weitergeht.\n\nBitte nach Abschluss der Tätigkeiten an die Statusmail denken.\n\nViele Grüße" }
   ],
-  statusVerlauf: {}, // v1.62: "YYYY-MM" (Monat der Eröffnung) -> { call: { v: [[Minuten, Status, 1 = geschätzt], …] } } – gelernte Statuswechsel (teamweit)
+  statusVerlauf: {}, // v1.62/v1.63: "YYYY-MM" (Monat der Eröffnung) -> { call: { v: [[Minuten, Status], …] } } – vom Board gesehene Status je Call (teamweit), erster Eintrag = erstes Sehen
   slaRegeln: [],     // v1.62: eigene SLA-Regeln mit Alarm (teamweit): {id, aktiv, name, typ, kunden, prio[], gz, zaehlen[], pausieren[], ziel (Std.)}
   reakt2: {},    // v1.55: "YYYY-MM" (Monat der Eröffnung) -> { call: {s, e, r1, r2, p, k, g, b, rg, zu} } – Lernliste zweite externe Reaktion (teamweit)
   reakt: {},     // "YYYY-MM" (Monat der Eröffnung) -> { call: {e, r, p, k, g, b} } – gemerkte erste externe Reaktion je Call (teamweit), Basis der Reaktionszeit-Statistik
@@ -980,9 +980,6 @@ const COLMAP = {
   "gesamtanzahl weiterleitungen": "WlGesamt", "gesamtanzahl_weiterleitungen": "WlGesamt", "anzahl weiterleitungen": "WlGesamt", "weiterleitungen gesamt": "WlGesamt",
   // v1.43: Historie als eine Textspalte je Call (aus SupportBoard-Abfrage-Weiterleitung.sql, vom Export über die Call-Nummer angehängt)
   "weiterleitungen": "WlText", "weiterleitungs-historie": "WlText", "weiterleitungshistorie": "WlText", "weiterleitung historie": "WlText",
-  // v1.62: Statushistorie je Call (optionale Abfrage SupportBoard-Abfrage-Status.sql, vom Export gebündelt) und Beginn des aktuellen Status (optional, Hauptabfrage)
-  "statushistorie": "StText", "status-historie": "StText", "status historie": "StText", "statusverlauf": "StText",
-  "status seit": "StatusSeit", "status_seit": "StatusSeit", "statusseit": "StatusSeit", "letzte statusänderung": "StatusSeit", "letzte statusaenderung": "StatusSeit", "letzte_statusaenderung": "StatusSeit", "statusänderung": "StatusSeit",
   "letzte_änderung": "Letzte_Änderung", "letzte_aenderung": "Letzte_Änderung",
   "wartend_bis": "Wartend_bis", "lösung_bis": "Lösung_bis", "loesung_bis": "Lösung_bis", "lt": "Lösung_bis",
   "terminänderungen": "Terminänderungen", "terminaenderungen": "Terminänderungen",
@@ -1000,7 +997,7 @@ const COLMAP = {
   "geschlossen": "Geschlossen", "geschlossen am": "Geschlossen", "gelöst am": "Geschlossen", "geloest am": "Geschlossen", "abgeschlossen": "Geschlossen", "abgeschlossen am": "Geschlossen",
   "score": "Score"
 };
-const DATECOLS = ["Eröffnet", "Weiterleitung", "Letzte_Änderung", "Wartend_bis", "Lösung_bis", "LetzteInfo", "LetzteExtReaktion", "ErsteExtReaktion", "Geschlossen", "WlDatum", "StatusSeit"];
+const DATECOLS = ["Eröffnet", "Weiterleitung", "Letzte_Änderung", "Wartend_bis", "Lösung_bis", "LetzteInfo", "LetzteExtReaktion", "ErsteExtReaktion", "Geschlossen", "WlDatum"];
 /* Region des Kunden aus der Abfrage, auf drei Werte gebracht */
 function regionNorm(v) {
   const t = String(v ?? "").trim(); if (!t) return "";
@@ -1055,7 +1052,6 @@ function normalizeRows(raw) {
     r.TageOhneInfo = (r.TageOhneInfo == null || r.TageOhneInfo === "") ? null : Number(r.TageOhneInfo);
     for (const k of ["WlNr", "WlGesamt"]) { const n = (r[k] == null || r[k] === "") ? NaN : Number(r[k]); r[k] = Number.isFinite(n) ? n : null; }
     if ("WlText" in r) { parseWlText(r); delete r.WlText; }
-    if ("StText" in r) { parseStText(r); delete r.StText; }
     r.Quelle = quelleOf(r.Gruppe);
     r.RegionRoh = String(r.Region ?? "").trim();
     r.Region = regionNorm(r.RegionRoh);
@@ -2910,38 +2906,31 @@ function loadDemo() {
   setTimeout(pruefeSlaRegeln, 3600);
 }
 
-/* ================= SLA-Regeln (v1.62) =================
+/* ================= SLA-Regeln (v1.62, v1.63 ohne Abfrage-Änderung) =================
    Eigene Regeln mit Alarm, zunächst der Typ „SLA-Zeit fast erreicht“: Für offene Calls (Kunde und Priorität wählbar) zählt das Board
    die Zeit in Status, die zählen („aktive Zeit“), und in Status, die pausieren („inaktive Zeit“) – in Geschäftszeit (Mo–Do 08:00–17:30,
-   Fr 08:00–16:30) oder Kalenderzeit. Erreicht die aktive Zeit das Eskalationsziel (Stunden), meldet das Board den Call: Karte auf der
-   Startseite, Zähler am Reiter, Hinweis unten, Desktop-Benachrichtigung wie bei der Reaktionsfrist. Regeln liegen in der Team-JSON.
-   Grundlage ist der Statusverlauf je Call (stVerlauf()), aus der besten verfügbaren Quelle:
-   1. Spalte „Statushistorie“ (optionale Abfrage SupportBoard-Abfrage-Status.sql) – exakt, ersetzt alles andere;
-   2. sonst der Folgestatus jeder Weiterleitung, die vom Board gelernten Statuswechsel (state.statusVerlauf, teamweit) und die
-      optionale Spalte „Status seit“ der Hauptabfrage für den Beginn des aktuellen Status;
-   3. fehlt ein Zeitpunkt, gilt die letzte Änderung als Beginn des aktuellen Status (geschätzt).
-   Vor der ersten bekannten Statusangabe gilt der erste bekannte Status. */
+   Fr 08:00–16:30) oder Kalenderzeit. Erreicht die aktive Zeit das Eskalationsziel, meldet das Board den Call: Karte auf der Startseite,
+   Zähler am Reiter, Hinweis unten, Desktop-Benachrichtigung wie bei der Reaktionsfrist. Regeln liegen in der Team-JSON.
+   v1.63 (Wunsch des Nutzers: keine Änderung an Abfrage oder Skript, pragmatisch): Grundlage ist allein, was das Board selbst sieht.
+   Die Uhr läuft ab Eröffnung. Bei jedem Einlesen merkt sich das Board den Status jedes offenen Calls (teamweit, state.statusVerlauf);
+   ein Wechsel zählt ab der letzten Änderung des Calls (der Statuswechsel setzt sie), sonst ab dem Einlesen. Bis das Board einen Call
+   zum ersten Mal sieht, gilt der zuerst gesehene Status („angenommen“). */
 const SLA_REGEL_TYPEN = { slaFast: "SLA-Zeit fast erreicht" };
 function stKey(s) { return String(s ?? "").trim().toLowerCase(); }
 function fmtStd(ms) { if (ms == null || !isFinite(ms)) return "–"; const h = ms / 3600000; return h < 1 ? `${Math.round(ms / 60000)} Min.` : h < 100 ? `${fmtWl1.format(h)} Std.` : `${fmtN.format(Math.round(h))} Std.`; }
-/* Statushistorie als Textspalte je Call (Abfrage SupportBoard-Abfrage-Status.sql, vom Export gebündelt): je Statuswechsel ein Block
-   „Datum|Status|Status vorher“, Blöcke mit „ # “ getrennt. Zeitpunkte als Zahl (ms), damit der Zwischenspeicher sie unverändert sichert. */
-function parseStText(r) {
-  const st = [];
-  for (const blk of String(r.StText ?? "").split(/\s*#\s*/)) {
-    if (!blk.trim()) continue;
-    const f = blk.split("|").map(x => x.trim()), d = datumAusWert(f[0]);
-    if (!(d instanceof Date) || isNaN(d) || !f[1]) continue;
-    st.push({ t: d.getTime(), s: f[1], a: f[2] || "" });
-  }
-  st.sort((a, b) => a.t - b.t);
-  r.St = st;
+/* Eskalationsziel als Eingabe: „1,5“, „1.5 h“, „1:30“, „90 Min.“ → Stunden; NaN = nicht erkannt */
+function slaZielStd(v) {
+  if (typeof v === "number") return v;
+  const t = String(v ?? "").trim().toLowerCase().replace(",", ".");
+  if (!t) return 0;
+  let m = /^(\d+):(\d{1,2})$/.exec(t); if (m) return +m[1] + +m[2] / 60;
+  m = /^(\d+(?:\.\d+)?)\s*(m|min\.?|minuten?)$/.exec(t); if (m) return +m[1] / 60;
+  m = /^(\d+(?:\.\d+)?)\s*(h|std\.?|stunden?)?$/.exec(t); if (m) return +m[1];
+  return NaN;
 }
-/* Gelernte Statuswechsel (teamweit, je Eröffnungsmonat): call -> { v: [[Minuten seit 1970, Status, 1 = Zeitpunkt geschätzt], …] }.
-   Bei jedem Einlesen der Datei vergleicht das Board den Status jedes offenen Calls mit dem zuletzt gemerkten; ein Wechsel wird mit der
-   letzten Änderung des Calls als Zeitpunkt gemerkt (der Statuswechsel setzt sie), mit „Status seit“, wenn die Abfrage es liefert.
-   Beim ersten Sehen ist der Beginn des aktuellen Status unbekannt: Schätzung über die letzte Änderung, eingefroren – so wandert die
-   Schätzung nicht mit jeder späteren Notiz nach hinten. Beispieldaten bleiben sitzungslokal. */
+function fmtZielEingabe(h) { const n = slaZielStd(h); if (!(n > 0)) return ""; const min = Math.round(n * 60); return `${Math.floor(min / 60)}:${String(min % 60).padStart(2, "0")}`; }
+/* Gesehene Status (teamweit, je Eröffnungsmonat): call -> { v: [[Minuten seit 1970, Status], …] }; der erste Eintrag = erstes Sehen.
+   Beispieldaten bleiben sitzungslokal. Einträge aus v1.62 tragen teils ein drittes Feld (geschätzt) – wird ignoriert. */
 var statusVerlaufTemp = {}, svVersion = 0;
 function statusVerlaufStore() { return sources.ALL.demo ? statusVerlaufTemp : (state.statusVerlauf ??= {}); }
 function statusVerlaufEintrag(r) { const e = r["Eröffnet"]; return e instanceof Date ? statusVerlaufStore()[monatKey(e)]?.[String(r.Call)] ?? null : null; }
@@ -2956,18 +2945,14 @@ function recordStatusVerlauf() {
     if (zu && !e) continue; // geschlossene Calls nur weiterführen, wenn sie schon verfolgt werden (Abschluss, Wiedereröffnung)
     const last = e?.v?.[e.v.length - 1];
     if (last && stKey(last[1]) === stKey(s)) continue;
-    const ab = last ? last[0] * 60000 : er.getTime();
-    const seit = r.StatusSeit instanceof Date ? r.StatusSeit.getTime() : null, la = r["Letzte_Änderung"] instanceof Date ? r["Letzte_Änderung"].getTime() : null;
-    const zuAm = zu ? geschlossenAm(r)?.getTime() ?? null : null;
-    if (last && seit == null && !zu && la != null && la < ab - 60000) continue; // Datenstand älter als das Gelernte (z. B. ältere Datei auf einem anderen Rechner) – nichts lernen
-    let t, est = 0;
-    if (seit != null && seit >= ab && seit <= jetzt + 60000) t = seit;
-    else if (zuAm != null && zuAm >= ab) t = zuAm;
-    else if (la != null && la > ab && la <= jetzt + 60000) { t = la; est = last ? 0 : 1; }
-    else { t = last ? jetzt : er.getTime(); est = 1; }
-    const p = [Math.round(Math.max(ab, Math.min(t, jetzt)) / 60000), s]; if (est) p.push(1);
+    let t = jetzt; // erstes Sehen: jetzt
+    if (last) { // Wechsel: ab der letzten Änderung (bzw. dem Abschluss), wenn sie nach dem zuletzt Gesehenen liegt – sonst ab jetzt
+      const ab = last[0] * 60000, la = r["Letzte_Änderung"] instanceof Date ? r["Letzte_Änderung"].getTime() : null, zuAm = zu ? geschlossenAm(r)?.getTime() ?? null : null;
+      const k = zuAm ?? la;
+      t = k != null && k > ab && k <= jetzt + 60000 ? k : jetzt;
+    }
     const m = store[mk] ??= {};
-    (m[call] ??= { v: [] }).v.push(p);
+    (m[call] ??= { v: [] }).v.push([Math.round(Math.min(t, jetzt) / 60000), s]);
     touched.add(mk);
   }
   // Aufräumen: alte Monate; Calls, die seit mehr als 30 Tagen geschlossen sind (nur mit geschlossenen Calls im Export erkennbar)
@@ -2988,64 +2973,40 @@ function mergeStatusVerlaufMonat(lokal, remote) {
     const x = lokal?.[c], y = remote?.[c];
     if (!x || !y) { out[c] = x || y; continue; }
     const seen = new Map();
-    for (const p of [...(x.v || []), ...(y.v || [])]) { const k = p[0] + "|" + stKey(p[1]), alt = seen.get(k); if (!alt || (alt[2] && !p[2])) seen.set(k, p); }
+    for (const p of [...(x.v || []), ...(y.v || [])]) { const k = p[0] + "|" + stKey(p[1]); if (!seen.has(k)) seen.set(k, [p[0], p[1]]); }
     const v = [];
-    for (const p of [...seen.values()].sort((a, b) => a[0] - b[0] || (a[2] ? 1 : 0) - (b[2] ? 1 : 0))) { const l = v[v.length - 1]; if (l && stKey(l[1]) === stKey(p[1])) continue; v.push(p); }
+    for (const p of [...seen.values()].sort((a, b) => a[0] - b[0])) { const l = v[v.length - 1]; if (l && stKey(l[1]) === stKey(p[1])) continue; v.push(p); }
     out[c] = { v };
   }
   return out;
 }
-/* Statusverlauf eines Calls: Segmente {s, von, bis, q[], vor} von der Eröffnung bis jetzt (bzw. bis zum Abschluss) und die genutzten Quellen.
-   q: hist = Statushistorie, wl = Folgestatus einer Weiterleitung, lern = gelernt, seit = Spalte „Status seit“,
-      schaetz = Zeitpunkt geschätzt (letzte Änderung), jetzt = nur der heutige Status bekannt. */
+/* Statusverlauf eines Calls: Segmente {s, von, bis, vor} von der Eröffnung bis jetzt (bzw. bis zum Abschluss).
+   vor = Abschnitt vor dem ersten Sehen (Status angenommen); gesehen = Zeitpunkt des ersten Sehens. */
 function stVerlauf(r) {
   const er = r["Eröffnet"] instanceof Date ? r["Eröffnet"].getTime() : null; if (er == null) return null;
   const jetzt = now().getTime(), zu = istGeschlossen(r), ende = Math.max(er, zu ? (geschlossenAm(r)?.getTime() ?? jetzt) : jetzt);
-  const sNow = String(r.Status ?? "").trim(), seit = r.StatusSeit instanceof Date ? r.StatusSeit.getTime() : null;
-  const la = r["Letzte_Änderung"] instanceof Date ? r["Letzte_Änderung"].getTime() : null;
-  const q = new Set(); let ev = [];
-  if (Array.isArray(r.St) && r.St.length) {
-    q.add("hist");
-    if (r.St[0].a) ev.push({ t: er, s: r.St[0].a, q: "hist" });
-    for (const x of r.St) ev.push({ t: x.t, s: x.s, q: "hist" });
-  } else {
-    for (const w of r.Wl || []) { const s = String(w.st ?? "").trim(); if (w.d instanceof Date && s) { ev.push({ t: w.d.getTime(), s, q: "wl" }); q.add("wl"); } }
-    for (const p of statusVerlaufEintrag(r)?.v || []) { const qq = p[2] ? "schaetz" : "lern"; ev.push({ t: p[0] * 60000, s: p[1], q: qq }); q.add(qq); }
-    if (seit != null && sNow && !zu) { ev = ev.filter(x => x.t < seit); ev.push({ t: seit, s: sNow, q: "seit" }); q.add("seit"); }
-  }
-  ev = ev.map(x => ({ ...x, t: Math.min(Math.max(x.t, er), ende) })).sort((a, b) => a.t - b.t);
+  const sNow = String(r.Status ?? "").trim(), la = r["Letzte_Änderung"] instanceof Date ? r["Letzte_Änderung"].getTime() : null;
+  let ev = (statusVerlaufEintrag(r)?.v || []).map(p => ({ t: p[0] * 60000, s: p[1] }));
+  const gesehen = ev.length ? ev[0].t : null;
   const last = ev[ev.length - 1];
-  if (sNow && !zu && (!last || stKey(last.s) !== stKey(sNow))) {
-    if (!last) { ev.push({ t: er, s: sNow, q: "jetzt" }); q.add("jetzt"); }
-    else { ev.push({ t: la != null && la > last.t ? Math.min(la, ende) : last.t, s: sNow, q: "schaetz" }); q.add("schaetz"); }
-  }
+  if (sNow && !zu && (!last || stKey(last.s) !== stKey(sNow))) ev.push({ t: last && la != null && la > last.t ? la : jetzt, s: sNow }); // noch nicht gemerkt (z. B. vor dem ersten Einlesen)
+  ev = ev.map(x => ({ ...x, t: Math.min(Math.max(x.t, er), ende) })).sort((a, b) => a.t - b.t);
   const kurz = [];
-  for (const x of ev) { const l = kurz[kurz.length - 1]; if (l && stKey(l.s) === stKey(x.s)) { l.qs.add(x.q); continue; } kurz.push({ t: x.t, s: x.s, qs: new Set([x.q]) }); }
-  const seg = [];
+  for (const x of ev) { const l = kurz[kurz.length - 1]; if (l && stKey(l.s) === stKey(x.s)) continue; kurz.push(x); }
+  const seg = [], ersterBlick = gesehen ?? (kurz[0]?.t ?? er);
   for (let i = 0; i < kurz.length; i++) {
     const x = kurz[i], von = i === 0 ? er : x.t, bis = i + 1 < kurz.length ? kurz[i + 1].t : ende;
-    if (bis > von || kurz.length === 1) seg.push({ s: x.s, von, bis, q: [...x.qs], vor: i === 0 && x.t > er });
+    if (bis > von || kurz.length === 1) seg.push({ s: x.s, von, bis, vor: i === 0 && ersterBlick - er > 15 * 60000 });
   }
-  return { seg, q, er, ende };
+  return { seg, er, ende, gesehen: gesehen ?? null, angenommen: ersterBlick - er > 15 * 60000 };
 }
-/* Datenbasis eines Calls in Worten (Spalte „Basis“) */
-function stBasis(v) {
-  if (!v) return { txt: "–", tip: "", warn: true };
-  if (v.q.has("hist")) return { txt: "Statushistorie", tip: "exakt aus der Statusabfrage", warn: v.q.has("schaetz") };
-  if (v.q.has("jetzt") || !["wl", "lern", "seit"].some(k => v.q.has(k))) return { txt: "nur Status jetzt", tip: "Keine Statusangabe aus Weiterleitungen oder Lernliste – der heutige Status gilt ab Eröffnung (Annahme).", warn: true };
-  const t = [];
-  if (v.q.has("wl")) t.push("Weiterleitungen"); if (v.q.has("lern")) t.push("gelernt"); if (v.q.has("seit")) t.push("Status seit");
-  if (v.q.has("schaetz")) t.push("geschätzt");
-  return { txt: t.join(" · ") || "–", tip: v.q.has("schaetz") ? "Mindestens ein Statuswechsel ohne genauen Zeitpunkt – als Zeitpunkt gilt die letzte Änderung des Calls." : "", warn: v.q.has("schaetz") };
-}
-const SR_QTXT = { hist: "Statushistorie", wl: "Weiterleitung", lern: "gelernt", seit: "Status seit", schaetz: "geschätzt", jetzt: "nur Status jetzt" };
-function slaRegelNeu() { return { id: "sr" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), aktiv: true, name: "", typ: "slaFast", kunden: "", prio: [], gz: true, zaehlen: ["Neu", "In Bearbeitung"], pausieren: ["Wartend"], ziel: 8 }; }
+function slaRegelNeu() { return { id: "sr" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), aktiv: true, name: "", typ: "slaFast", kunden: "", prio: [], gz: true, zaehlen: ["Neu", "In Bearbeitung"], pausieren: ["Wartend"], ziel: 4 }; }
 function slaRegeln() { return Array.isArray(state.slaRegeln) ? state.slaRegeln : (state.slaRegeln = []); }
-function slaRegelZielMs(rg) { const n = Number(String(rg?.ziel ?? "").replace(",", ".")); return Number.isFinite(n) && n > 0 ? n * 3600000 : 0; }
+function slaRegelZielMs(rg) { const n = slaZielStd(rg?.ziel); return Number.isFinite(n) && n > 0 ? n * 3600000 : 0; }
 function slaRegelLabel(rg) {
   if (String(rg?.name ?? "").trim()) return String(rg.name).trim();
   const pr = (Array.isArray(rg?.prio) ? rg.prio : []).map(p => p[0].toUpperCase() + p.slice(1)).join("/");
-  return `${SLA_REGEL_TYPEN[rg?.typ] || SLA_REGEL_TYPEN.slaFast} – ${String(rg?.kunden ?? "").trim() || "alle Kunden"} · ${pr || "alle Prios"} · ${fmtWl1.format(slaRegelZielMs(rg) / 3600000)} Std.`;
+  return `${SLA_REGEL_TYPEN[rg?.typ] || SLA_REGEL_TYPEN.slaFast} – ${String(rg?.kunden ?? "").trim() || "alle Kunden"} · ${pr || "alle Prios"} · ${fmtStd(slaRegelZielMs(rg))}`;
 }
 /* Treffer einer Regel: alle offenen Calls, die zu Kunde und Priorität passen, mit Gesamt-, aktiver und inaktiver Zeit */
 var _srCache = null;
@@ -3063,7 +3024,7 @@ function slaRegelTreffer(rg) {
     const v = stVerlauf(r); if (!v || !v.seg.length) continue;
     let ges = 0, akt = 0, inakt = 0;
     const seg = v.seg.map(sg => { const d = dauer(sg.von, sg.bis), k = stKey(sg.s), art = zz.has(k) ? "a" : pp.has(k) ? "p" : "n"; ges += d; if (art === "a") akt += d; else if (art === "p") inakt += d; return { ...sg, d, art }; });
-    list.push({ r, v, seg, ges, akt, inakt, rest: ges - akt - inakt, ziel, alarm: ziel > 0 && akt >= ziel, quote: ziel ? akt / ziel : 0, basis: stBasis(v) });
+    list.push({ r, v, seg, ges, akt, inakt, rest: ges - akt - inakt, ziel, alarm: ziel > 0 && akt >= ziel, quote: ziel ? akt / ziel : 0 });
   }
   list.sort((a, b) => (b.alarm - a.alarm) || (b.quote - a.quote) || (b.akt - a.akt));
   const res = { list, ziel, alarmN: list.filter(x => x.alarm).length };
@@ -3089,41 +3050,40 @@ function pruefeSlaRegeln() {
   toast(`⚠ SLA-Regel: ${neu.slice(0, 3).map(zeile).join(" · ")}${neu.length > 3 ? ` · +${neu.length - 3} weitere` : ""}`);
   if (slaNotifyAktiv()) { try { new Notification(`SLA-Regel – ${neu.length} Call${neu.length > 1 ? "s" : ""}`, { body: neu.slice(0, 6).map(zeile).join("\n"), tag: "slaregel-" + Date.now() }); } catch (e) {} }
 }
-/* Status, die in den Regeln zur Wahl stehen: aus den Daten (heute, Folgestatus, Statushistorie), der bekannten Liste und den Regeln selbst */
+/* Status, die in den Regeln zur Wahl stehen: aus den Daten (heute und gesehen), der bekannten Liste und den Regeln selbst */
 function slaStatusOptionen() {
   const m = new Map(), add = s => { const t = String(s ?? "").trim(); if (t && !m.has(t.toLowerCase())) m.set(t.toLowerCase(), t); };
   STATUS_KNOWN.forEach(add);
-  for (const r of alleZeilen()) { add(r.Status); for (const w of r.Wl || []) add(w.st); for (const x of r.St || []) { add(x.s); add(x.a); } }
+  for (const r of alleZeilen()) add(r.Status);
+  for (const mm of Object.values(statusVerlaufStore())) for (const e of Object.values(mm)) for (const p of e.v || []) add(p[1]);
   for (const rg of slaRegeln()) { (rg.zaehlen || []).forEach(add); (rg.pausieren || []).forEach(add); }
   return [...m.values()].sort((a, b) => a.localeCompare(b, "de"));
 }
-/* Welche Daten liegen vor? (Karte „Datenbasis“ im Reiter) */
-function slaDatenbasis() {
-  const offen = allRows(), n = offen.length;
-  const hist = hatSpalte("StText"), seit = hatSpalte("StatusSeit"), wl = offen.filter(r => (r.Wl || []).some(w => String(w.st ?? "").trim())).length;
-  let lernAb = null, lernN = 0, lernW = 0; // lernAb: erster beobachteter Wechsel (ohne die geschätzten Startpunkte)
-  for (const m of Object.values(statusVerlaufStore())) for (const e of Object.values(m)) { lernN++; for (const p of e.v || []) if (!p[2]) { lernW++; if (!lernAb || p[0] < lernAb) lernAb = p[0]; } }
-  return { n, hist, seit, wl, lernAb: lernAb ? new Date(lernAb * 60000) : null, lernN, lernW };
+/* Wie viel hat das Board schon gesehen? (Karte „So zählt das Board“) */
+function slaVerfolgung() {
+  let calls = 0, wechsel = 0, ab = null;
+  for (const m of Object.values(statusVerlaufStore())) for (const e of Object.values(m)) { const v = e.v || []; if (!v.length) continue; calls++; wechsel += v.length - 1; if (!ab || v[0][0] < ab) ab = v[0][0]; }
+  return { calls, wechsel, ab: ab ? new Date(ab * 60000) : null };
 }
 function slaRegelTabelle(rg) {
   const t = slaRegelTreffer(rg);
   const zeilen = t.list.map(h => [String(h.r.Call ?? ""), prioText(h.r), h.r.Kunde ?? "", h.r.Titel ?? "", gruppeKurz(h.r.Gruppe), String(h.r.Bearbeiter ?? ""), h.r.Status ?? "",
-    fmtStd(h.ges), fmtStd(h.akt), fmtStd(h.inakt), fmtStd(h.rest), fmtStd(h.ziel), h.alarm ? "erreicht" : `noch ${fmtStd(h.ziel - h.akt)}`, h.basis.txt,
+    fmtStd(h.ges), fmtStd(h.akt), fmtStd(h.inakt), fmtStd(h.rest), fmtStd(h.ziel), h.alarm ? "erreicht" : `noch ${fmtStd(h.ziel - h.akt)}`, h.v.gesehen ? fmtDT.format(new Date(h.v.gesehen)) + (h.v.angenommen ? " (davor angenommen)" : "") : "",
     h.seg.map(sg => `${sg.s} ${fmtDT.format(new Date(sg.von))}–${fmtDT.format(new Date(sg.bis))} (${fmtStd(sg.d)}${sg.art === "a" ? ", aktiv" : sg.art === "p" ? ", pausiert" : ""})`).join(" › ")]);
-  return wlCopyTabelle(`${slaRegelLabel(rg)} – ${rg.gz === false ? "Kalenderzeit" : "Geschäftszeit"}`, ["Call", "Prio", "Kunde", "Titel", "Gruppe", "Bearbeiter", "Status", "Gesamt", "aktiv", "inaktiv", "nicht zugeordnet", "Ziel", "Hinweis", "Datenbasis", "Verlauf"], zeilen, new Set([7, 8, 9, 10, 11]));
+  return wlCopyTabelle(`${slaRegelLabel(rg)} – ${rg.gz === false ? "Kalenderzeit" : "Geschäftszeit"}`, ["Call", "Prio", "Kunde", "Titel", "Gruppe", "Bearbeiter", "Status", "Gesamt", "aktiv", "inaktiv", "nicht zugeordnet", "Ziel", "Hinweis", "gesehen seit", "Verlauf"], zeilen, new Set([7, 8, 9, 10, 11]));
 }
 /* Startseite: Karte nur, wenn eine Regel anschlägt */
 function slaRegelHeuteKarte() {
   const al = slaRegelAlarme(); if (!al.length) return "";
   const n = new Set(al.map(x => String(x.h.r.Call))).size, top = [...al].sort((a, b) => (b.h.akt - b.h.ziel) - (a.h.akt - a.h.ziel)).slice(0, 12);
-  return `<div class="card" id="srHeute" style="box-shadow:inset 0 0 0 2px var(--crit)"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">SLA-Regeln: Eskalationsziel erreicht <span class="pill s-crit">${fmtN.format(n)}</span><button class="small" data-goto="slaregel" style="margin-left:auto">Zu den SLA-Regeln</button></h2>
+  return `<div class="card" id="srHeute" style="box-shadow:inset 0 0 0 2px var(--crit)"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">SLA-Regeln: Schwellenwert erreicht <span class="pill s-crit">${fmtN.format(n)}</span><button class="small" data-goto="slaregel" style="margin-left:auto">Zu den SLA-Regeln</button></h2>
     <div class="tscroll"><table class="list"><thead><tr><th>Regel</th><th>Call</th><th>Prio</th><th>Kunde</th><th>Titel</th><th>Status</th><th class="ta-r">aktiv</th><th class="ta-r">Ziel</th></tr></thead><tbody>
     ${top.map(x => `<tr><td class="nowrap">${esc(slaRegelLabel(x.rg))}</td><td class="tnum nowrap">${esc(x.h.r.Call)}</td><td class="nowrap">${prioZelle(prioName(x.h.r.Prio))}</td><td class="nowrap">${esc(x.h.r.Kunde ?? "–")}</td><td class="titlecell">${esc(x.h.r.Titel ?? "–")}</td><td class="nowrap">${esc(x.h.r.Status ?? "–")}</td><td class="ta-r tnum"><b>${fmtStd(x.h.akt)}</b></td><td class="ta-r tnum">${fmtStd(x.h.ziel)}</td></tr>`).join("")}
     </tbody></table></div>${al.length > top.length ? `<p class="hint">${fmtN.format(al.length - top.length)} weitere im Reiter „SLA-Regeln“.</p>` : ""}</div>`;
 }
 var srOffen = new Set(), srAlle = new Set(); // aufgeklappte Regel-Editoren, Regeln mit „alle anzeigen“ (Sitzung)
 function renderSlaRegeln(view) {
-  const regeln = slaRegeln(), opts = slaStatusOptionen(), db = slaDatenbasis();
+  const regeln = slaRegeln(), opts = slaStatusOptionen(), vf = slaVerfolgung();
   const chip = (i, liste, s, k, rg) => { const inZ = (rg.zaehlen || []).some(x => stKey(x) === stKey(s)), inP = (rg.pausieren || []).some(x => stKey(x) === stKey(s)), on = liste === "zaehlen" ? inZ : inP;
     return `<button class="fchip srchip${on ? (liste === "zaehlen" ? " on-z" : " on-p") : ""}" data-srst="${i}|${liste}|${k}" title="${on ? "gewählt – Klick nimmt ihn heraus" : (liste === "zaehlen" ? inP : inZ) ? "steht in der anderen Liste – Klick verschiebt ihn hierher" : "Klick wählt ihn"}">${esc(s)}</button>`; };
   const editor = (rg, i) => {
@@ -3140,40 +3100,40 @@ function renderSlaRegeln(view) {
       <div class="frow"><span class="flabel">Zeit berechnen bei Status</span>${opts.map((s, k) => chip(i, "zaehlen", s, k, rg)).join("")}</div>
       <div class="frow"><span class="flabel">Zeit pausieren bei Status</span>${opts.map((s, k) => chip(i, "pausieren", s, k, rg)).join("")}</div>
       ${nichtZ.length ? `<p class="hint" style="margin:0 0 6px 175px">Weder gezählt noch pausiert (erscheint als „nicht zugeordnet“): ${esc(nichtZ.join(", "))}</p>` : ""}
-      <div class="frow"><span class="flabel">Eskalationsziel</span><input type="number" min="0" step="0.5" data-sr="${i}|ziel" value="${esc(String(rg.ziel ?? ""))}" style="width:90px"> <span class="hint">Stunden aktive Zeit – ab hier meldet das Board den Call</span></div>
+      <div class="frow"><span class="flabel">Eskalationsziel</span><input data-sr="${i}|ziel" value="${esc(fmtZielEingabe(rg.ziel))}" placeholder="z. B. 0:30" style="width:90px"> <span class="hint">aktive Zeit, ab der das Board meldet – Stunden:Minuten, z. B. <b>0:30</b>, <b>1:30</b>, <b>4</b> oder <b>90 Min.</b> Für eine Vorwarnung eine zweite Regel mit kleinerem Wert anlegen.</span></div>
     </details>`;
   };
   const verlauf = h => {
     const s = [];
-    for (const sg of h.seg) { if (sg.d < 60000 && h.seg.length > 1) continue; const l = s[s.length - 1]; if (l && stKey(l.s) === stKey(sg.s)) { s[s.length - 1] = { ...l, bis: sg.bis, d: l.d + sg.d, q: [...new Set([...l.q, ...sg.q])] }; continue; } s.push(sg); }
+    for (const sg of h.seg) { if (sg.d < 60000 && h.seg.length > 1) continue; const l = s[s.length - 1]; if (l && stKey(l.s) === stKey(sg.s)) { s[s.length - 1] = { ...l, bis: sg.bis, d: l.d + sg.d }; continue; } s.push(sg); }
     const zeig = s.slice(-5);
-    return (s.length > zeig.length ? `<span class="hint">+${s.length - zeig.length} › </span>` : "") + zeig.map(sg => `<span class="srseg ${sg.art}${sg.q.includes("schaetz") || sg.q.includes("jetzt") || sg.vor ? " g" : ""}" title="${esc(`${sg.s}: ${fmtDT.format(new Date(sg.von))} – ${fmtDT.format(new Date(sg.bis))} · ${fmtStd(sg.d)} · ${sg.art === "a" ? "zählt" : sg.art === "p" ? "pausiert" : "nicht zugeordnet"} · Quelle: ${sg.q.map(x => SR_QTXT[x] || x).join(", ")}${sg.vor ? " · Beginn vor der ersten Statusangabe angenommen" : ""}`)}">${esc(sg.s)}<small>${fmtStd(sg.d)}</small></span>`).join('<span class="wlarr">›</span>'); };
+    return (s.length > zeig.length ? `<span class="hint">+${s.length - zeig.length} › </span>` : "") + zeig.map(sg => `<span class="srseg ${sg.art}${sg.vor ? " g" : ""}" title="${esc(`${sg.s}: ${fmtDT.format(new Date(sg.von))} – ${fmtDT.format(new Date(sg.bis))} · ${fmtStd(sg.d)} · ${sg.art === "a" ? "zählt" : sg.art === "p" ? "pausiert" : "nicht zugeordnet"}${sg.vor ? " · bis zum ersten Sehen angenommen" : ""}`)}">${esc(sg.s)}<small>${fmtStd(sg.d)}</small></span>`).join('<span class="wlarr">›</span>'); };
   const ergebnis = (rg, i) => {
     if (rg.aktiv === false) return "";
     const t = slaRegelTreffer(rg), alle = srAlle.has(rg.id), zeig = alle ? t.list : t.list.slice(0, 50);
-    return `<div class="card" id="srErg-${esc(rg.id)}"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">${esc(slaRegelLabel(rg))} <span class="pill ${t.alarmN ? "s-crit" : "s-ok"}" title="Calls mit erreichtem Eskalationsziel">${fmtN.format(t.alarmN)}</span><span class="hint" style="font-weight:400">${fmtN.format(t.list.length)} offene Calls in der Regel · ${rg.gz === false ? "Kalenderzeit" : "Geschäftszeit"}</span>
+    return `<div class="card" id="srErg-${esc(rg.id)}"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">${esc(slaRegelLabel(rg))} <span class="pill ${t.alarmN ? "s-crit" : "s-ok"}" title="Calls mit erreichtem Schwellenwert">${fmtN.format(t.alarmN)}</span><span class="hint" style="font-weight:400">${fmtN.format(t.list.length)} offene Calls in der Regel · ${rg.gz === false ? "Kalenderzeit" : "Geschäftszeit"}</span>
       <button class="small" data-srcopy="${i}" style="margin-left:auto">Liste kopieren</button></h2>
-      ${!t.ziel ? `<p class="empty">Eskalationsziel fehlt – oben in der Regel eintragen.</p>` : !t.list.length ? `<p class="empty">Keine offenen Calls in dieser Regel.</p>` : `<div class="tscroll"><table class="list"><thead><tr><th>Call</th><th>Prio</th><th>Kunde</th><th>Titel</th><th>Gruppe</th><th>Status</th><th class="ta-r" title="Eröffnung bis jetzt">Gesamt</th><th class="ta-r" title="Zeit in Status, die zählen">aktiv</th><th class="ta-r" title="Zeit in Status, die pausieren">inaktiv</th><th style="min-width:150px">Ziel</th><th>Basis</th><th style="min-width:260px">Verlauf</th></tr></thead><tbody>
+      ${!t.ziel ? `<p class="empty">Eskalationsziel fehlt – oben in der Regel eintragen.</p>` : !t.list.length ? `<p class="empty">Keine offenen Calls in dieser Regel.</p>` : `<div class="tscroll"><table class="list"><thead><tr><th>Call</th><th>Prio</th><th>Kunde</th><th>Titel</th><th>Gruppe</th><th>Status</th><th class="ta-r" title="Eröffnung bis jetzt">Gesamt</th><th class="ta-r" title="Zeit in Status, die zählen">aktiv</th><th class="ta-r" title="Zeit in Status, die pausieren">inaktiv</th><th style="min-width:150px">Ziel</th><th title="Seit wann das Board den Call sieht – davor gilt der zuerst gesehene Status">gesehen seit</th><th style="min-width:260px">Verlauf</th></tr></thead><tbody>
       ${zeig.map(h => `<tr${h.alarm ? ' class="sr-alarm"' : ""}><td class="tnum nowrap">${esc(h.r.Call)}${reopenBadge(h.r)}</td><td class="nowrap">${prioZelle(prioName(h.r.Prio))}</td><td class="nowrap">${esc(h.r.Kunde ?? "–")}</td><td class="titlecell">${esc(h.r.Titel ?? "–")}</td><td class="nowrap">${esc(gruppeKurz(h.r.Gruppe))}${h.r.Bearbeiter ? ` <span class="hint">${esc(h.r.Bearbeiter)}</span>` : ""}</td><td class="nowrap">${esc(h.r.Status ?? "–")}</td>
         <td class="ta-r tnum" title="${h.rest > 0 ? `davon nicht zugeordnet: ${fmtStd(h.rest)}` : ""}">${fmtStd(h.ges)}</td><td class="ta-r tnum"><b>${fmtStd(h.akt)}</b></td><td class="ta-r tnum">${fmtStd(h.inakt)}</td>
         <td><div class="srbar${h.alarm ? " crit" : h.quote >= 0.75 ? " warn" : ""}"><span style="width:${Math.min(100, Math.round(h.quote * 100))}%"></span></div><span class="hint">${h.alarm ? `<b style="color:var(--crit)">erreicht</b> · +${fmtStd(h.akt - h.ziel)}` : `noch ${fmtStd(h.ziel - h.akt)}`} von ${fmtStd(h.ziel)}</span></td>
-        <td class="nowrap"><span class="${h.basis.warn ? "pill s-warn" : "pill s-ok"}" style="font-weight:500" title="${esc(h.basis.tip)}">${esc(h.basis.txt)}</span></td><td>${verlauf(h)}</td></tr>`).join("")}
+        <td class="nowrap tnum">${h.v.gesehen ? esc(fmtDT.format(new Date(h.v.gesehen))) : "–"}${h.v.angenommen ? ' <span class="hint" title="Status von der Eröffnung bis zum ersten Sehen angenommen">davor angenommen</span>' : ""}</td><td>${verlauf(h)}</td></tr>`).join("")}
       </tbody></table></div>${t.list.length > zeig.length ? `<p class="hint">Gezeigt: die ${zeig.length} mit dem höchsten Anteil am Ziel. <button class="small" data-sralle="${esc(rg.id)}">alle ${fmtN.format(t.list.length)} anzeigen</button> Die Kopie enthält immer alle.</p>` : ""}`}
     </div>`;
   };
   view.innerHTML = `<div class="card"><h2 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">SLA-Regeln <span class="pill ${slaRegelAlarmCalls() ? "s-crit" : "s-ok"}">${fmtN.format(slaRegelAlarmCalls())}</span><button class="small" id="btnSrAdd" style="margin-left:auto">Regel hinzufügen</button><button class="small" id="btnSrNotify">${slaNotifyAktiv() ? "Desktop-Hinweise: an" : "Desktop-Hinweise einschalten"}</button></h2>
-    <p class="sub">Eigene Regeln mit Alarm, gemeinsam für das Team (Team-Datei). Regeltyp <b>„SLA-Zeit fast erreicht“</b>: Für jeden offenen Call, der zu Kundenkürzel und Priorität passt, zählt das Board die Zeit in den Status unter „Zeit berechnen“ (<b>aktive Zeit</b>) und in den Status unter „Zeit pausieren“ (<b>inaktive Zeit</b>), wahlweise nur in den Arbeitszeiten. <b>Gesamtzeit</b> = Eröffnung bis jetzt. Erreicht die aktive Zeit das <b>Eskalationsziel</b>, erscheint der Call auf der Startseite, am Reiter und als Hinweis (Desktop-Benachrichtigung, wenn eingeschaltet). Feiertage kennt die Arbeitszeit nicht.</p>
-    ${regeln.length ? regeln.map(editor).join("") : `<p class="empty">Noch keine Regel. <b>Regel hinzufügen</b> legt eine an: Arbeitszeiten, zählt „Neu“ und „In Bearbeitung“, pausiert „Wartend“, Ziel 8 Std. – danach anpassen.</p>`}
+    <p class="sub">Eigene Regeln mit Alarm, gemeinsam für das Team (Team-Datei). Regeltyp <b>„SLA-Zeit fast erreicht“</b>: Für jeden offenen Call, der zu Kundenkürzel und Priorität passt, zählt das Board die Zeit in den Status unter „Zeit berechnen“ (<b>aktive Zeit</b>) und in den Status unter „Zeit pausieren“ (<b>inaktive Zeit</b>), wahlweise nur in den Arbeitszeiten. <b>Gesamtzeit</b> = Eröffnung bis jetzt. Erreicht die aktive Zeit das <b>Eskalationsziel</b>, erscheint der Call auf der Startseite, am Reiter und als Hinweis – mit eingeschalteten Desktop-Hinweisen auch als Benachrichtigung von Windows. Das Board prüft jede Minute.</p>
+    ${regeln.length ? regeln.map(editor).join("") : `<p class="empty">Noch keine Regel. <b>Regel hinzufügen</b> legt eine an: Arbeitszeiten, zählt „Neu“ und „In Bearbeitung“, pausiert „Wartend“, Ziel 4:00 – danach anpassen.</p>`}
   </div>
-  <div class="card" id="srBasis"><h2>Datenbasis der Zeitrechnung</h2>
-    <p class="sub">Aktive und inaktive Zeit brauchen den Statusverlauf je Call mit Zeitpunkten. Das Board setzt ihn aus der besten vorhandenen Quelle zusammen; die Spalte „Basis“ zeigt sie je Call.</p>
+  <div class="card" id="srBasis"><h2>So zählt das Board</h2>
     <ul class="srbasis">
-      <li><b>Statushistorie</b> (optionale Abfrage, exakt): ${db.hist ? `<span class="pill s-ok">liefert der Export</span> – ersetzt alle anderen Quellen` : `<span class="pill s-warn">fehlt</span> – mit ihr wären alle Zeiten exakt, auch rückwirkend (Abfrage „SupportBoard-Abfrage-Status.sql“, siehe Anleitung)`}</li>
-      <li><b>Folgestatus der Weiterleitungen</b>: bei ${fmtN.format(db.wl)} von ${fmtN.format(db.n)} offenen Calls – Status nach jeder Weiterleitung mit Zeitpunkt. Statuswechsel <i>ohne</i> Weiterleitung (z. B. In Bearbeitung → Wartend in derselben Gruppe) stehen hier nicht.</li>
-      <li><b>Gelernte Statuswechsel</b> (Team-Datei): ${fmtN.format(db.lernN)} Calls verfolgt · ${db.lernW ? `Statuswechsel mit genauem Zeitpunkt: ${fmtN.format(db.lernW)} (der erste am ${fmtDT.format(db.lernAb)})` : "noch kein Statuswechsel mit genauem Zeitpunkt"} – das Board merkt sich bei jedem Einlesen jeden Statuswechsel, Zeitpunkt = letzte Änderung des Calls. Je länger es läuft, desto genauer wird die Rechnung; was vor dem Start der Lernliste geschah, kennt sie nicht.</li>
-      <li><b>Status seit</b> (optionale Spalte der Hauptabfrage): ${db.seit ? `<span class="pill s-ok">vorhanden</span> – Beginn des aktuellen Status exakt` : `<span class="pill s-warn">fehlt</span> – Beginn des aktuellen Status wird über die letzte Änderung geschätzt`}</li>
+      <li>Die Uhr läuft ab <b>Eröffnung</b> des Calls.</li>
+      <li>Den Status sieht das Board bei jedem Einlesen der Datei und merkt sich jeden <b>Wechsel</b> für das ganze Team. Als Zeitpunkt gilt die letzte Änderung des Calls, sonst der Moment des Einlesens.</li>
+      <li>Bis das Board einen Call zum ersten Mal sieht, gilt der <b>zuerst gesehene Status</b>. Bei neuen Calls ist das nach wenigen Minuten der Fall; bei älteren Calls steht in der Spalte „gesehen seit“ „davor angenommen“, im Verlauf kursiv.</li>
+      <li>Wechsel sieht das Board nur, solange es irgendwo geöffnet ist und die Datei liest. Wer früh gewarnt werden will, stellt das Ziel lieber zu niedrig ein und legt für eine Vorwarnung eine zweite Regel an.</li>
+      <li>Arbeitszeiten ohne Feiertage. Keine Änderung an Abfrage oder Exportskript nötig.</li>
     </ul>
-    <p class="hint">Vor der ersten bekannten Statusangabe gilt der erste bekannte Status. Geschätzte Abschnitte stehen im Verlauf kursiv.</p>
+    <p class="hint">Bisher verfolgt: ${fmtN.format(vf.calls)} Calls${vf.ab ? ` seit ${esc(fmtDT.format(vf.ab))}` : ""} · ${fmtN.format(vf.wechsel)} Statuswechsel gesehen.</p>
   </div>
   ${regeln.map(ergebnis).join("")}`;
   const save = () => { touch("cfg|slaRegeln"); saveState(); _srCache = null; render(); setTimeout(pruefeSlaRegeln, 50); };
@@ -3182,7 +3142,7 @@ function renderSlaRegeln(view) {
     const [i, f] = inp.dataset.sr.split("|"), rg = regeln[+i]; if (!rg) return;
     if (f === "aktiv") rg.aktiv = inp.checked;
     else if (f === "gz") rg.gz = inp.value === "1";
-    else if (f === "ziel") { const n = Number(String(inp.value).replace(",", ".")); rg.ziel = Number.isFinite(n) && n >= 0 ? n : 0; }
+    else if (f === "ziel") { const n = slaZielStd(inp.value); if (!Number.isFinite(n) || n < 0) { toast("Eskalationsziel nicht erkannt – z. B. 0:30, 1,5 oder 90 Min."); render(); return; } rg.ziel = Math.round(n * 60) / 60; }
     else rg[f] = inp.value.trim();
     save();
   }));

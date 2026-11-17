@@ -1,125 +1,121 @@
-// Browser-Test: SLA-Regeln (ab v1.62) – Regeleditor, Zeitrechnung je Call, Alarm, Lernliste, Statushistorie, Abgleich
+// Browser-Test: SLA-Regeln (ab v1.63: nur, was das Board sieht) – Regeleditor, Zeitrechnung je Call, Alarm, Lernliste, Abgleich
 const { check, start, anmelden, ende, bildPfad } = require('./_lauf');
 const H = 3600000, near = (a, b) => Math.abs(a - b) < 60000;
 (async () => {
   const { browser, page, errors } = await start();
-  await page.evaluate(() => { now = () => new Date(2026, 10, 4, 12, 0); }); // Mi 04.11.2026 12:00
   await anmelden(page);
-  const W = (d, von, nach, st) => `${d}|${von}|HO1|${nach}|PD1|${st}|HO1`;
-  const mkCsv = (opt = {}) => {
-    const hdr = ['Prio', 'Call', 'Eröffnet', 'Gruppe', 'Bearbeiter', 'Kunde', 'Titel', 'SupMan', 'Status', 'Dauer', 'Letzte_Weiterleitung', 'Letzte_Änderung', 'Wartend_bis', 'Lösung_bis', 'Terminänderungen', 'Kundenbetreuung', 'Status seit', 'Weiterleitungen'];
-    if (opt.hist) hdr.push('Statushistorie');
-    const row = (prio, call, er, gruppe, kunde, status, la, seit, wl, hist) => { const a = [prio, call, er, gruppe, 'PD1', kunde, 'Beispiel', '', status, '1.00', '', la, '', '', '0', 'MPDV_Europe', seit || '', wl || '']; if (opt.hist) a.push(hist || ''); return a.join(';'); };
-    const aStatus = opt.aIb ? 'In Bearbeitung' : 'Wartend', aLa = opt.aIb ? '2026-11-04T11:00:00' : '2026-11-03T12:00:00';
-    const aHist = ['2026-11-02T08:00:00|Neu|', '2026-11-02T10:00:00|In Bearbeitung|Neu', '2026-11-02T15:00:00|Wartend|In Bearbeitung', '2026-11-04T11:00:00|In Bearbeitung|Wartend'].join(' # ');
-    return '﻿' + [hdr.join(';'),
-      // A: ALPHA Rot, Hotline -> Dispatcher (Neu) -> 2nd_MF (In Bearbeitung), heute Wartend, letzte Aenderung Di 12:00
-      row('1 - ROT', '900401', '2026-11-02T08:00:00', '2nd_MF', 'ALPHA', aStatus, aLa, '', [W('2026-11-02T08:30:00', 'Hotline', 'Dispatcher', 'Neu'), W('2026-11-02T10:00:00', 'Dispatcher', '2nd_MF', 'In Bearbeitung')].join(' # '), aHist),
-      // B: BRAVO Blau, keine Weiterleitung, In Bearbeitung seit Eroeffnung (Mi 09:00)
-      row('2 - BLAU', '900402', '2026-11-04T09:00:00', 'Hotline', 'BRAVO', 'In Bearbeitung', '2026-11-04T09:30:00'),
-      // C: ALPHA Gruen, Hotline -> 2nd_HR (In Bearbeitung) Mo 09:00, Wartend laut „Status seit“ Mo 13:00
-      row('3 - GRUEN', '900403', '2026-11-02T08:00:00', '2nd_HR', 'ALPHA', 'Wartend', '2026-11-04T10:00:00', '2026-11-02T13:00:00', W('2026-11-02T09:00:00', 'Hotline', '2nd_HR', 'In Bearbeitung')),
-      // D: ALPHA Blau, geschlossen – nie in einer Regel
-      row('2 - BLAU', '800404', '2026-10-20T08:00:00', '2nd_MF', 'ALPHA', 'Gelöst', '2026-10-21T08:00:00'),
-      // E: CHARLIE Gruen
-      row('3 - GRUEN', '900405', '2026-11-03T08:00:00', '2nd_CAQ', 'CHARLIE', 'In Bearbeitung', '2026-11-03T08:00:00'),
-    ].join('\n');
+  const hdr = ['Prio', 'Call', 'Eröffnet', 'Gruppe', 'Bearbeiter', 'Kunde', 'Titel', 'SupMan', 'Status', 'Dauer', 'Letzte_Weiterleitung', 'Letzte_Änderung', 'Wartend_bis', 'Lösung_bis', 'Terminänderungen', 'Kundenbetreuung'].join(';');
+  const row = (prio, call, er, gruppe, kunde, status, la) => [prio, call, er, gruppe, 'PD1', kunde, 'Beispiel', '', status, '1.00', '', la, '', '', '0', 'MPDV_Europe'].join(';');
+  // Stand je Einlesen: A/C wechseln den Status, G ist ein älterer Call, B kommt am Mittwoch neu, D ist geschlossen
+  const stand = { A: ['Neu', '2026-11-02T08:00:00'], C: ['Neu', '2026-11-02T08:00:00'], B: null };
+  const csv = () => '﻿' + [hdr,
+    row('1 - ROT', '900401', '2026-11-02T08:00:00', '2nd_MF', 'ALPHA', ...stand.A),
+    row('3 - GRUEN', '900403', '2026-11-02T08:00:00', '2nd_HR', 'ALPHA', ...stand.C),
+    row('1 - ROT', '900406', '2026-10-30T08:00:00', '2nd_CAQ', 'ALPHA', 'In Bearbeitung', '2026-10-30T09:00:00'),
+    row('3 - GRUEN', '900405', '2026-11-02T08:00:00', '2nd_CAQ', 'CHARLIE', 'In Bearbeitung', '2026-11-02T08:00:00'),
+    row('2 - BLAU', '800404', '2026-10-20T08:00:00', '2nd_MF', 'ALPHA', 'Gelöst', '2026-10-21T08:00:00'),
+    ...(stand.B ? [row('2 - BLAU', '900402', '2026-11-04T09:00:00', 'Hotline', 'BRAVO', ...stand.B)] : []),
+  ].join('\n');
+  const einlesen = async (zeit) => {
+    await page.evaluate(async ([zeit, csv]) => { now = () => new Date(zeit); await importCallFile(new File([csv], 'SupportBoard-Daten.csv', { type: 'text/csv' })); }, [zeit, csv()]);
+    await page.waitForTimeout(250);
   };
-  const laden = async csv => { await page.evaluate(async csv => { await importCallFile(new File([csv], 'SupportBoard-Daten.csv', { type: 'text/csv' })); }, csv); await page.waitForTimeout(300); };
-  await laden(mkCsv());
-  // Reiter und Regel per Oberflaeche anlegen
+  await einlesen('2026-11-02T08:05:00');                                                  // Mo 08:05: erstes Sehen
+  stand.A = ['In Bearbeitung', '2026-11-02T10:00:00']; stand.C = ['In Bearbeitung', '2026-11-02T09:00:00'];
+  await einlesen('2026-11-02T10:05:00');                                                  // Mo 10:05
+  stand.C = ['Wartend', '2026-11-02T13:00:00'];
+  await einlesen('2026-11-02T13:05:00');                                                  // Mo 13:05
+  stand.A = ['Wartend', '2026-11-03T12:00:00'];
+  await einlesen('2026-11-03T12:05:00');                                                  // Di 12:05
+  stand.B = ['In Bearbeitung', '2026-11-04T09:00:00'];
+  await einlesen('2026-11-04T09:05:00');                                                  // Mi 09:05: B neu
+  await page.evaluate(() => { now = () => new Date(2026, 10, 4, 12, 0); render(); });     // Auswertung Mi 12:00
+  const sv = await page.evaluate(() => Object.fromEntries(['900401', '900403', '900406', '900402', '800404'].map(c => [c, statusVerlaufEintrag(alleZeilen().find(r => String(r.Call) === c))?.v ?? null])));
+  console.log('   gesehen:', JSON.stringify(sv));
+  const min = s => Math.round(new Date(s).getTime() / 60000);
+  check('Lernliste: A Neu (08:05 gesehen) → In Bearbeitung Mo 10:00 → Wartend Di 12:00 (letzte Änderung); D geschlossen nicht verfolgt', JSON.stringify(sv['900401']) === JSON.stringify([[min('2026-11-02T08:05:00'), 'Neu'], [min('2026-11-02T10:00:00'), 'In Bearbeitung'], [min('2026-11-03T12:00:00'), 'Wartend']]) && sv['800404'] === null && sv['900406'].length === 1, JSON.stringify(sv));
+  // Reiter und Regeln per Oberflaeche
   await page.click('#tabs button[data-tab="slaregel"]'); await page.waitForTimeout(200);
-  const leer = await page.evaluate(() => document.querySelector('#srBasis')?.textContent.replace(/\s+/g, ' ') || '');
-  check('Reiter „SLA-Regeln“ mit Datenbasis: Statushistorie fehlt, Status seit vorhanden, Weiterleitungen bei 2 von 4 offenen, gelernt', /Statushistorie .*fehlt/.test(leer) && /Status seit .*vorhanden/.test(leer) && /bei 2 von 4 offenen Calls/.test(leer) && /Gelernte Statuswechsel .*4 Calls verfolgt · Statuswechsel mit genauem Zeitpunkt: 1 \(der erste am 02\.11\.2026, 13:00\)/.test(leer), leer.slice(0, 700));
+  const info = await page.evaluate(() => document.querySelector('#srBasis')?.textContent.replace(/\s+/g, ' ') || '');
+  check('Karte „So zählt das Board“: ab Eröffnung, keine Abfrage-Änderung, 5 Calls verfolgt seit Mo 08:05, 4 Wechsel', /ab Eröffnung/.test(info) && /Keine Änderung an Abfrage oder Exportskript nötig/.test(info) && /5 Calls seit 02\.11\.2026, 08:05 · 4 Statuswechsel gesehen/.test(info) && !/Abfrage-Status/.test(info), info);
   await page.click('#btnSrAdd'); await page.waitForTimeout(200);
   const r0 = await page.evaluate(() => JSON.parse(JSON.stringify(state.slaRegeln)));
-  check('Regel hinzufügen: Vorgabe Arbeitszeiten, zählt Neu + In Bearbeitung, pausiert Wartend, Ziel 8, alle Kunden/Prios', r0.length === 1 && r0[0].gz === true && r0[0].zaehlen.join() === 'Neu,In Bearbeitung' && r0[0].pausieren.join() === 'Wartend' && r0[0].ziel === 8 && r0[0].prio.length === 0 && r0[0].kunden === '' && r0[0].typ === 'slaFast', JSON.stringify(r0));
-  await page.fill('[data-sr="0|kunden"]', 'ALPHA'); await page.$eval('[data-sr="0|kunden"]', el => el.dispatchEvent(new Event('change'))); await page.waitForTimeout(200);
-  // Regel 2: Blau, Kalenderzeit, Ziel 2 Std.
+  check('Regel hinzufügen: Arbeitszeiten, zählt Neu + In Bearbeitung, pausiert Wartend, Ziel 4:00, alle Kunden/Prios', r0.length === 1 && r0[0].gz === true && r0[0].zaehlen.join() === 'Neu,In Bearbeitung' && r0[0].pausieren.join() === 'Wartend' && r0[0].ziel === 4 && r0[0].prio.length === 0 && r0[0].kunden === '', JSON.stringify(r0));
+  const setze = async (sel, wert) => { await page.fill(sel, wert); await page.$eval(sel, el => el.dispatchEvent(new Event('change'))); await page.waitForTimeout(150); };
+  await setze('[data-sr="0|kunden"]', 'ALPHA');
+  await setze('[data-sr="0|ziel"]', '8');
   await page.click('#btnSrAdd'); await page.waitForTimeout(200);
   await page.click('[data-srprio="1|blau"]'); await page.waitForTimeout(150);
   await page.selectOption('[data-sr="1|gz"]', '0'); await page.waitForTimeout(150);
-  await page.fill('[data-sr="1|ziel"]', '2'); await page.$eval('[data-sr="1|ziel"]', el => el.dispatchEvent(new Event('change'))); await page.waitForTimeout(200);
-  const r1 = await page.evaluate(() => JSON.parse(JSON.stringify(state.slaRegeln)));
-  check('Regel 1 Kunde ALPHA; Regel 2 Prio Blau, Kalenderzeit, Ziel 2 Std.', r1[0].kunden === 'ALPHA' && r1[1].prio.join() === 'blau' && r1[1].gz === false && r1[1].ziel === 2, JSON.stringify(r1));
-  // Chip-Ausschluss: Wartend in Regel 2 auf „zaehlen“ -> verschwindet aus „pausieren“
+  await setze('[data-sr="1|ziel"]', '120 Min.');
+  const r1 = await page.evaluate(() => ({ r: JSON.parse(JSON.stringify(state.slaRegeln)), feld: document.querySelector('[data-sr="1|ziel"]').value, label: slaRegelLabel(state.slaRegeln[1]) }));
+  check('Regel 1 ALPHA, Ziel 8; Regel 2 Blau, Kalenderzeit, „120 Min.“ = 2 Std., Feld zeigt 2:00', r1.r[0].kunden === 'ALPHA' && r1.r[0].ziel === 8 && r1.r[1].prio.join() === 'blau' && r1.r[1].gz === false && r1.r[1].ziel === 2 && r1.feld === '2:00' && /2,0 Std\.$/.test(r1.label), JSON.stringify(r1));
+  const p = await page.evaluate(() => ({ a: slaZielStd('1:30'), b: slaZielStd('0,25'), c: slaZielStd('90 min'), d: slaZielStd('2 h'), e: slaZielStd('x'), f: fmtZielEingabe(0.25), g: fmtStd(0.25 * 3600000) }));
+  check('Eingabe des Ziels: 1:30 / 0,25 / 90 min / 2 h erkannt, Unsinn abgelehnt, 0,25 Std. = 0:15 = 15 Min.', p.a === 1.5 && p.b === 0.25 && p.c === 1.5 && p.d === 2 && Number.isNaN(p.e) && p.f === '0:15' && p.g === '15 Min.', JSON.stringify(p));
+  await setze('[data-sr="1|ziel"]', 'bald');
+  check('Unsinniges Ziel ändert die Regel nicht', await page.evaluate(() => state.slaRegeln[1].ziel === 2), '');
+  // Chip-Ausschluss
   const wIdx = await page.evaluate(() => slaStatusOptionen().indexOf('Wartend'));
   await page.click(`[data-srst="1|zaehlen|${wIdx}"]`); await page.waitForTimeout(150);
   const r2 = await page.evaluate(() => JSON.parse(JSON.stringify(state.slaRegeln[1])));
-  await page.click(`[data-srst="1|zaehlen|${wIdx}"]`); await page.waitForTimeout(150);
+  await page.click(`[data-srst="1|pausieren|${wIdx}"]`); await page.waitForTimeout(150);
   const r3 = await page.evaluate(() => JSON.parse(JSON.stringify(state.slaRegeln[1])));
-  check('Status zählt oder pausiert, nie beides (Wartend wandert, zweiter Klick nimmt ihn heraus)', r2.zaehlen.includes('Wartend') && !r2.pausieren.includes('Wartend') && !r3.zaehlen.includes('Wartend') && !r3.pausieren.includes('Wartend'), JSON.stringify([r2, r3]));
-  await page.evaluate(() => { state.slaRegeln[1].pausieren = ['Wartend']; touch('cfg|slaRegeln'); render(); });
+  check('Status zählt oder pausiert, nie beides', r2.zaehlen.includes('Wartend') && !r2.pausieren.includes('Wartend') && r3.pausieren.includes('Wartend') && !r3.zaehlen.includes('Wartend'), JSON.stringify([r2, r3]));
   // Rechnung
-  const get = () => page.evaluate(() => state.slaRegeln.map(rg => { const t = slaRegelTreffer(rg); return { alarmN: t.alarmN, list: t.list.map(h => ({ c: String(h.r.Call), ges: h.ges, akt: h.akt, inakt: h.inakt, rest: h.rest, alarm: h.alarm, basis: h.basis.txt, seg: h.seg.map(s => [s.s, s.art, s.q.join('+'), Math.round(s.d / 60000)]) })) }; }));
+  const get = () => page.evaluate(() => state.slaRegeln.map(rg => slaRegelTreffer(rg).list.map(h => ({ c: String(h.r.Call), ges: h.ges, akt: h.akt, inakt: h.inakt, alarm: h.alarm, ang: h.v.angenommen }))));
   let t = await get();
-  const A = t[0].list.find(x => x.c === '900401'), C = t[0].list.find(x => x.c === '900403'), B = t[1].list.find(x => x.c === '900402');
-  console.log('   A:', JSON.stringify(A), '\n   C:', JSON.stringify(C), '\n   B:', JSON.stringify(B));
-  check('Regel 1 trifft A und C (D geschlossen, B/E andere Kunden)', t[0].list.map(x => x.c).sort().join() === '900401,900403', JSON.stringify(t[0].list.map(x => x.c)));
-  check('A: aktiv 13,5 Std. (Neu 2 + In Bearbeitung 11,5), inaktiv 9,5 (Wartend ab letzter Änderung), Gesamt 23, Alarm, Basis Weiterleitungen · geschätzt', A && near(A.akt, 13.5 * H) && near(A.inakt, 9.5 * H) && near(A.ges, 23 * H) && A.alarm && A.basis === 'Weiterleitungen · geschätzt' && A.seg.length === 3, JSON.stringify(A));
-  check('C: „Status seit“ setzt den Beginn von Wartend exakt – aktiv 5 Std., inaktiv 18, kein Alarm', C && near(C.akt, 5 * H) && near(C.inakt, 18 * H) && near(C.ges, 23 * H) && !C.alarm && /Status seit/.test(C.basis) && !/geschätzt/.test(C.basis), JSON.stringify(C));
-  check('B (Regel 2, Kalenderzeit): 3 Std. In Bearbeitung ≥ 2 Std. Ziel → Alarm, Basis „nur Status jetzt“; nur B in Regel 2', B && near(B.akt, 3 * H) && B.alarm && B.basis === 'nur Status jetzt' && t[1].list.length === 1, JSON.stringify(t[1]));
+  const f = (i, c) => t[i].find(x => x.c === c);
+  const A = f(0, '900401'), C = f(0, '900403'), G = f(0, '900406'), B = f(1, '900402');
+  console.log('   A:', JSON.stringify(A), '\n   C:', JSON.stringify(C), '\n   G:', JSON.stringify(G), '\n   B:', JSON.stringify(B));
+  check('Regel 1 trifft A, C, G (D geschlossen, B/E andere Kunden)', t[0].map(x => x.c).sort().join() === '900401,900403,900406', JSON.stringify(t[0].map(x => x.c)));
+  check('A: aktiv 13,5 Std. (Neu 2 + In Bearbeitung 11,5), inaktiv 9,5, Gesamt 23, Alarm, nicht angenommen', A && near(A.akt, 13.5 * H) && near(A.inakt, 9.5 * H) && near(A.ges, 23 * H) && A.alarm && !A.ang, JSON.stringify(A));
+  check('C: aktiv 5 Std., inaktiv 18 (Wartend ab Mo 13:00), kein Alarm', C && near(C.akt, 5 * H) && near(C.inakt, 18 * H) && !C.alarm, JSON.stringify(C));
+  check('G (älterer Call, erst Mo gesehen): In Bearbeitung ab Eröffnung Fr angenommen – aktiv 31,5 Std., Alarm', G && near(G.akt, 31.5 * H) && G.alarm && G.ang, JSON.stringify(G));
+  check('B (Regel 2, Kalenderzeit): 3 Std. ≥ 2 Std. → Alarm; nur B in Regel 2', B && near(B.akt, 3 * H) && B.alarm && t[1].length === 1, JSON.stringify(t[1]));
   // Anzeige
   await page.evaluate(() => { pruefeSlaRegeln(); render(); }); await page.waitForTimeout(200);
-  const ui = await page.evaluate(() => ({
-    badge: document.querySelector('#tabs [data-tab="slaregel"] .cnt')?.textContent.trim(), hidden: document.querySelector('#tabs [data-tab="slaregel"] .cnt')?.classList.contains('hidden'),
-    rows0: [...document.querySelectorAll(`#srErg-${state.slaRegeln[0].id} tbody tr`)].map(tr => [...tr.querySelectorAll('td')].map(td => td.textContent.replace(/\s+/g, ' ').trim())),
-    alarmRow: !!document.querySelector(`#srErg-${state.slaRegeln[0].id} tbody tr.sr-alarm`), segs: document.querySelectorAll('.srseg').length, kursiv: document.querySelectorAll('.srseg.g').length, gemeldet: [...slaRegelGemeldet]
-  }));
-  const [state0, state1] = await page.evaluate(() => state.slaRegeln.map(rg => rg.id));
+  const ids = await page.evaluate(() => state.slaRegeln.map(rg => rg.id));
+  const ui = await page.evaluate(id0 => ({
+    badge: document.querySelector('#tabs [data-tab="slaregel"] .cnt')?.textContent.trim(),
+    rows0: [...document.querySelectorAll(`#srErg-${id0} tbody tr`)].map(tr => [...tr.querySelectorAll('td')].map(td => td.textContent.replace(/\s+/g, ' ').trim())),
+    alarmRows: document.querySelectorAll(`#srErg-${id0} tbody tr.sr-alarm`).length, kursiv: document.querySelectorAll(`#srErg-${id0} .srseg.g`).length, gemeldet: [...slaRegelGemeldet]
+  }), ids[0]);
   console.log('   Zeilen Regel 1:', JSON.stringify(ui.rows0));
-  check('Reiter-Zähler 2 (A, B), Alarmzeile markiert, Verlauf als Chips (geschätzte kursiv), Hinweis für A (Regel 1) und B (Regel 2) gemeldet', ui.badge === '2' && !ui.hidden && ui.alarmRow && ui.segs >= 5 && ui.kursiv >= 1 && ui.gemeldet.includes(state0 + '|900401') && ui.gemeldet.includes(state1 + '|900402'), JSON.stringify(ui));
-  check('Tabelle Regel 1: A zuerst mit Gesamt 23,0 / aktiv 13,5 / inaktiv 9,5 / erreicht', ui.rows0[0] && ui.rows0[0][0].startsWith('900401') && ui.rows0[0][6] === '23,0 Std.' && ui.rows0[0][7] === '13,5 Std.' && ui.rows0[0][8] === '9,5 Std.' && /erreicht/.test(ui.rows0[0][9]), JSON.stringify(ui.rows0[0]));
+  const zA = ui.rows0.find(z => z[0].startsWith('900401')), zG = ui.rows0.find(z => z[0].startsWith('900406'));
+  check('Reiter-Zähler 3 (A, G, B), 2 Alarmzeilen in Regel 1, G zuerst, Hinweise gemeldet', ui.badge === '3' && ui.alarmRows === 2 && ui.rows0[0][0].startsWith('900406') && ui.gemeldet.includes(ids[0] + '|900401') && ui.gemeldet.includes(ids[0] + '|900406') && ui.gemeldet.includes(ids[1] + '|900402'), JSON.stringify(ui));
+  check('Zeile A: 23,0 / 13,5 / 9,5 / erreicht / gesehen seit 02.11.2026, 08:05', zA && zA[6] === '23,0 Std.' && zA[7] === '13,5 Std.' && zA[8] === '9,5 Std.' && /erreicht/.test(zA[9]) && zA[10] === '02.11.2026, 08:05', JSON.stringify(zA));
+  check('Zeile G: „davor angenommen“, Verlauf kursiv', zG && /davor angenommen/.test(zG[10]) && ui.kursiv >= 1, JSON.stringify(zG));
   const cp = await page.evaluate(() => slaRegelTabelle(state.slaRegeln[0]).plain);
-  check('Kopie: A-Zeile mit Zeiten, Hinweis, Datenbasis und Verlauf', /^900401\tRot\tALPHA\tBeispiel\t2nd_MF\tPD1\tWartend\t23,0 Std\.\t13,5 Std\.\t9,5 Std\.\t\d+ Min\.\t8,0 Std\.\terreicht\tWeiterleitungen · geschätzt\tNeu .* › In Bearbeitung .* › Wartend .*pausiert\)$/m.test(cp), cp);
+  check('Kopie: A-Zeile mit Zeiten, Hinweis, gesehen seit und Verlauf', /^900401\tRot\tALPHA\tBeispiel\t2nd_MF\tPD1\tWartend\t23,0 Std\.\t13,5 Std\.\t9,5 Std\.\t0 Min\.\t8,0 Std\.\terreicht\t02\.11\.2026, 08:05\tNeu .* › In Bearbeitung .* › Wartend .*pausiert\)$/m.test(cp) && /^900406\t.*\t02\.11\.2026, 08:05 \(davor angenommen\)\t/m.test(cp), cp);
   // Startseite
   await page.click('#tabs button[data-tab="heute"]'); await page.waitForTimeout(250);
-  const heute = await page.evaluate(() => ({ karte: !!document.querySelector('#srHeute'), rows: [...document.querySelectorAll('#srHeute tbody tr')].map(tr => tr.textContent.replace(/\s+/g, ' ').trim()) }));
-  check('Startseite: Karte „SLA-Regeln: Eskalationsziel erreicht“ mit A und B', heute.karte && heute.rows.length === 2 && heute.rows.some(x => /900401/.test(x)) && heute.rows.some(x => /900402/.test(x)), JSON.stringify(heute));
+  const heute = await page.evaluate(() => ({ karte: document.querySelector('#srHeute h2')?.textContent || '', rows: [...document.querySelectorAll('#srHeute tbody tr')].map(tr => tr.textContent.replace(/\s+/g, ' ').trim()) }));
+  check('Startseite: Karte „Schwellenwert erreicht“ mit A, G und B', /Schwellenwert erreicht/.test(heute.karte) && heute.rows.length === 3 && ['900401', '900406', '900402'].every(c => heute.rows.some(x => x.includes(c))), JSON.stringify(heute));
   await page.click('#srHeute [data-goto="slaregel"]'); await page.waitForTimeout(200);
   check('Knopf auf der Startseite führt in den Reiter', await page.evaluate(() => activeTab === 'slaregel'), '');
-  // Lernen: A wechselt Mi 11:00 auf In Bearbeitung
-  await laden(mkCsv({ aIb: true }));
-  t = await get();
-  const A2 = t[0].list.find(x => x.c === '900401');
-  const sv = await page.evaluate(() => JSON.parse(JSON.stringify(statusVerlaufEintrag(alleZeilen().find(r => String(r.Call) === '900401')))));
-  console.log('   A gelernt:', JSON.stringify(sv), JSON.stringify(A2));
-  check('Gelernt: A Wartend (geschätzt, eingefroren) → In Bearbeitung Mi 11:00; aktiv 14,5, inaktiv 8,5', sv && sv.v.length === 2 && sv.v[0][1] === 'Wartend' && sv.v[0][2] === 1 && sv.v[1][1] === 'In Bearbeitung' && !sv.v[1][2] && near(A2.akt, 14.5 * H) && near(A2.inakt, 8.5 * H) && /gelernt/.test(A2.basis), JSON.stringify([sv, A2]));
-  // Aeltere Datei (A wieder Wartend mit letzter Aenderung Di 12:00) darf das Gelernte nicht zurueckdrehen
-  await laden(mkCsv());
-  const svAlt = await page.evaluate(() => JSON.parse(JSON.stringify(statusVerlaufEintrag(alleZeilen().find(r => String(r.Call) === '900401')))));
-  check('Ältere Datei: kein falscher Rückwechsel in der Lernliste', svAlt && svAlt.v.length === 2 && svAlt.v[1][1] === 'In Bearbeitung', JSON.stringify(svAlt));
-  // Statushistorie ersetzt alles
-  await laden(mkCsv({ aIb: true, hist: true }));
-  t = await get();
-  const A3 = t[0].list.find(x => x.c === '900401');
-  check('Statushistorie: A aktiv 8,0 (Neu 2 + IB 5 + IB 1), inaktiv 15,0, Alarm genau am Ziel, Basis „Statushistorie“', A3 && near(A3.akt, 8 * H) && near(A3.inakt, 15 * H) && A3.alarm && A3.basis === 'Statushistorie', JSON.stringify(A3));
-  await page.click('#tabs button[data-tab="slaregel"]'); await page.waitForTimeout(200);
+  // Arbeitszeiten Nein
   await page.selectOption('[data-sr="0|gz"]', '0'); await page.waitForTimeout(200);
   t = await get();
-  const A4 = t[0].list.find(x => x.c === '900401');
-  check('Arbeitszeiten Nein: A Gesamt 52 Std., aktiv 8, inaktiv 44 (Kalenderzeit)', A4 && near(A4.ges, 52 * H) && near(A4.akt, 8 * H) && near(A4.inakt, 44 * H), JSON.stringify(A4));
-  const basis2 = await page.evaluate(() => document.querySelector('#srBasis')?.textContent.replace(/\s+/g, ' ') || '');
-  check('Datenbasis meldet die Statushistorie', /liefert der Export/.test(basis2), basis2.slice(0, 300));
-  // Team-Abgleich
+  const A2 = t[0].find(x => x.c === '900401');
+  check('Arbeitszeiten Nein: A Gesamt 52 Std., aktiv 28 (Neu 2 + In Bearbeitung 26), inaktiv 24', A2 && near(A2.ges, 52 * H) && near(A2.akt, 28 * H) && near(A2.inakt, 24 * H), JSON.stringify(A2));
+  // Team-Abgleich (auch Einträge aus v1.62 mit drittem Feld)
   const mg = await page.evaluate(() => {
-    const a = { '1': { v: [[100, 'Neu', 1], [200, 'Wartend']] } }, b = { '1': { v: [[100, 'Neu'], [150, 'Wartend', 1], [300, 'In Bearbeitung']] }, '2': { v: [[50, 'Neu', 1]] } };
+    const a = { '1': { v: [[100, 'Neu', 1], [200, 'Wartend']] } }, b = { '1': { v: [[100, 'Neu'], [150, 'Wartend'], [300, 'In Bearbeitung']] }, '2': { v: [[50, 'Neu']] } };
     return { m: mergeStatusVerlaufMonat(a, b), shared: SHARED_MAPS.includes('statusVerlauf') && SHARED_CFG.includes('slaRegeln') };
   });
-  check('Abgleich: Vereinigung je Call, gleicher Status hintereinander → frühester, sicher vor geschätzt', JSON.stringify(mg.m) === JSON.stringify({ '1': { v: [[100, 'Neu'], [150, 'Wartend', 1], [300, 'In Bearbeitung']] }, '2': { v: [[50, 'Neu', 1]] } }) && mg.shared, JSON.stringify(mg));
-  // Regel aus -> kein Alarm; Regel loeschen
+  check('Abgleich: Vereinigung je Call, gleicher Status hintereinander → frühester', JSON.stringify(mg.m) === JSON.stringify({ '1': { v: [[100, 'Neu'], [150, 'Wartend'], [300, 'In Bearbeitung']] }, '2': { v: [[50, 'Neu']] } }) && mg.shared, JSON.stringify(mg));
+  // Regel aus, Regel loeschen
   await page.click('[data-sr="1|aktiv"]'); await page.waitForTimeout(200);
-  const aus = await page.evaluate(() => ({ n: slaRegelAlarmCalls(), karte: !!document.querySelector(`#srErg-${state.slaRegeln[1].id}`) }));
-  check('Regel 2 aus: kein Ergebnis mehr, nur noch A im Alarm', aus.n === 1 && !aus.karte, JSON.stringify(aus));
+  const aus = await page.evaluate(id1 => ({ n: slaRegelAlarmCalls(), karte: !!document.querySelector(`#srErg-${id1}`) }), ids[1]);
+  check('Regel 2 aus: keine Ergebniskarte, nur noch A und G im Alarm', aus.n === 2 && !aus.karte, JSON.stringify(aus));
   await page.click('[data-srdel="1"]'); await page.waitForTimeout(200);
   check('Regel löschen', await page.evaluate(() => state.slaRegeln.length === 1), '');
   // Beispieldaten
   await page.evaluate(() => { now = () => new Date(); loadDemo(); }); await page.waitForTimeout(400);
   await page.evaluate(() => { state.slaRegeln = [slaRegelNeu()]; touch('cfg|slaRegeln'); render(); }); await page.waitForTimeout(200);
   await page.click('#tabs button[data-tab="slaregel"]'); await page.waitForTimeout(300);
-  const demo = await page.evaluate(() => ({ rows: document.querySelectorAll('[id^="srErg-"] tbody tr').length, basis: [...new Set([...document.querySelectorAll('[id^="srErg-"] tbody tr td:nth-child(11)')].map(td => td.textContent.trim()))] }));
-  console.log('   Demo:', JSON.stringify(demo));
-  check('Beispieldaten: Regel zeigt Calls ohne Fehler', demo.rows > 0, JSON.stringify(demo));
+  const demo = await page.evaluate(() => document.querySelectorAll('[id^="srErg-"] tbody tr').length);
+  check('Beispieldaten: Regel zeigt Calls ohne Fehler', demo > 0, String(demo));
   await page.screenshot({ path: bildPfad('slaregel.png'), fullPage: false });
   await ende(browser, errors);
 })();
