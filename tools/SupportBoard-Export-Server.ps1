@@ -9,13 +9,14 @@
     Zusatzabfragen (optional): Liegen im Skriptordner die Dateien
       SupportBoard-Abfrage-Reaktion.sql       (seit v1.41: Spalten Call, Externe Reaktion; seit v1.47 optional Prioritaet_initial)
       SupportBoard-Abfrage-Weiterleitung.sql  (seit v1.43: Spalten Call, Weiterleitungen)
+      SupportBoard-Abfrage-Status.sql         (seit v1.62: Statushistorie je Call, Rohform wie die Weiterleitungen)
     werden sie zusaetzlich ausgefuehrt. Jede liefert je Call genau einen Wert
     (zwei Spalten: Call und Wert). Das Skript haengt den Wert ueber die
     Call-Nummer an die Zeilen der Hauptabfrage an - es entsteht weiterhin EINE
     CSV mit einer Zeile je Call. Liefert die Reaktionsabfrage zusaetzlich die
     Spalte Prioritaet_initial (Prioritaet bei Eroeffnung), wird auch sie
     angehaengt; alle anderen weiteren Spalten der Reaktionsabfrage werden
-    ignoriert. Nur bei der Weiterleitungsabfrage gilt: Liefert sie mehr als
+    ignoriert. Bei der Weiterleitungs- und der Statusabfrage gilt: Liefert eine mehr als
     zwei Spalten (Rohform: je Weiterleitung eine Zeile mit Call, Datum,
     vorherige Gruppe, vorheriger Bearbeiter, aktuelle Gruppe, aktueller
     Bearbeiter, Folgestatus, Ersteller), buendelt das Skript die Zeilen je Call
@@ -119,6 +120,7 @@ if ($null -eq $Dienstkonto)    { $Dienstkonto = '' }
 $AbfrageDatei  = Join-Path $Basis 'SupportBoard-Abfrage.sql'
 $AbfrageDateiReaktion = Join-Path $Basis 'SupportBoard-Abfrage-Reaktion.sql'   # optional: externe Reaktion je Call (2 Spalten: Call, Wert)
 $AbfrageDateiWeiterleitung = Join-Path $Basis 'SupportBoard-Abfrage-Weiterleitung.sql'   # optional (v1.43): Weiterleitungs-Historie je Call (2 Spalten: Call, Weiterleitungen)
+$AbfrageDateiStatus = Join-Path $Basis 'SupportBoard-Abfrage-Status.sql'   # optional (v1.62): Statushistorie je Call (Rohform: Call, Datum, Status, Status vorher)
 $PasswortDatei = Join-Path $Basis 'SupportBoard-Export.pwd'   # verschluesselt, an diesen Rechner gebunden
 $LogDatei      = Join-Path (Split-Path -Parent $Zielpfad) 'SupportBoard-Export.log'   # im Zielordner: vom Arbeitsplatz aus lesbar
 $LogDateiErsatz = if ($ZielpfadErsatz) { Join-Path (Split-Path -Parent $ZielpfadErsatz) 'SupportBoard-Export.log' } else { Join-Path $Basis 'SupportBoard-Export.log' }
@@ -363,7 +365,8 @@ Pruefe-NurLesen $Sql 'Abfrage'
 $Zusatz = @()
 foreach ($z in @(
         @{ Datei = $AbfrageDateiReaktion;      Name = 'Reaktionsabfrage';      Spalte = 'Externe Reaktion'; Weitere = @('Prioritaet_initial'); Buendeln = $false },
-        @{ Datei = $AbfrageDateiWeiterleitung; Name = 'Weiterleitungsabfrage'; Spalte = 'Weiterleitungen';   Buendeln = $true })) {
+        @{ Datei = $AbfrageDateiWeiterleitung; Name = 'Weiterleitungsabfrage'; Spalte = 'Weiterleitungen';   Buendeln = $true },
+        @{ Datei = $AbfrageDateiStatus;        Name = 'Statusabfrage';         Spalte = 'Statushistorie';    Buendeln = $true })) {
     if (-not (Test-Path $z.Datei)) { continue }
     $t = Get-Content -Path $z.Datei -Raw -Encoding UTF8
     if ([string]::IsNullOrWhiteSpace($t)) { continue }

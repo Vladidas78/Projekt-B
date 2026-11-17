@@ -10,6 +10,7 @@ Ersetzt das manuelle Öffnen, Aktualisieren und Speichern der Excel-Liste.
 | `SupportBoard-Abfrage.sql` | Hauptabfrage: eine Zeile je Call (offen + zwei Jahre geschlossen). Änderungen wirken sofort beim nächsten Lauf. |
 | `SupportBoard-Abfrage-Reaktion.sql` | Optional (ab v1.41): zweite Abfrage mit den Spalten `Call` und `Externe Reaktion` (Geschäftszeit in Tagen); ab v1.47 wird eine optionale Spalte `Prioritaet_initial` mit durchgereicht. Das Skript hängt den Wert über die Call-Nummer an – es bleibt **eine** CSV. Fehlt die Datei oder scheitert die Abfrage, wird die CSV trotzdem geschrieben (Spalte leer, WARNUNG im Log). |
 | `SupportBoard-Abfrage-Weiterleitung.sql` | Optional (ab v1.43): dritte Abfrage für die Weiterleitungs-Historie. Entweder in der Rohform (je Weiterleitung eine Zeile: Call, Datum, vorherige Gruppe, vorheriger Bearbeiter, aktuelle Gruppe, aktueller Bearbeiter, Folgestatus, Ersteller; das Skript bündelt je Call, ab v1.45) oder schon gebündelt als zwei Spalten `Call` und `Weiterleitungen`. Die Datei im Repo ist die Abfrage des Teams (Rohform). |
+| `SupportBoard-Abfrage-Status.sql` | Optional (ab v1.62, Skript ab v1.62): vierte Abfrage für die Statushistorie je Call (Rohform: Call, Datum, Status, Status vorher; das Skript bündelt je Call zur Spalte `Statushistorie`). Grundlage der exakten Zeitrechnung im Reiter „SLA-Regeln“. Fehlt die Datei, läuft alles wie bisher. Vorlage unten. |
 | `SupportBoard-Export.log` | Entsteht automatisch, protokolliert jeden Lauf. |
 | `SupportBoard-Export-Server-leise.vbs` | Optionaler Starter für die Aufgabenplanung, damit kein Fenster aufblitzt. |
 
@@ -184,3 +185,24 @@ Erste Anlaufstelle ist `SupportBoard-Export.log` im selben Ordner – dort steht
 | `Möchten Sie diese Datei ausführen? [N] [M] [H]` bei jedem Start | Die Datei trägt die Download-Markierung von Windows. Einmalig `Unblock-File .\SupportBoard-Export-Server.ps1` ausführen, dann fragt PowerShell nicht mehr. |
 
 Die alte Excel-Routine funktioniert unverändert weiter und kann jederzeit als Rückfallebene dienen.
+
+### Ab v1.62: Statushistorie (vierte Abfrage) und „Status seit“ – für die SLA-Regeln
+
+Der Reiter „SLA-Regeln“ rechnet je Call die Zeit in zählenden und pausierenden Status. Dafür braucht er den Statusverlauf mit Zeitpunkten. Ohne weitere Abfrage nutzt das Board den Folgestatus der Weiterleitungen und lernt ab v1.62 jeden Statuswechsel, den es beim Einlesen sieht. Statuswechsel ohne Weiterleitung aus der Zeit davor fehlen dann, und der Beginn des aktuellen Status ist geschätzt (letzte Änderung).
+
+**Exakt** wird es mit einer Statushistorie. Die Datei `SupportBoard-Abfrage-Status.sql` neben das Skript legen (Skript ab v1.62). Rohform wie bei den Weiterleitungen: je Statuswechsel eine Zeile, Spalte 1 der Schlüssel, Spalte 2 das Datum, danach der neue und optional der vorherige Status. Das Skript bündelt je Call zur Spalte `Statushistorie` (`Datum|Status|Status vorher`, Blöcke mit ` # `). Im Log steht „Statusabfrage: Rohform mit 4 Spalten, N Zeilen zu M Calls gebuendelt“.
+
+Vorlage – **Tabellen- und Feldnamen sind Platzhalter**, der Tool-Verantwortliche setzt die Statushistorie der Schattendatenbank ein (nur lesend, wie alle Abfragen):
+
+```sql
+SELECT
+    h.callnr      AS Call,
+    h.datum       AS Datum,
+    h.status_neu  AS [Status],
+    h.status_alt  AS [Status vorher]
+FROM status_historie AS h
+WHERE h.datum >= DATEADD(YEAR, -2, GETDATE())
+ORDER BY h.callnr, h.datum;
+```
+
+**Mindestens** hilft eine Spalte `Status seit` in der Hauptabfrage (Zeitpunkt, seit dem der Call im aktuellen Status ist), falls die Tabelle der offenen Calls so ein Feld führt, z. B. `o.<Feld> AS [Status seit],`. Dann ist der Beginn des aktuellen Status exakt, frühere Wechsel kommen weiter aus Weiterleitungen und Lernliste. Die Karte „Datenbasis der Zeitrechnung“ im Reiter zeigt, welche Quelle der Export liefert.
